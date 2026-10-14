@@ -1,0 +1,236 @@
+/* ===========================================================================
+   Design tokens — Site24x7 Ticket Resolution Agent
+   ===========================================================================
+   Dark-committed: this is an operations console (support agents triaging a
+   queue, an admin scanning hundreds of rows), and the whole genre it belongs
+   to — Linear, Vercel, the Intercom/Zendesk agent inbox — is read in a dark
+   room on a second monitor. One theme, tuned properly, beats two tuned
+   halfway.
+
+   Contrast is measured, not eyeballed. Every foreground token below clears
+   WCAG AA 4.5:1 against every surface it is allowed to sit on. Two results
+   worth knowing before you reach for a color:
+
+     - accent-500 (#6366f1) is 4.09:1 on the card surface. It is a FILL, never
+       text. Accent text and icons use accent-400 (#818cf8, 6.12:1).
+     - White on accent-500 is 4.47:1 — just short. The primary button fills
+       with accent-600 (#5457ea, 5.2:1) and lightens to accent-550 on hover,
+       so the label passes in every state.
+   ========================================================================= */
+
+:root {
+  color-scheme: dark;
+
+  /* --- surfaces -----------------------------------------------------------
+     A ladder off one cool near-black, ~7-10 RGB points per rung, so panels
+     read as layered without any rung announcing itself. `input` sits BELOW
+     `raised`: a field should look recessed into its card, not stacked on it. */
+  --surface-page: #0b0d12;
+  --surface-raised: #12151c;
+  --surface-overlay: #191d26;
+  --surface-input: #0e1116;
+  --surface-hover: rgba(255, 255, 255, 0.035);
+  --surface-active: rgba(255, 255, 255, 0.06);
+
+  /* --- borders ----------------------------------------------------------- */
+  --border-subtle: #1c212a;
+  --border-default: #262c38;
+  --border-strong: #343b4a;
+
+  /* --- text -------------------------------------------------------------- */
+  --text-primary: #e8eaf0;
+  --text-secondary: #a9b1c0;
+  --text-tertiary: #868fa0;
+  --text-on-accent: #ffffff;
+
+  /* --- accent ------------------------------------------------------------ */
+  --accent-300: #a5b4fc;
+  --accent-400: #818cf8; /* accent text + icons */
+  --accent-500: #6366f1; /* identity: active rails, dots, soft fills */
+  --accent-550: #6063f0; /* primary button hover */
+  --accent-600: #5457ea; /* primary button rest */
+  --accent-700: #4338ca; /* primary button pressed */
+  --accent-soft: rgba(99, 102, 241, 0.14);
+  --accent-soft-strong: rgba(99, 102, 241, 0.22);
+  --accent-ring: rgba(129, 140, 248, 0.4);
+
+  /* --- status ------------------------------------------------------------
+     One vocabulary, used everywhere a ticket appears: the customer's past
+     tickets, the agent queue, the admin table, the simulator trace. */
+  --status-ok: #34d399;
+  --status-ok-soft: rgba(52, 211, 153, 0.12);
+  --status-warn: #fbbf24;
+  --status-warn-soft: rgba(251, 191, 36, 0.12);
+  --status-info: #60a5fa;
+  --status-info-soft: rgba(96, 165, 250, 0.12);
+  --status-neutral: #8b93a4;
+  --status-neutral-soft: rgba(255, 255, 255, 0.06);
+  --status-danger: #f87171;
+  --status-danger-soft: rgba(248, 113, 113, 0.12);
+
+  /* --- type --------------------------------------------------------------
+     Fixed rem, ~1.15 ratio. Product UI has more type roles than a brand
+     surface, so the steps stay close; weight carries the rest. */
+  /* Fira Mono is Fira Sans's own companion face — the mono here carries
+     ticket IDs, confidence values and thresholds (real data, not a
+     "technical" costume), so it should read as the same voice. */
+  --font-sans: "Fira Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Fira Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-xs: 0.6875rem; /* 11px — chips, table headers */
+  --text-sm: 0.8125rem; /* 13px — meta, labels, dense data */
+  --text-base: 0.875rem; /* 14px — UI body */
+  --text-md: 1rem; /* 16px — prose, chat */
+  --text-lg: 1.125rem; /* 18px — section heading */
+  --text-xl: 1.375rem; /* 22px — page title */
+  --text-2xl: 1.875rem; /* 30px — landing */
+
+  --leading-tight: 1.25;
+  --leading-snug: 1.45;
+  --leading-relaxed: 1.6;
+
+  --tracking-label: 0.04em; /* micro-caps only */
+  --tracking-tight: -0.011em;
+  --tracking-title: -0.022em;
+
+  /* --- space (4px base) -------------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* --- radius ------------------------------------------------------------
+     Cards 12-14, controls 6-8, pills for chips only. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-pill: 999px;
+
+  /* --- elevation ---------------------------------------------------------
+     Declared ONCE per element: a card uses its surface rung plus a border
+     and no shadow. Shadows belong to things that genuinely float, and carry
+     a real offset and blur. */
+  --shadow-overlay: 0 12px 32px -8px rgba(0, 0, 0, 0.65), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
+  --shadow-sticky: 0 1px 0 var(--border-subtle), 0 8px 24px -16px rgba(0, 0, 0, 0.8);
+
+  /* --- motion ------------------------------------------------------------ */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+}
+
+/* ===========================================================================
+   Base + browser surfaces
+   ===========================================================================
+   The parts nobody draws still carry the design: selection, caret, scrollbar,
+   focus ring, and the numerals in a data table. Left at their defaults they
+   belong to no design system at all. */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-page);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-snug);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--accent-soft-strong);
+  color: var(--text-primary);
+}
+
+:root {
+  caret-color: var(--accent-400);
+  accent-color: var(--accent-500);
+  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+  background-clip: content-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-400);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  margin: 0;
+}
+
+a {
+  color: var(--accent-400);
+  text-decoration-color: color-mix(in srgb, var(--accent-400) 45%, transparent);
+  text-underline-offset: 0.2em;
+}
+
+a:hover {
+  text-decoration-color: var(--accent-400);
+}
+
+/* Any numeric column — confidence, thresholds, counts — lines up only if the
+   digits are the same width. */
+.tabular,
+td,
+th {
+  font-variant-numeric: tabular-nums;
+}
+
+code,
+kbd,
+.mono {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
