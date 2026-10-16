@@ -16,37 +16,25 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend import graph, kb_retrieval  # noqa: E402
-
-
-class _StubCompletions:
-    def __init__(self, response_json: str, captured: list[dict]):
-        self._response_json = response_json
-        self._captured = captured
-
-    def create(self, *, model, messages, **kwargs):
-        self._captured.append({"model": model, "messages": messages, "kwargs": kwargs})
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=self._response_json))]
-        )
-
-
-class _StubClient:
-    def __init__(self, response_json: str, captured: list[dict]):
-        self.chat = SimpleNamespace(completions=_StubCompletions(response_json, captured))
+from backend.ai_service import provider  # noqa: E402
 
 
 def _invoke_is_continuation(monkeypatch, response_json, message_text, prior_ai_response):
     captured: list[dict] = []
-    monkeypatch.setattr(graph, "_client", _StubClient(response_json, captured))
+
+    def _fake_complete(messages, **kwargs):
+        captured.append({"messages": messages, "kwargs": kwargs})
+        return response_json
+
+    monkeypatch.setattr(provider, "complete", _fake_complete)
     result = graph.is_continuation_of_prior_response(message_text, prior_ai_response)
-    assert captured, "expected the stub client to be called"
+    assert captured, "expected the provider to be called"
     return result, captured[0]
 
 
@@ -80,11 +68,11 @@ def test_missing_key_defaults_to_false(monkeypatch):
     assert result is False
 
 
-def test_uses_json_response_format_and_zero_temperature(monkeypatch):
+def test_uses_json_mode_and_zero_temperature(monkeypatch):
     _, call = _invoke_is_continuation(
         monkeypatch, json.dumps({"is_continuation": True}), "msg", "prior"
     )
-    assert call["kwargs"]["response_format"] == {"type": "json_object"}
+    assert call["kwargs"]["json_mode"] is True
     assert call["kwargs"]["temperature"] == 0
 
 

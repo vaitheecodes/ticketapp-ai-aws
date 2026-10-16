@@ -24,21 +24,22 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend import db, graph, main, runtime, seed_data
-from backend.ai_service import AIError, provider, summaries
-from backend.ai_service.schemas import ChatResolutionSummary, EscalationSummary
+from backend.ai_service import AIError, provider, suggest_steps
+from backend.ai_service import summarize_conversation as summaries
+from backend.ai_service.schemas import ChatResolutionSummary, HandoffSummary, SuggestedSteps
 
 _counter = itertools.count()
 
 _ANSWER = {"route": "ai", "category": "AGENT", "confidence": 0.95,
            "ai_response": "Restart the agent service.", "clarification_attempts": 0}
 _HUMAN = {"route": "human", "category": "ACCOUNT", "confidence": 0.4, "clarification_attempts": 0}
-_BRIEF = EscalationSummary(
+_BRIEF = HandoffSummary(
     issue="Agent stopped reporting after an upgrade.",
     tried=["Restarted the agent service."],
     findings=["Ubuntu 22.04, agent 19.4"],
     unresolved_questions=["Is outbound 443 open?"],
-    suggested_next_steps=["Check the agent log for proxy errors.", "Confirm outbound 443."],
 )
+_STEPS = ["Check the agent log for proxy errors.", "Confirm outbound 443."]
 _RESOLUTION = ChatResolutionSummary(
     problem="Agent not reporting.", troubleshooting=["Restarted service"], solution="Restart fixed it."
 )
@@ -68,6 +69,7 @@ def client(tmp_path, monkeypatch):
 def ai_summaries(monkeypatch):
     monkeypatch.setattr(summaries, "summarize_escalation", lambda transcript, reason: _BRIEF)
     monkeypatch.setattr(summaries, "summarize_resolution", lambda transcript: _RESOLUTION)
+    monkeypatch.setattr(suggest_steps, "suggest_steps", lambda data: SuggestedSteps(steps=_STEPS))
 
 
 def _customer(client):
@@ -175,7 +177,7 @@ def test_escalated_chat_creates_unassigned_linked_ticket_with_brief(client, ai_s
     assert ticket["assigned_technician_id"] is None
     assert ticket["chat_session_id"] == chat["session_id"]
     assert json.loads(ticket["ai_summary"])["unresolved_questions"] == ["Is outbound 443 open?"]
-    assert json.loads(ticket["ai_suggestions"]) == _BRIEF.suggested_next_steps
+    assert json.loads(ticket["ai_suggestions"]) == _STEPS
     # Technicians see the brief (incl. next steps) in the queue text.
     assert "Check the agent log for proxy errors." in ticket["ticket_text"]
 
@@ -401,7 +403,7 @@ def test_model_cannot_set_the_summary_source(monkeypatch):
 
     def _fake(messages, **kwargs):
         captured.append(messages)
-        return '{"issue": "i", "suggested_next_steps": ["s"], "source": "fallback"}'
+        return '{"issue": "i", "source": "fallback"}'
 
     monkeypatch.setattr(provider, "complete", _fake)
     assert summaries.summarize_escalation("t", "r").source == "ai"

@@ -392,12 +392,27 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   escalation) have no marker, so `summary` comes back `null` and only
   the original-message section renders — no empty summary block. Same
   parsing reused in the admin All Tickets table's Text column.
-- **LLM calls** (`classify_ticket`, `generate_response`) hit **Azure
-  OpenAI** via the `openai` package's `AzureOpenAI` client, initialized
-  once at the top of `backend/graph.py` — the one place a provider swap
-  would touch. Config: `.env` (see `.env.example`) —
-  `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY` /
-  `AZURE_OPENAI_API_VERSION` / `AZURE_OPENAI_DEPLOYMENT`.
+- **AI service** (`backend/ai_service/`, reconcile sub-stage C): every
+  model call goes through it — one module per operation
+  (`categorize_ticket`, `chat_response` [answer / clarify /
+  is_continuation], `summarize_conversation`, `summarize_ticket`,
+  `suggest_steps`, `correlate_incidents`, `summarize_incident`), each
+  with pydantic input/output schemas in `schemas.py`. `provider.py` is
+  the only place that talks to Azure OpenAI (lazy `AzureOpenAI` client;
+  config from env: `AZURE_OPENAI_ENDPOINT` / `_API_KEY` / `_API_VERSION`
+  / `_DEPLOYMENT`): instructions in the system message, untrusted text in
+  delimited data blocks (closing tags escaped), structured output
+  validated (+ semantic `check`, e.g. correlation ids must be from the
+  input) with one retry, then `AIError`. Provider errors log the
+  exception type only and are re-raised without the chained cause.
+  `graph.py` keeps routing policy + KB grounding and calls the service;
+  callers treat `AIError` as "AI unavailable" without changing state.
+  Hand-off briefs (`conversation.handoff_brief`) = summary + KB-grounded
+  `suggest_steps`, each with its own fallback. `.env` is loaded once in
+  `backend/__init__.py` (before it was loaded after `auth` read
+  `JWT_SECRET`, so local dev silently used the default secret). Tests
+  can't reach the provider (`tests/conftest.py`); covered by
+  `tests/test_ai_service.py`.
 - **Auth / roles** (`backend/auth.py`): customer, technician, manager,
   admin. Tables: `customers`, `staff` (technicians + managers, `role`
   column, `active`, `must_change_password`), `admins`. One login page /

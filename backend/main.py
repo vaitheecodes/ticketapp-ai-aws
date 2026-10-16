@@ -20,10 +20,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend import auth, chats, db, email_utils, graph, handoff_signals, runtime, staff_tickets
 from backend import ticket_lifecycle as lifecycle
+from backend.ai_service import AIError
 from backend.conversation import ESCALATION_MARKER as _ESCALATION_MARKER
 from backend.conversation import Outbox as _Outbox
 from backend.conversation import customer_row as _customer_row
-from backend.conversation import followup_gate
+from backend.conversation import followup_gate, handoff_brief
 from backend.conversation import insert_ticket_message as _insert_message
 from backend.conversation import now as _now
 from backend.conversation import subject_for as _subject_for
@@ -227,29 +228,30 @@ def _record_ai_reply(conn, ticket, text: str, outbox: _Outbox) -> str:
 
 
 def _escalate_to_human(conn, ticket, transcript: str, category, confidence,
-                       outbox: _Outbox) -> None:
-    """Hand an AI-handled ticket to the support team: summarize the
-    thread for the technician and fold it into `ticket_text` (technicians
-    only ever see ticket_text), move the ticket into the open human queue,
-    and tell the customer with an email-style reply. Used by decide_route's
-    own 'human' route, both hand-off signals in backend/handoff_signals.py,
-    and a customer reopening an AI-resolved ticket — one mechanism, so a
-    ticket escalated for any reason reaches the queue looking the same.
-    (Chats escalate through backend/chats.py instead.) A summary failure
-    never blocks the hand-off."""
-    try:
-        summary = graph.summarize_case(transcript)
-    except Exception:  # noqa: BLE001 — the hand-off must not depend on the AI
-        logger.exception("Case summary failed for %s", ticket["ticket_id"])
-        summary = "AI summary unavailable — read the ticket thread."
+                       outbox: _Outbox, reason_key: str) -> None:
+    """Hand an AI-handled ticket to the support team: attach the AI
+    hand-off brief (summary + suggested steps; staff-only, also appended
+    to `ticket_text` so the queue preview shows it), move the ticket into
+    the open human queue, and tell the customer with an email-style
+    reply. Used by decide_route's own 'human' route, both hand-off
+    signals in backend/handoff_signals.py, and a customer reopening an
+    AI-resolved ticket — one mechanism, so a ticket escalated for any
+    reason reaches the queue looking the same. (Chats escalate through
+    backend/chats.py.) The brief never blocks the hand-off: see
+    conversation.handoff_brief."""
+    summary, steps = handoff_brief(
+        "ticket", transcript, reason_key, _subject_for(ticket), category
+    )
     original_text = ticket["ticket_text"].split(f"\n\n{_ESCALATION_MARKER}\n", 1)[0]
     conn.execute(
-        "UPDATE tickets SET route = 'human', category = ?, confidence = ?, ticket_text = ? "
-        "WHERE ticket_id = ?",
+        "UPDATE tickets SET route = 'human', category = ?, confidence = ?, ticket_text = ?, "
+        "ai_summary = ?, ai_suggestions = ? WHERE ticket_id = ?",
         (
             category,
             confidence,
-            f"{original_text}\n\n{_ESCALATION_MARKER}\n{summary}",
+            f"{original_text}\n\n{_ESCALATION_MARKER}\n{summary.as_text(steps)}",
+            summary.model_dump_json(),
+            json.dumps(steps),
             ticket["ticket_id"],
         ),
     )
@@ -308,6 +310,7 @@ def _run_followup(conn, ticket, message_text: str, prior_ai_response, outbox: _O
         _escalate_to_human(
             conn, ticket, _transcript_for(conn, ticket_id),
             ticket["category"], ticket["confidence"], outbox,
+            reason_key="customer_request",
         )
         return {"route": "human"}
 
@@ -336,6 +339,7 @@ def _run_followup(conn, ticket, message_text: str, prior_ai_response, outbox: _O
             _escalate_to_human(
                 conn, ticket, _transcript_for(conn, ticket_id),
                 ticket["category"], ticket["confidence"], outbox,
+                reason_key="ai_cannot_resolve",
             )
             return {"route": "human", "message": ai_response}
         return {"route": "ai", "message": ai_response}
@@ -354,6 +358,7 @@ def _run_followup(conn, ticket, message_text: str, prior_ai_response, outbox: _O
             _escalate_to_human(
                 conn, ticket, _transcript_for(conn, ticket_id),
                 result.get("category"), result.get("confidence"), outbox,
+                reason_key="ai_cannot_resolve",
             )
             return {"route": "human", "message": result["ai_response"]}
         conn.execute(
@@ -372,7 +377,8 @@ def _run_followup(conn, ticket, message_text: str, prior_ai_response, outbox: _O
 
     # decide_route escalated mid-conversation.
     _escalate_to_human(
-        conn, ticket, transcript, result.get("category"), result.get("confidence"), outbox
+        conn, ticket, transcript, result.get("category"), result.get("confidence"), outbox,
+        reason_key="routing_policy",
     )
     return {"route": "human"}
 
@@ -633,6 +639,7 @@ def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_ta
             _escalate_to_human(
                 conn, ticket, _transcript_for(conn, ticket_id),
                 result.get("category"), result.get("confidence"), outbox,
+                reason_key="ai_cannot_resolve",
             )
         elif route == "human" and not result.get("pipeline_failed"):
             # decide_route sent it straight to a human: tell the customer.
@@ -728,6 +735,7 @@ def ticket_reopen(
             _escalate_to_human(
                 conn, ticket, _transcript_for(conn, ticket_id),
                 ticket["category"], ticket["confidence"], outbox,
+                reason_key="customer_reopened",
             )
         conn.commit()
         status = _load_ticket(conn, ticket_id)["status"]
@@ -1202,14 +1210,17 @@ def admin_simulate_ticket(
     if body.channel == "email":
         ticket_text = clean_email(ticket_text)
 
-    result = runtime.get_graph().invoke(
-        {
-            "ticket_id": f"SIM-{uuid.uuid4().hex[:8]}",
-            "customer_id": body.customer_id or f"SIM-CUST-{uuid.uuid4().hex[:6]}",
-            "channel": body.channel,
-            "ticket_text": ticket_text,
-        }
-    )
+    try:
+        result = runtime.get_graph().invoke(
+            {
+                "ticket_id": f"SIM-{uuid.uuid4().hex[:8]}",
+                "customer_id": body.customer_id or f"SIM-CUST-{uuid.uuid4().hex[:6]}",
+                "channel": body.channel,
+                "ticket_text": ticket_text,
+            }
+        )
+    except AIError as exc:
+        raise HTTPException(status_code=503, detail="The AI provider is unavailable right now") from exc
     return result
 
 

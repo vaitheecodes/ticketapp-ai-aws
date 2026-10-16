@@ -32,25 +32,33 @@ reply plus the new message), skipping classify_ticket/decide_route for
 that turn entirely. Only a genuinely new/different message falls
 through to the normal classify_ticket -> decide_route path below.
 
-The Azure OpenAI client is initialized once, here, at module load — this
-is the one place a Phase 2 provider swap would touch.
+Model calls live in backend/ai_service (one module per operation, with
+validated pydantic input/output); the nodes here build those inputs and
+apply the routing policy. A provider failure raises AIError out of the
+graph, and every caller treats that as "the AI is unavailable" without
+changing ticket or chat state.
 """
 
 from __future__ import annotations
 
-import json
-import os
 import re
 from typing import Literal, TypedDict
 
-from dotenv import load_dotenv
 from langgraph.graph import END, StateGraph
-from openai import AzureOpenAI
 from typing_extensions import NotRequired
 
-from backend import db, email_utils, kb_retrieval
-
-load_dotenv()
+from backend import db, kb_retrieval
+from backend.ai_service import categorize_ticket as categorize_op
+from backend.ai_service import chat_response
+from backend.ai_service.schemas import CATEGORIES as _CATEGORIES
+from backend.ai_service.schemas import (
+    AnswerInput,
+    CategorizeInput,
+    ClarifyInput,
+    ContinuationInput,
+    HistoryItem,
+    KBCandidate,
+)
 
 # ---------------------------------------------------------------------------
 # Routing config — ported from src/agent/state.py
@@ -65,11 +73,7 @@ ESCALATION_LANGUAGE_TAGS = {"offensive_language", "coordinated_syntax", "negatio
 MAX_CLARIFICATION_ATTEMPTS = 3
 
 # 17-category enum, ported from src/pipeline/config.py:CATEGORY_INTENTS
-CATEGORIES = [
-    "ACCOUNT", "AGENT", "ALERTS", "APM", "APPLICATION_MONITORING", "CLOUD",
-    "CONTAINERS", "DATA", "INTEGRATION", "LOGS", "MONITORING", "NETFLOW",
-    "REPORTING", "SERVER_MONITORING", "SNMP", "SUPPORT", "WEB_MONITORING",
-]
+CATEGORIES = list(_CATEGORIES)
 
 HISTORY_LOOKBACK = 5
 
@@ -104,17 +108,6 @@ def _kb_grounded_confidence(score: float) -> float:
     )
 
 # ---------------------------------------------------------------------------
-# Azure OpenAI client — single init point for a later provider swap
-# ---------------------------------------------------------------------------
-_client = AzureOpenAI(
-    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-    api_key=os.environ["AZURE_OPENAI_API_KEY"],
-    api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21"),
-)
-_DEPLOYMENT = os.environ["AZURE_OPENAI_DEPLOYMENT"]
-
-
-# ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
 class TicketState(TypedDict):
@@ -141,9 +134,9 @@ class TicketState(TypedDict):
     continuation: NotRequired[bool]
 
     # "email" for ticket-type requests (raised via the form, answered in
-    # an email-style thread): the LLM writes only the body and it is
-    # wrapped in a fixed greeting/closing/signature addressed to
-    # customer_name. Absent/"chat" keeps the conversational chat reply.
+    # an email-style thread): the reply is wrapped in a fixed greeting/
+    # closing/signature addressed to customer_name (ai_service.chat_response).
+    # Absent/"chat" keeps the conversational chat reply.
     reply_format: NotRequired[Literal["chat", "email"]]
     customer_name: NotRequired[str]
 
@@ -249,6 +242,12 @@ def retrieve_kb_candidates(state: TicketState) -> dict:
     return {"kb_candidates": _kb_candidates_to_dicts(candidates)}
 
 
+def kb_candidates_for(text: str, top_k: int = 3) -> list[dict]:
+    """KB retrieval for arbitrary text (e.g. grounding a technician's
+    suggested next steps in the hand-off brief)."""
+    return _kb_candidates_to_dicts(kb_retrieval.retrieve_candidates(text, top_k=top_k))
+
+
 def retrieve_kb_candidates_for_continuation(
     prior_ai_response: str, message_text: str, top_k: int = 3
 ) -> list[dict]:
@@ -260,97 +259,42 @@ def retrieve_kb_candidates_for_continuation(
     prior reply carries the actual substance (e.g. the monitor types it
     just explained) -- that's the "original KB match" this re-grounds
     against for an elaboration/comparison answer."""
-    query = f"{prior_ai_response}\n{message_text}"
-    return _kb_candidates_to_dicts(kb_retrieval.retrieve_candidates(query, top_k=top_k))
+    return kb_candidates_for(f"{prior_ai_response}\n{message_text}", top_k=top_k)
 
 
 def is_continuation_of_prior_response(message_text: str, prior_ai_response: str) -> bool:
-    """Cheap, targeted LLM check: does `message_text` refer back to, ask
-    about, elaborate on, or compare something in `prior_ai_response` (a
-    continuation of the same thread), or is it a genuinely new/
-    different request? Runs on a chat follow-up to an already-resolved
-    ticket, before classify_ticket -- classify_ticket judges each
+    """Does `message_text` refer back to, ask about, elaborate on, or
+    compare something in `prior_ai_response` (a continuation of the same
+    thread), or is it a genuinely new request? Runs on a follow-up after an
+    AI answer, before classify_ticket -- classify_ticket judges each
     message's own classifiability, and a short follow-up fragment has
-    almost no standalone content to classify confidently against the
-    category/intent taxonomy, which used to collapse decide_route's
-    confidence and wrongly escalate an on-topic question the
-    conversation already makes perfectly answerable. A positive result
-    here skips classify_ticket/decide_route entirely for this turn."""
-    system_prompt = (
-        "Decide whether the customer's NEW message is a CONTINUATION of "
-        "this support conversation -- it refers back to, asks about, "
-        "elaborates on, or compares something in the agent's last reply "
-        "below -- or a NEW, unrelated request that has nothing to do "
-        "with that reply. Respond with strict JSON only: "
-        '{"is_continuation": true|false}'
-    )
-    user_prompt = (
-        f"Agent's last reply:\n{prior_ai_response}\n\n"
-        f"Customer's new message:\n{message_text}"
-    )
-    completion = _client.chat.completions.create(
-        model=_DEPLOYMENT,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0,
-    )
-    parsed = json.loads(completion.choices[0].message.content)
-    return bool(parsed.get("is_continuation", False))
+    almost no standalone content to classify confidently, which used to
+    collapse decide_route's confidence and wrongly escalate an on-topic
+    question. A positive result skips classify_ticket/decide_route for
+    this turn."""
+    return chat_response.is_continuation(
+        ContinuationInput(message=message_text, prior_ai_response=prior_ai_response)
+    ).is_continuation
 
 
-def _format_kb_candidates_for_classification(candidates: list[dict]) -> str:
-    if not candidates:
-        return "No close KB matches were found for this ticket text."
-    lines = ["Closest matching real Site24x7 KB entries, ranked by relevance:"]
-    for c in candidates:
-        lines.append(
-            f'  - [{c["category"]} / {c["intent"]}] example question: '
-            f'"{c["instruction"]}" (match score {c["score"]:.2f})'
-        )
-    return "\n".join(lines)
+def _history(state: TicketState) -> list[HistoryItem]:
+    return [HistoryItem(**h) for h in state.get("customer_history", [])]
+
+
+def _candidates(state: TicketState) -> list[KBCandidate]:
+    return [KBCandidate(**c) for c in state.get("kb_candidates", [])]
 
 
 def classify_ticket(state: TicketState) -> dict:
-    history_summary = "\n".join(
-        f"- [{h['category'] or 'uncategorized'}, {h['status']}] {h['ticket_text'][:120]}"
-        for h in state.get("customer_history", [])
-    ) or "(no prior tickets)"
     candidates = state.get("kb_candidates", [])
-
-    system_prompt = (
-        "You classify support tickets for Site24x7 (an infrastructure "
-        "monitoring product) into exactly one of these categories: "
-        f"{', '.join(CATEGORIES)}.\n"
-        "Tickets are about monitor setup/troubleshooting, alerting, "
-        "integrations, agent installation, licensing, or data retention — "
-        "not e-commerce orders, shipping, or refunds.\n"
-        "You are given a ranked list of the closest real KB entries below "
-        "— treat a close wording match there as strong evidence for that "
-        "entry's category, even for a short or casually-phrased ticket.\n"
-        "Respond with strict JSON only: "
-        '{"category": "<ONE_OF_THE_CATEGORIES>", "confidence": <0.0-1.0>}'
+    raw = categorize_op.categorize_ticket(
+        CategorizeInput(
+            ticket_text=state["ticket_text"],
+            history=_history(state),
+            kb_candidates=_candidates(state),
+        )
     )
-    user_prompt = (
-        f"Customer's recent ticket history:\n{history_summary}\n\n"
-        f"{_format_kb_candidates_for_classification(candidates)}\n\n"
-        f"New ticket text:\n{state['ticket_text']}"
-    )
-
-    completion = _client.chat.completions.create(
-        model=_DEPLOYMENT,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0,
-    )
-    parsed = json.loads(completion.choices[0].message.content)
-    llm_category = parsed.get("category") if parsed.get("category") in CATEGORIES else "SUPPORT"
-    llm_confidence = float(parsed.get("confidence", 0.5))
+    llm_category, llm_confidence = raw.category, raw.confidence
 
     category, confidence = llm_category, llm_confidence
     top = candidates[0] if candidates else None
@@ -506,165 +450,40 @@ def _format_order_context(order_lookup: dict | None) -> str:
     )
 
 
-def _format_kb_grounding(candidates: list[dict]) -> str:
-    if not candidates:
-        return (
-            "KB match: none found for this ticket. Don't invent a specific "
-            "Site24x7 feature, setting, or behavior you're not sure of — "
-            "keep the answer general or say it'll need a human to check."
-        )
-    top = candidates[0]
-    return (
-        f"Closest matching KB entry ([{top['category']} / {top['intent']}], "
-        f"match score {top['score']:.2f}):\n"
-        f"  Typical question: {top['instruction']}\n"
-        f"  Canonical guidance: {top['response']}\n"
-        "Base your answer on this guidance, personalized to the customer's "
-        "own wording — don't contradict it, and don't invent Site24x7 "
-        "behavior beyond what it and the ticket data below support."
-    )
-
-
-_EMAIL_BODY_NOTE = (
-    " This reply is sent as an email. Write ONLY the body: no greeting, "
-    "no sign-off, no signature, no subject line — those are added for you."
-)
-
-
-def _as_email(state: TicketState, body: str) -> str:
-    if state.get("reply_format") != "email":
-        return body
-    return email_utils.format_email_reply(state.get("customer_name"), body)
-
-
 def generate_response(state: TicketState) -> dict:
-    history_summary = "\n".join(
-        f"- [{h['category'] or 'uncategorized'}] {h['ticket_text'][:120]}"
-        for h in state.get("customer_history", [])
-    ) or "(no prior tickets)"
-
-    continuation_note = (
-        " The ticket text below is the full conversation so far, and the "
-        "customer's latest message is a follow-up to your own most "
-        "recent reply in it (e.g. asking you to elaborate, clarify, or "
-        "compare something you just said) — answer that latest message "
-        "directly, building on your own prior reply, not as an isolated "
-        "new request."
-        if state.get("continuation")
-        else ""
+    reply = chat_response.answer(
+        AnswerInput(
+            ticket_text=state["ticket_text"],
+            category=state.get("category"),
+            history=_history(state),
+            kb_candidates=_candidates(state),
+            order_context=_format_order_context(state.get("order_lookup")),
+            continuation=bool(state.get("continuation")),
+            reply_format=state.get("reply_format", "chat"),
+            customer_name=state.get("customer_name"),
+        )
     )
-    system_prompt = (
-        "You are a helpful customer support agent for Site24x7 (an "
-        "infrastructure monitoring product). Write a clear, concise, "
-        f"friendly reply that resolves the customer's request.{continuation_note}"
-        f"{_EMAIL_BODY_NOTE if state.get('reply_format') == 'email' else ''}\n\n"
-        "CRITICAL — grounding rule: only state specific facts (order "
-        "status, monitor/alert behavior, account details, etc.) that were "
-        "actually given to you below or in the ticket text. Never invent "
-        "a plausible-sounding tracking number, delivery date, refund "
-        "amount, or Site24x7 feature/setting you were not given. If "
-        "answering the request would require a specific fact you don't "
-        "have, say plainly that you don't have access to it and ask the "
-        "customer for it (or say it'll need a human to check), instead of "
-        "guessing."
-    )
-    user_prompt = (
-        f"Category: {state['category']}\n"
-        f"Customer's recent ticket history:\n{history_summary}\n\n"
-        f"{_format_kb_grounding(state.get('kb_candidates', []))}\n\n"
-        f"{_format_order_context(state.get('order_lookup'))}\n\n"
-        f"Ticket text:\n{state['ticket_text']}"
-    )
-
-    completion = _client.chat.completions.create(
-        model=_DEPLOYMENT,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.3,
-    )
-    return {"ai_response": _as_email(state, completion.choices[0].message.content)}
+    return {"ai_response": reply.text}
 
 
 def ask_clarifying_question(state: TicketState) -> dict:
     """clarify branch — the ticket/transcript is too ambiguous to classify
-    confidently. Ask one targeted question grounded in the actual
-    candidate KB entries retrieve_kb_candidates found (e.g. which of two
-    *real* Site24x7 topics applies) rather than a free-floating meta-
-    question about categories/features that don't exist in this
-    taxonomy. Stored via `ai_response` so it flows through the same
-    ticket_messages/TicketChat.jsx path as generate_response's output —
-    no separate plumbing needed for it to show up in the chat.
-    """
-    candidates = state.get("kb_candidates", [])
-    if candidates:
-        candidate_block = "\n".join(
-            f'  {i + 1}. [{c["category"]} / {c["intent"]}]: e.g. "{c["instruction"]}"'
-            for i, c in enumerate(candidates[:3])
+    confidently. Asks one targeted question grounded in the actual
+    candidate KB entries (e.g. which of two *real* Site24x7 topics
+    applies) rather than a free-floating meta-question about categories
+    that don't exist in this taxonomy. Stored via `ai_response` so it
+    flows through the same message path as generate_response's output."""
+    reply = chat_response.clarify(
+        ClarifyInput(
+            ticket_text=state["ticket_text"],
+            category=state.get("category"),
+            confidence=state.get("confidence", 0.0),
+            kb_candidates=_candidates(state),
+            reply_format=state.get("reply_format", "chat"),
+            customer_name=state.get("customer_name"),
         )
-        grounding = (
-            "Here are the closest real Site24x7 support topics this ticket "
-            f"could match, ranked by relevance:\n{candidate_block}\n\n"
-            "Ask exactly ONE short question that would tell you which of "
-            "THESE SPECIFIC topics applies (or that none of them do). Refer "
-            "to what they're actually about — do not invent categories, "
-            "features, or distinctions (e.g. 'plans', 'subscriptions') that "
-            "aren't reflected in this list."
-        )
-    else:
-        grounding = (
-            "No close match was found in the Site24x7 KB for this ticket. "
-            "Ask exactly ONE short question that would help identify what "
-            "the customer actually needs — do not guess at a specific "
-            "feature or invent a distinction that may not apply."
-        )
-    system_prompt = (
-        "A customer support ticket for Site24x7 (an infrastructure "
-        "monitoring product) is too ambiguous to classify confidently. "
-        f"{grounding} Do not answer the ticket, do not ask a generic 'can "
-        "you tell me more?', and do not assume details the customer "
-        "hasn't given you."
-        f"{_EMAIL_BODY_NOTE if state.get('reply_format') == 'email' else ''}"
     )
-    user_prompt = (
-        f"Best-guess category so far: {state['category']} "
-        f"(confidence {state['confidence']:.2f})\n\n"
-        f"Conversation so far:\n{state['ticket_text']}"
-    )
-
-    completion = _client.chat.completions.create(
-        model=_DEPLOYMENT,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.3,
-    )
-    return {"ai_response": _as_email(state, completion.choices[0].message.content)}
-
-
-def summarize_case(transcript_text: str) -> str:
-    """Used when an ongoing AI chat escalates mid-conversation — condenses
-    the transcript into a case brief for the human agent, since agents
-    otherwise only ever see the ticket's original opening line."""
-    completion = _client.chat.completions.create(
-        model=_DEPLOYMENT,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Summarize this customer support conversation into a short "
-                    "case brief for a human agent: what the customer wants, key "
-                    "details mentioned (order numbers, dates, amounts), and why "
-                    "it needs a human. 3-5 sentences, no preamble."
-                ),
-            },
-            {"role": "user", "content": transcript_text},
-        ],
-        temperature=0,
-    )
-    return completion.choices[0].message.content
+    return {"ai_response": reply.text}
 
 
 def human_queue(state: TicketState) -> dict:

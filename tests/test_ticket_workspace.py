@@ -327,11 +327,13 @@ def test_ai_handled_tickets_are_not_in_the_technician_workspace(client):
 
 
 def test_escalated_chat_shows_ai_panel_and_transcript_to_technician(client, monkeypatch):
-    from backend.ai_service import summaries
-    from backend.ai_service.schemas import EscalationSummary
+    from backend.ai_service import suggest_steps, summarize_conversation
+    from backend.ai_service.schemas import HandoffSummary, SuggestedSteps
 
-    brief = EscalationSummary(issue="Monitor down", suggested_next_steps=["Check probe locations."])
-    monkeypatch.setattr(summaries, "summarize_escalation", lambda t, r: brief)
+    brief = HandoffSummary(issue="Monitor down")
+    monkeypatch.setattr(summarize_conversation, "summarize_escalation", lambda t, r: brief)
+    monkeypatch.setattr(suggest_steps, "suggest_steps",
+                        lambda data: SuggestedSteps(steps=["Check probe locations."]))
     customer = _customer(client)
     chat = client.post("/api/chats", json={"issue": "my monitor is down"}, headers=customer).json()
     ws = client.get(f"/api/staff/tickets/{chat['ticket_id']}", headers=_demo(client, "technician")).json()

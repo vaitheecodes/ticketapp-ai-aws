@@ -10,12 +10,50 @@ from typing import Literal
 from fastapi import BackgroundTasks
 
 from backend import email_utils, graph, handoff_signals
+from backend.ai_service import AIError, suggest_steps, summarize_conversation, summarize_ticket
+from backend.ai_service.schemas import HandoffSummary, KBCandidate, SuggestStepsInput
 from backend.closing_ack import is_closing_acknowledgment
 
 # Separates a ticket's original text from the AI case summary appended
 # on escalation; technicians only see ticket_text in the queue, and
 # frontend/src/utils/parseTicketText.js splits on this marker.
 ESCALATION_MARKER = "--- Escalated after chat ---"
+
+
+ESCALATION_REASONS = {
+    "customer_request": "The customer asked for a human agent.",
+    "customer_raised_ticket": "The customer raised a ticket from the chat.",
+    "customer_reopened": "The customer reopened a ticket the AI had resolved.",
+    "ai_cannot_resolve": "The AI assistant could not resolve the issue.",
+    "routing_policy": (
+        "Routing policy required a human (high-risk category, still unclear "
+        "after clarifying questions, or escalation language)."
+    ),
+}
+
+
+def handoff_brief(kind: Literal["chat", "ticket"], conversation: str, reason_key: str,
+                  issue: str, category: str | None) -> tuple[HandoffSummary, list[str]]:
+    """The technician's brief for an escalation: an AI summary of the
+    (public) conversation plus KB-grounded next steps. Each part falls
+    back independently, so a hand-off never waits on, or fails because
+    of, the AI provider."""
+    reason = ESCALATION_REASONS[reason_key]
+    try:
+        if kind == "chat":
+            summary = summarize_conversation.summarize_escalation(conversation, reason)
+        else:
+            summary = summarize_ticket.summarize_ticket(conversation, reason)
+    except AIError:
+        summary = summarize_conversation.fallback_handoff(issue, reason)
+    try:
+        candidates = [KBCandidate(**c) for c in graph.kb_candidates_for(f"{issue}\n{summary.issue}")]
+        steps = suggest_steps.suggest_steps(
+            SuggestStepsInput(summary=summary, category=category, kb_candidates=candidates)
+        ).steps
+    except AIError:
+        steps = []
+    return summary, steps
 
 
 def now() -> str:

@@ -3,11 +3,12 @@
 Config comes from env (AZURE_OPENAI_ENDPOINT / _API_KEY / _API_VERSION /
 _DEPLOYMENT); nothing here logs keys or prompt content.
 
-complete_json() is the structured-output path every operation uses:
-trusted instructions go in the system message, untrusted customer/ticket
-text goes in delimited data blocks in the user message, and the reply
-must validate against the operation's pydantic schema — one retry on
-invalid output, then AIError so the caller can fall back gracefully.
+Every operation goes through complete_json (structured) or
+complete_text (prose replies): trusted instructions go in the system
+message, untrusted customer/ticket text goes in delimited data blocks in
+the user message, and the reply must validate against the operation's
+pydantic schema (plus an optional semantic `check`) — one retry on
+invalid output, then AIError so the caller can degrade gracefully.
 """
 
 from __future__ import annotations
@@ -15,11 +16,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Callable
 
-from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError
-
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -70,29 +69,56 @@ def complete(messages: list[dict], *, temperature: float = 0.0, json_mode: bool 
         )
         content = completion.choices[0].message.content
     except Exception as exc:  # noqa: BLE001 — any provider/network/config failure
+        # Log the type only, and drop the chained exception (`from None`):
+        # provider error text can echo request details, and callers log
+        # AIError tracebacks with logger.exception.
         logger.warning("AI provider call failed: %s", type(exc).__name__)
-        raise AIError("AI provider unavailable") from exc
+        raise AIError("AI provider unavailable") from None
     if not content:
         raise AIError("AI provider returned an empty response")
     return content
 
 
-def complete_json(instructions: str, data: dict[str, str], schema: type[BaseModel],
-                  *, attempts: int = 2) -> BaseModel:
-    system = (
-        f"{instructions}\n\n{DATA_HANDLING_RULES}\n\n"
-        "Reply with a single JSON object matching this JSON schema, and nothing else:\n"
-        f"{json.dumps(schema.model_json_schema())}"
-    )
+def _messages(instructions: str, data: dict[str, str]) -> list[dict]:
+    system = f"{instructions}\n\n{DATA_HANDLING_RULES}"
     user = "\n\n".join(data_block(name, content) for name, content in data.items())
-    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def complete_json(instructions: str, data: dict[str, str], schema: type[BaseModel],
+                  *, check: Callable[[BaseModel], None] | None = None,
+                  temperature: float = 0.0, attempts: int = 2) -> BaseModel:
+    """`check` may raise ValueError for output that is well-formed but
+    wrong (e.g. ticket ids that weren't in the input); that counts as
+    invalid output and is retried like a schema failure."""
+    messages = _messages(
+        f"{instructions}\n\nReply with a single JSON object matching this JSON schema, "
+        f"and nothing else:\n{json.dumps(schema.model_json_schema())}",
+        data,
+    )
     for attempt in range(attempts):
-        raw = complete(messages, json_mode=True)
+        raw = complete(messages, temperature=temperature, json_mode=True)
         try:
-            return schema.model_validate_json(raw)
-        except ValidationError:
+            result = schema.model_validate_json(raw)
+            if check:
+                check(result)
+            return result
+        except (ValidationError, ValueError):
             logger.warning(
                 "AI output failed %s validation (attempt %d/%d)",
                 schema.__name__, attempt + 1, attempts,
             )
     raise AIError(f"AI output did not match {schema.__name__}")
+
+
+def complete_text(instructions: str, data: dict[str, str], *, temperature: float = 0.3,
+                  max_length: int = 8000) -> str:
+    """Free-text reply (chat answers, clarifying questions). Validated as
+    non-empty and bounded; retried once like structured output."""
+    messages = _messages(instructions, data)
+    for _ in range(2):
+        text = complete(messages, temperature=temperature).strip()
+        if text and len(text) <= max_length:
+            return text
+        logger.warning("AI text reply empty or too long (%d chars)", len(text))
+    raise AIError("AI reply was empty or too long")

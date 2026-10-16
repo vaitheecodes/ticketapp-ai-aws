@@ -3,7 +3,7 @@ statuses, email-format AI replies, the My tickets list, the thread
 detail, reply/reopen, and the attachment endpoint.
 
 Real temporary SQLite DB via FastAPI's TestClient; the pipeline
-(backend.runtime) is replaced by a stub, and graph.summarize_case by a canned summary, so no
+(backend.runtime) is replaced by a stub, and the ticket hand-off summary by a canned one, so no
 LLM call is made. The email-format wrapping in graph.generate_response is
 tested separately against a stubbed Azure OpenAI client.
 """
@@ -13,7 +13,6 @@ from __future__ import annotations
 import itertools
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -22,6 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient  # noqa: E402
 
 from backend import db, email_utils, graph, main, runtime  # noqa: E402
+from backend.ai_service import provider, summarize_ticket  # noqa: E402
+from backend.ai_service.schemas import HandoffSummary  # noqa: E402
 
 _counter = itertools.count()
 
@@ -54,7 +55,8 @@ _HUMAN = {"route": "human", "category": "ACCOUNT", "confidence": 0.4, "clarifica
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
-    monkeypatch.setattr(graph, "summarize_case", lambda transcript: "CASE SUMMARY")
+    monkeypatch.setattr(summarize_ticket, "summarize_ticket",
+                        lambda thread, reason: HandoffSummary(issue="CASE SUMMARY"))
     with TestClient(main.app) as c:
         yield c
 
@@ -241,22 +243,20 @@ def test_pipeline_failure_still_creates_an_open_ticket(client):
     assert created["ticket_id"] in queue_ids
 
 
-class _StubCompletions:
-    def create(self, **kwargs):
-        self.kwargs = kwargs
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
-            content="Restart the agent service and check the proxy settings."))])
-
-
 def test_generate_response_wraps_email_replies(monkeypatch):
-    completions = _StubCompletions()
-    monkeypatch.setattr(graph, "_client", SimpleNamespace(chat=SimpleNamespace(completions=completions)))
+    captured = []
+
+    def _fake_complete(messages, **kwargs):
+        captured.append(messages)
+        return "Restart the agent service and check the proxy settings."
+
+    monkeypatch.setattr(provider, "complete", _fake_complete)
     state = {"ticket_text": "agent not reporting", "category": "AGENT", "kb_candidates": [],
              "order_lookup": None, "reply_format": "email", "customer_name": "Dana Smith"}
     reply = graph.generate_response(state)["ai_response"]
     assert reply.startswith("Hi Dana,\n\nRestart the agent service")
     assert reply.endswith("Regards,\nSite24x7 Support Team")
-    assert "Write ONLY the body" in completions.kwargs["messages"][0]["content"]
+    assert "Write ONLY the body" in captured[0][0]["content"]
 
     state["reply_format"] = "chat"
     assert graph.generate_response(state)["ai_response"] == (

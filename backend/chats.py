@@ -33,12 +33,12 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend import auth, db, graph, handoff_signals, runtime
 from backend import ticket_lifecycle as lifecycle
-from backend.ai_service import AIError, summaries
-from backend.ai_service.schemas import EscalationSummary
+from backend.ai_service import AIError, summarize_conversation
 from backend.conversation import (
     ESCALATION_MARKER,
     customer_row,
     followup_gate,
+    handoff_brief,
     insert_ticket_message,
     now,
 )
@@ -52,17 +52,6 @@ AI_UNAVAILABLE = (
     "try again in a moment, or raise a ticket and our support team will pick it up."
 )
 _RESOLVED_REPLY = "Glad that's sorted. I've closed this chat — start a new one any time."
-
-ESCALATION_REASONS = {
-    "customer_request": "The customer asked for a human agent.",
-    "customer_raised_ticket": "The customer raised a ticket from the chat.",
-    "ai_cannot_resolve": "The AI assistant could not resolve the issue.",
-    "routing_policy": (
-        "Routing policy required a human (high-risk category, still unclear "
-        "after clarifying questions, or escalation language)."
-    ),
-}
-
 
 # ---------------------------------------------------------------------------
 # Schemas
@@ -188,28 +177,12 @@ def _pipeline_state(session, transcript: str, **extra) -> dict:
 # ---------------------------------------------------------------------------
 # Outcomes
 # ---------------------------------------------------------------------------
-def brief_text(summary: EscalationSummary) -> str:
-    """The hand-off brief as plain text, appended to ticket_text so it
-    shows in the technician queue (which only ever sees ticket_text)."""
-    lines = [f"Issue: {summary.issue}"]
-    for title, items in (
-        ("Already tried", summary.tried),
-        ("Findings", summary.findings),
-        ("Unresolved questions", summary.unresolved_questions),
-        ("Suggested next steps", summary.suggested_next_steps),
-    ):
-        if items:
-            lines.append(f"{title}:")
-            lines.extend(f"- {item}" for item in items)
-    return "\n".join(lines)
-
-
 def _resolve(conn, session) -> None:
     session_id = session["session_id"]
     try:
-        summary = summaries.summarize_resolution(_transcript_text(conn, session_id))
+        summary = summarize_conversation.summarize_resolution(_transcript_text(conn, session_id))
     except AIError:
-        summary = summaries.fallback_resolution(session["issue"], _last_ai(conn, session_id))
+        summary = summarize_conversation.fallback_resolution(session["issue"], _last_ai(conn, session_id))
     _insert_chat_message(conn, session_id, "ai", _RESOLVED_REPLY)
     conn.execute(
         "UPDATE chat_sessions SET status = 'resolved', resolved_at = ?, summary = ? "
@@ -225,14 +198,11 @@ def _resolve(conn, session) -> None:
 
 def _escalate(conn, session, reason_key: str, subject: str | None = None) -> str:
     """Create the unassigned ticket for a chat and close the chat as
-    escalated. Never depends on the AI: a summary failure falls back to a
-    minimal brief pointing the technician at the transcript."""
+    escalated. Never depends on the AI: see conversation.handoff_brief."""
     session_id = session["session_id"]
-    reason = ESCALATION_REASONS[reason_key]
-    try:
-        summary = summaries.summarize_escalation(_transcript_text(conn, session_id), reason)
-    except AIError:
-        summary = summaries.fallback_escalation(session["issue"], reason)
+    summary, steps = handoff_brief(
+        "chat", _transcript_text(conn, session_id), reason_key, session["issue"], session["category"]
+    )
 
     ticket_id = f"TCK-{uuid.uuid4().hex[:8]}"
     contact_name = session["contact_name"] or customer_row(conn, session["customer_id"])["name"]
@@ -246,7 +216,7 @@ def _escalate(conn, session, reason_key: str, subject: str | None = None) -> str
         (
             ticket_id,
             session["customer_id"],
-            f"{session['issue']}\n\n{ESCALATION_MARKER}\n{brief_text(summary)}",
+            f"{session['issue']}\n\n{ESCALATION_MARKER}\n{summary.as_text(steps)}",
             session["category"],
             session["confidence"],
             session["clarification_attempts"],
@@ -256,7 +226,7 @@ def _escalate(conn, session, reason_key: str, subject: str | None = None) -> str
             contact_name,
             session_id,
             summary.model_dump_json(),
-            json.dumps(summary.suggested_next_steps),
+            json.dumps(steps),
         ),
     )
     lifecycle.record_created(

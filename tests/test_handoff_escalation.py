@@ -25,8 +25,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend import db, graph, main, runtime, seed_data
-from backend.ai_service import summaries
-from backend.ai_service.schemas import EscalationSummary
+from backend.ai_service import summarize_conversation
+from backend.ai_service.schemas import HandoffSummary
 from backend.conversation import ESCALATION_MARKER
 
 _email_counter = itertools.count()
@@ -37,9 +37,8 @@ _LIMITATION_ANSWER = (
     "on how to reach them, or connect you with support if you prefer."
 )
 _NORMAL_ANSWER = "To install the Site24x7 agent, download the installer for your OS..."
-_BRIEF = EscalationSummary(
+_BRIEF = HandoffSummary(
     issue="Customer asked about invoice/plan details; AI could not access billing.",
-    suggested_next_steps=["Look up the customer's current plan and invoice."],
 )
 
 
@@ -66,7 +65,7 @@ def _ai_result(ai_response, category="ACCOUNT", confidence=0.95):
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
-    monkeypatch.setattr(summaries, "summarize_escalation", lambda transcript, reason: _BRIEF)
+    monkeypatch.setattr(summarize_conversation, "summarize_escalation", lambda transcript, reason: _BRIEF)
     with TestClient(main.app) as c:
         yield c
 
