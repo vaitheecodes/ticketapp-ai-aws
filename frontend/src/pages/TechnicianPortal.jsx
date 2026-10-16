@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import ChatReviews from "../components/ChatReviews";
 import { ChevronRightIcon } from "../components/Icons";
 import PortalHeader from "../components/PortalHeader";
 import { StatusPill } from "../components/StatusPill";
@@ -135,13 +136,14 @@ export default function TechnicianPortal() {
         <button className={tab === "mine" ? "active" : ""} onClick={() => setTab("mine")}>
           My Tickets
         </button>
+        <button className={tab === "reviews" ? "active" : ""} onClick={() => setTab("reviews")}>
+          Chat Reviews
+        </button>
       </nav>
       <div className="tab-content">
-        {tab === "queue" ? (
-          <Queue onAssigned={() => setRefreshKey((k) => k + 1)} />
-        ) : (
-          <MyTickets key={refreshKey} />
-        )}
+        {tab === "queue" && <Queue onAssigned={() => setRefreshKey((k) => k + 1)} />}
+        {tab === "mine" && <MyTickets key={refreshKey} />}
+        {tab === "reviews" && <ChatReviews />}
       </div>
     </div>
   );

@@ -128,13 +128,6 @@ export const api = {
 
   categories: () => request("/categories"),
   ticketsMine: () => request("/tickets/mine", { auth: true }),
-  // Start a chat: the pre-chat form's one-line issue opens the conversation.
-  ticketsNew: (ticket_text, channel, { subject, category, contact_name } = {}) =>
-    request("/tickets/new", {
-      method: "POST",
-      body: { ticket_text, channel, subject, category: category || null, contact_name },
-      auth: true,
-    }),
   // Raise a ticket: email-style, no chat.
   ticketsCreate: ({ subject, category, priority, description }) =>
     request("/tickets", {
@@ -143,9 +136,6 @@ export const api = {
       auth: true,
     }),
   ticketDetail: (ticketId) => request(`/tickets/${ticketId}`, { auth: true }),
-  ticketMessages: (ticketId) => request(`/tickets/${ticketId}/messages`, { auth: true }),
-  ticketChat: (ticketId, message) =>
-    request(`/tickets/${ticketId}/chat`, { method: "POST", body: { message }, auth: true }),
   ticketReply: (ticketId, message) =>
     request(`/tickets/${ticketId}/reply`, { method: "POST", body: { message }, auth: true }),
   ticketReopen: (ticketId) =>
@@ -161,6 +151,30 @@ export const api = {
       `/tickets/${ticketId}/attachments/${attachment.attachment_id}`,
       attachment.filename,
     ),
+
+  // AI chat sessions: separate from tickets until escalated.
+  chatsList: () => request("/chats", { auth: true }),
+  chatStart: ({ issue, category, contact_name }) =>
+    request("/chats", {
+      method: "POST",
+      body: { issue, category: category || null, contact_name },
+      auth: true,
+    }),
+  chatGet: (sessionId) => request(`/chats/${sessionId}`, { auth: true }),
+  chatSend: (sessionId, message) =>
+    request(`/chats/${sessionId}/messages`, { method: "POST", body: { message }, auth: true }),
+  chatResolve: (sessionId) => request(`/chats/${sessionId}/resolve`, { method: "POST", auth: true }),
+  chatEscalate: (sessionId, subject) =>
+    request(`/chats/${sessionId}/escalate`, {
+      method: "POST",
+      body: { subject: subject || null },
+      auth: true,
+    }),
+
+  chatReviews: (status) =>
+    request(`/chat-reviews${status ? `?status=${status}` : ""}`, { auth: true }),
+  chatReviewUpdate: (reviewId, status) =>
+    request(`/chat-reviews/${reviewId}`, { method: "POST", body: { status }, auth: true }),
 
   queue: () => request("/queue", { auth: true }),
   queueMine: () => request("/queue/mine", { auth: true }),

@@ -1,38 +1,33 @@
-"""Endpoint-level tests for the hand-off escalation fix.
+"""Endpoint-level tests for the hand-off escalation fix, on AI chats.
 
 Bug: the AI answered an invoice/plan question with "I don't have direct
 access to billing or account details... contact our Sales or Billing
-team", and the ticket was left `resolved` — a confident classification
-of a request the AI then admitted it couldn't fulfil. The customer's
-"yes please" (accepting the AI's own offer to connect them) was then
-treated as a fresh request and answered with *more* self-service
-navigation text instead of creating a ticket for a human.
+team" and the conversation was left as if resolved. The customer's "yes
+please" (accepting the AI's own offer to connect them) was then treated
+as a fresh request and answered with more self-service text instead of
+reaching a human.
 
-Fixed in backend/handoff_signals.py + backend/main.py: a limitation
-admission in the AI's own answer escalates through the same
-summarize_case/human_queue mechanism as any other escalation, and an
-affirmative reply to a hand-off offer escalates directly without
-re-classification.
+backend/handoff_signals.py + backend/chats.py: a limitation admission in
+the AI's own answer escalates the chat (unassigned ticket with the
+hand-off brief), and an affirmative reply to a hand-off offer escalates
+directly without re-classification.
 
-Uses a real temp SQLite DB via FastAPI's TestClient, with
-backend.main._graph and graph.summarize_case stubbed — no live LLM
-calls, and the stub records invocations so tests can assert whether the
-pipeline was re-run.
+Real temp SQLite DB via FastAPI's TestClient; the pipeline is a stub
+that records invocations, and the AI hand-off brief is stubbed so the
+queue contents can be asserted exactly. No live LLM calls.
 """
 
 from __future__ import annotations
 
 import itertools
-import sys
-from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-from backend import db, graph, main, seed_data  # noqa: E402
+from backend import db, graph, main, runtime, seed_data
+from backend.ai_service import summaries
+from backend.ai_service.schemas import EscalationSummary
+from backend.conversation import ESCALATION_MARKER
 
 _email_counter = itertools.count()
 
@@ -42,7 +37,10 @@ _LIMITATION_ANSWER = (
     "on how to reach them, or connect you with support if you prefer."
 )
 _NORMAL_ANSWER = "To install the Site24x7 agent, download the installer for your OS..."
-_CASE_SUMMARY = "Customer asked about invoice/plan details; AI could not access billing."
+_BRIEF = EscalationSummary(
+    issue="Customer asked about invoice/plan details; AI could not access billing.",
+    suggested_next_steps=["Look up the customer's current plan and invoice."],
+)
 
 
 class _StubGraph:
@@ -68,7 +66,7 @@ def _ai_result(ai_response, category="ACCOUNT", confidence=0.95):
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
-    monkeypatch.setattr(graph, "summarize_case", lambda transcript: _CASE_SUMMARY)
+    monkeypatch.setattr(summaries, "summarize_escalation", lambda transcript, reason: _BRIEF)
     with TestClient(main.app) as c:
         yield c
 
@@ -93,19 +91,21 @@ def _technician_headers(client) -> dict:
     return {"Authorization": f"Bearer {res.json()['token']}"}
 
 
-def _raise_ticket(client, headers, stub_results, ticket_text="can I see my invoice and plan"):
+def _start_chat(client, headers, stub_results, issue="can I see my invoice and plan"):
     stub = _StubGraph(stub_results)
-    main._graph = stub
-    res = client.post(
-        "/api/tickets/new", json={"ticket_text": ticket_text, "channel": "chat"}, headers=headers
-    )
+    runtime.set_graph(stub)
+    res = client.post("/api/chats", json={"issue": issue}, headers=headers)
     assert res.status_code == 200, res.text
     return res.json(), stub
 
 
-def _ticket_row(client, headers, ticket_id) -> dict:
-    # Internal fields (route, ticket_text with the case summary) aren't
-    # exposed to customers, so read the row directly.
+def _send(client, headers, session_id, message):
+    res = client.post(f"/api/chats/{session_id}/messages", json={"message": message}, headers=headers)
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def _ticket_row(ticket_id) -> dict:
     conn = db.get_connection()
     try:
         return dict(conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone())
@@ -116,39 +116,38 @@ def _ticket_row(client, headers, ticket_id) -> dict:
 # ---------------------------------------------------------------------------
 # Limitation admission on the opening message
 # ---------------------------------------------------------------------------
-def test_limitation_answer_on_new_ticket_escalates_instead_of_resolving(client):
+def test_limitation_answer_on_new_chat_escalates_instead_of_resolving(client):
     headers = _signup(client)
-    ticket, _ = _raise_ticket(client, headers, [_ai_result(_LIMITATION_ANSWER)])
-    ticket_id = ticket["ticket_id"]
+    chat, _ = _start_chat(client, headers, [_ai_result(_LIMITATION_ANSWER)])
 
-    assert ticket["route"] == "human"
-    row = _ticket_row(client, headers, ticket_id)
+    assert chat["status"] == "escalated"
+    row = _ticket_row(chat["ticket_id"])
     assert row["status"] == "open"
     assert row["route"] == "human"
+    assert row["assigned_technician_id"] is None
+    # the AI's explanation is still shown so the customer sees why
+    assert any(m["content"] == _LIMITATION_ANSWER for m in chat["messages"])
 
 
-def test_escalated_limitation_ticket_reaches_the_human_queue_with_a_summary(client):
-    """The actual deliverable from the bug report: it must show up in the
-    agent queue with a case summary, not just as customer-facing text."""
+def test_escalated_chat_reaches_the_human_queue_with_a_summary(client):
     headers = _signup(client)
-    ticket, _ = _raise_ticket(client, headers, [_ai_result(_LIMITATION_ANSWER)])
-    ticket_id = ticket["ticket_id"]
+    chat, _ = _start_chat(client, headers, [_ai_result(_LIMITATION_ANSWER)])
 
     queue = client.get("/api/queue", headers=_technician_headers(client)).json()
-    queued = [t for t in queue if t["ticket_id"] == ticket_id]
-    assert queued, f"ticket {ticket_id} missing from the human queue"
-    assert _CASE_SUMMARY in queued[0]["ticket_text"]
-    assert main._ESCALATION_MARKER in queued[0]["ticket_text"]
+    queued = [t for t in queue if t["ticket_id"] == chat["ticket_id"]]
+    assert queued, f"ticket {chat['ticket_id']} missing from the human queue"
+    assert _BRIEF.issue in queued[0]["ticket_text"]
+    assert ESCALATION_MARKER in queued[0]["ticket_text"]
 
 
-def test_normal_answer_on_new_ticket_still_resolves(client):
+def test_normal_answer_keeps_chat_active(client):
     headers = _signup(client)
-    ticket, _ = _raise_ticket(
+    chat, _ = _start_chat(
         client, headers, [_ai_result(_NORMAL_ANSWER, category="AGENT")],
-        ticket_text="how do I install the agent",
+        issue="how do I install the agent",
     )
-    assert ticket["route"] == "ai"
-    assert _ticket_row(client, headers, ticket["ticket_id"])["status"] == "resolved"
+    assert chat["status"] == "active"
+    assert chat["ticket_id"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -156,96 +155,57 @@ def test_normal_answer_on_new_ticket_still_resolves(client):
 # ---------------------------------------------------------------------------
 def test_limitation_answer_mid_chat_escalates(client, monkeypatch):
     headers = _signup(client)
-    ticket, stub = _raise_ticket(
+    chat, stub = _start_chat(
         client, headers, [_ai_result(_NORMAL_ANSWER, category="AGENT")],
-        ticket_text="how do I install the agent",
+        issue="how do I install the agent",
     )
-    ticket_id = ticket["ticket_id"]
-
-    # force the normal-pipeline path, and have it answer with a limitation
     monkeypatch.setattr(graph, "is_continuation_of_prior_response", lambda *a, **k: False)
     stub._results.append(_ai_result(_LIMITATION_ANSWER))
 
-    chat = client.post(
-        f"/api/tickets/{ticket_id}/chat",
-        json={"message": "actually can you show my current plan cost"},
-        headers=headers,
-    )
-    assert chat.status_code == 200, chat.text
-    assert chat.json()["route"] == "human"
-    # the AI's explanation is still returned so the customer sees why
-    assert chat.json()["message"] == _LIMITATION_ANSWER
+    after = _send(client, headers, chat["session_id"], "actually can you show my current plan cost")
 
-    row = _ticket_row(client, headers, ticket_id)
-    assert row["route"] == "human"
+    assert after["status"] == "escalated"
+    assert any(m["content"] == _LIMITATION_ANSWER for m in after["messages"])
+    row = _ticket_row(after["ticket_id"])
     assert row["status"] == "open"
-    assert _CASE_SUMMARY in row["ticket_text"]
+    assert _BRIEF.issue in row["ticket_text"]
 
 
 # ---------------------------------------------------------------------------
 # Escalation acceptance ("yes please")
 # ---------------------------------------------------------------------------
 def test_yes_please_after_handoff_offer_escalates_without_reclassifying(client):
-    """The second half of the bug: agreeing to be connected must create a
-    real queued ticket, not trigger another round of classification that
-    generates more DIY instructions."""
     headers = _signup(client)
-    # ticket resolves with an answer that *offers* a hand-off but doesn't
-    # admit a limitation, so it stays resolved and the chat stays open
     offer_answer = "Happy to help! Would you like me to connect you with our billing team?"
-    ticket, stub = _raise_ticket(client, headers, [_ai_result(offer_answer)])
-    ticket_id = ticket["ticket_id"]
-    assert ticket["route"] == "ai"
+    chat, stub = _start_chat(client, headers, [_ai_result(offer_answer)])
+    assert chat["status"] == "active"
 
     calls_before = len(stub.invocations)
-    chat = client.post(
-        f"/api/tickets/{ticket_id}/chat", json={"message": "yes please"}, headers=headers
-    )
-    assert chat.status_code == 200, chat.text
-    assert chat.json()["route"] == "human"
+    after = _send(client, headers, chat["session_id"], "yes please")
 
-    # no fresh classification happened for the acceptance
     assert len(stub.invocations) == calls_before
-
-    row = _ticket_row(client, headers, ticket_id)
-    assert row["route"] == "human"
-    assert row["status"] == "open"
-    assert _CASE_SUMMARY in row["ticket_text"]
-
-    messages = client.get(f"/api/tickets/{ticket_id}/messages", headers=headers).json()
-    assert messages[-2]["message"] == "yes please"
-    assert messages[-1]["sender"] == "system"
+    assert after["status"] == "escalated"
+    assert _ticket_row(after["ticket_id"])["status"] == "open"
+    # the customer is told the ticket reference
+    assert after["ticket_id"] in after["messages"][-1]["content"]
 
 
-def test_thanks_after_handoff_offer_still_closes_rather_than_escalating(client):
-    """Bare gratitude after an offer is a close, not an acceptance — the
-    closing-ack gate must still own that case."""
+def test_thanks_after_handoff_offer_resolves_rather_than_escalating(client):
     headers = _signup(client)
     offer_answer = "Would you like me to connect you with our billing team?"
-    ticket, _ = _raise_ticket(client, headers, [_ai_result(offer_answer)])
-    ticket_id = ticket["ticket_id"]
+    chat, _ = _start_chat(client, headers, [_ai_result(offer_answer)])
 
-    chat = client.post(
-        f"/api/tickets/{ticket_id}/chat", json={"message": "thanks"}, headers=headers
-    )
-    assert chat.status_code == 200, chat.text
-    assert chat.json()["route"] == "closed"
-    assert _ticket_row(client, headers, ticket_id)["status"] == "closed"
+    after = _send(client, headers, chat["session_id"], "thanks")
+    assert after["status"] == "resolved"
+    assert after["ticket_id"] is None
 
 
-def test_affirmative_without_a_handoff_offer_is_not_an_escalation(client, monkeypatch):
-    """"ok" after an ordinary answer must not escalate — the acceptance
-    gate requires an actual offer in the prior reply."""
+def test_affirmative_without_a_handoff_offer_is_not_an_escalation(client):
     headers = _signup(client)
-    ticket, stub = _raise_ticket(
+    chat, _ = _start_chat(
         client, headers, [_ai_result(_NORMAL_ANSWER, category="AGENT")],
-        ticket_text="how do I install the agent",
+        issue="how do I install the agent",
     )
-    ticket_id = ticket["ticket_id"]
-
-    chat = client.post(
-        f"/api/tickets/{ticket_id}/chat", json={"message": "ok"}, headers=headers
-    )
-    assert chat.status_code == 200, chat.text
+    after = _send(client, headers, chat["session_id"], "ok")
     # falls to the closing-ack gate instead
-    assert chat.json()["route"] == "closed"
+    assert after["status"] == "resolved"

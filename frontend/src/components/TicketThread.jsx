@@ -15,6 +15,7 @@ import { Markdown } from "../utils/markdown";
 import { absoluteTime, relativeTime } from "../utils/time";
 import { formatBytes } from "../utils/text";
 import AttachmentPicker, { PaperclipIcon } from "./AttachmentPicker";
+import ChatMessage from "./ui/ChatMessage";
 import { StatusChip } from "./ui/StatusChip";
 
 // Collapse once a thread is longer than this; keep the first message and
@@ -101,6 +102,24 @@ function ThreadMessage({ ticketId, message }) {
         <AttachmentChips ticketId={ticketId} attachments={message.attachments} />
       </article>
     </li>
+  );
+}
+
+/* Tickets escalated from an AI chat: the conversation that led here, so
+ * nobody (customer or technician) has to repeat it. Collapsed by default
+ * to keep the thread itself in focus. */
+function ChatTranscript({ chat }) {
+  return (
+    <details className="chat-transcript">
+      <summary>
+        Chat transcript <span className="hint">({chat.transcript.length} messages, before escalation)</span>
+      </summary>
+      <div className="chat-scroll is-readonly">
+        {chat.transcript.map((m) => (
+          <ChatMessage key={m.message_id} sender={m.role} message={m.content} createdAt={m.created_at} />
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -221,7 +240,7 @@ export default function TicketThread({ ticketId, onChanged }) {
   if (error && !detail) return <p className="error">{error}</p>;
   if (!detail) return <ThreadSkeleton />;
 
-  const { ticket, messages } = detail;
+  const { ticket, messages, chat } = detail;
   const collapsible = messages.length > COLLAPSE_AFTER && !expanded;
   const hiddenCount = collapsible ? messages.length - 1 - COLLAPSE_KEEP_LATEST : 0;
   const visible = collapsible
@@ -256,6 +275,8 @@ export default function TicketThread({ ticketId, onChanged }) {
           </div>
         </dl>
       </header>
+
+      {chat && <ChatTranscript chat={chat} />}
 
       <ol className="thread-messages">
         {visible.map((m) =>

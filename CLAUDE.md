@@ -126,9 +126,10 @@ Customer/Agent/Admin React portals (frontend/, Vite, :5173)
 FastAPI backend (backend/main.py, :8000)
   /api/auth/login (all roles), /api/auth/customer/signup,
   /api/auth/{me,change-password}            JWT (backend/auth.py)
-  /api/tickets/mine, POST /api/tickets/new (start chat),
-  POST /api/tickets (raise ticket), GET /api/tickets/{id} (thread),
-  /{id}/{chat,reply,reopen,attachments}       customer-facing
+  /api/chats, /api/chats/{id}/{messages,resolve,escalate}   AI chat
+  /api/chat-reviews, /api/chat-reviews/{id}   technician/admin
+  /api/tickets/mine, POST /api/tickets (raise ticket), GET /api/tickets/{id} (thread),
+  /{id}/{reply,reopen,attachments}            customer-facing
   /api/queue, /api/queue/mine, /assign, /resolve   technician-facing
   /api/manager/departments                    manager-facing
   /api/admin/tickets, /api/admin/simulate-ticket   admin-facing
@@ -180,7 +181,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   grounding above) asks one targeted question naming the actual
   candidate topics rather than a generic "tell me more" — stored via
   `ai_response` so it flows through the same
-  `ticket_messages`/`TicketChat.jsx` path as a normal AI reply, no
+  `chat_messages`/`ChatSession.jsx` path as a normal AI reply, no
   separate frontend plumbing needed. `tickets.clarification_attempts`
   (new column, default 0) tracks the count; each chat reply re-invokes
   the graph, so `classify_ticket`/`decide_route` re-run on the fuller
@@ -223,25 +224,39 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   plausible-sounding guess on a miss. Covered by
   `tests/test_kb_retrieval.py`.
 
-- **AI chat** (`frontend/src/components/TicketChat.jsx`,
-  `POST /api/tickets/{id}/chat`): once a ticket routes to `ai`, the
-  customer isn't limited to the single opening reply — the "Raise
-  Ticket" tab drops into a chat window for that ticket. Every message is
-  stored in `ticket_messages` (`sender`: customer/ai/system), and each
-  follow-up **re-invokes the whole graph** with the full transcript as
-  `ticket_text` — so `classify_ticket`/`decide_route` re-run on every
-  turn, not just the first message. If a later message pushes the route
-  to `human` (e.g. the customer turns abusive, or asks about
-  ACCOUNT/DATA at low confidence), `graph.summarize_case()` condenses
-  the transcript into a case brief that gets appended to `ticket_text` —
-  since agents only ever see `ticket_text`, this is how they get context
-  from a chat they never saw. The chat then locks (no more messages
-  accepted on that ticket via `/chat`) and it appears in `/api/queue`
-  with the summary attached. Past Tickets shows the same component in
-  read-only mode as a transcript viewer.
+- **AI chat = chat sessions, separate from tickets** (`backend/chats.py`,
+  `frontend/src/components/ChatSession.jsx`; reconcile sub-stage A).
+  `chat_sessions` (`active | resolved | escalated | abandoned`) +
+  `chat_messages` (`customer | ai`). Every customer message re-invokes
+  the graph with the full transcript (after the per-message gates in
+  `backend/conversation.followup_gate`, shared with ticket replies).
+  **Resolved**: only on the customer's confirmation (a bare "thanks"
+  after an AI answer, or "My issue is solved") — the session closes with
+  an AI resolution summary and a `chat_reviews` row
+  (`pending_review -> verified -> closed`, technicians/admin via
+  `/api/chat-reviews`, "Chat Reviews" tab); **no ticket is created**.
+  **Escalated** (customer accepts a hand-off, AI admits a limitation,
+  decide_route says human, or the customer clicks "Raise a ticket"):
+  creates an unassigned `open` ticket (`ticket_type = 'chat'`,
+  `chat_session_id` link) carrying the AI hand-off brief
+  (`ai_summary`: issue / tried / findings / unresolved questions;
+  `ai_suggestions`: next steps — staff-only, never returned by customer
+  endpoints; the brief text is also appended to `ticket_text` after
+  `ESCALATION_MARKER` so the queue shows it). The customer is told the
+  ticket reference; the transcript stays in `chat_messages` and the
+  customer's ticket view shows it as a collapsible "Chat transcript".
+  **AI failure** never changes chat state: the customer's message is
+  kept, everything after it is rolled back (SAVEPOINT), the response
+  carries `ai_error`, and "Raise a ticket" still works. Summaries come
+  from `backend/ai_service/summaries.py` (validated pydantic output,
+  retry once, deterministic fallback marked `source: "fallback"` — set by
+  code, never the model). Pre-session chat-type ticket rows are migrated
+  in place by `db._migrate_chat_tickets`. Covered by
+  `tests/test_chat_sessions.py`, `tests/test_chat_followup_gates.py`,
+  `tests/test_handoff_escalation.py`.
   **Bare closing acknowledgment short-circuit** (`backend/closing_ack.py`):
-  a follow-up on an already-`status == "resolved"` ticket isn't
-  automatically re-classified if it's an unambiguous acknowledgment
+  a follow-up after an AI answer (chat) or on a `resolved` AI-handled
+  ticket (email-style reply) isn't automatically re-classified if it's an unambiguous acknowledgment
   ("thanks", "got it", "that worked", ...) — "thanks" isn't a support
   request and used to get classified with near-zero confidence and
   wrongly escalated to a human even though the issue was solved. The
@@ -250,14 +265,10 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   words falls through to the normal pipeline instead, so "thanks, but
   it's still not working" (or any genuinely new content) still gets
   reclassified and can re-open or escalate normally. A bare
-  acknowledgment stores the message, sets `status = "closed"` (a fifth
-  ticket status, distinct from `resolved` — customer-facing, locks the
-  chat the same way an escalated ticket locks), and returns
-  `{"route": "closed", ...}`; `TicketChat.jsx` shows this as a visible
-  system message ("Ticket marked resolved — conversation closed.")
-  rather than silently accepting it, and further messages on a closed
-  ticket get a 400. Covered by `tests/test_closing_ack.py` (pure
-  function) and `tests/test_ticket_chat_closing.py` (endpoint-level,
+  acknowledgment resolves a chat (see above) or closes a ticket
+  (`status = "closed"`, with a visible system message); further
+  messages get a 400. Covered by `tests/test_closing_ack.py` (pure
+  function) and `tests/test_chat_followup_gates.py` (endpoint-level,
   stubbed graph, real temp SQLite DB via FastAPI's TestClient).
   **Continuation short-circuit** (`graph.is_continuation_of_prior_response`,
   checked second, after the closing-ack check): a follow-up that refers
@@ -286,16 +297,16 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   message (same LLM call, negative result) likewise falls through
   unchanged. Covered by `tests/test_continuation_check.py`
   (stubbed-client prompt/parsing tests) and
-  `tests/test_ticket_chat_closing.py` (endpoint-level).
+  `tests/test_chat_followup_gates.py` (endpoint-level).
 
 - **Customer portal + ticket model (Stage 2)**
   (`frontend/src/pages/CustomerPortal.jsx`, `components/TicketThread.jsx`):
   two request cards — **Start a chat** (pre-chat form -> live
-  `TicketChat`, `ticket_type = 'chat'`) and **Raise a ticket** (subject,
+  `ChatSession`, see chat sessions above) and **Raise a ticket** (subject,
   category, priority, description, drag-and-drop attachments;
   `POST /api/tickets`, `ticket_type = 'ticket'`, no chat). Right panel
-  **My tickets** lists tickets plus chats handed to the support team only
-  (an AI-resolved chat is not a ticket), with All/Open/Resolved/Escalated
+  has **My tickets** (tickets, incl. escalated chats with a Chat badge)
+  and **Chats** (chat history, resolved ones read-only), with All/Open/Resolved/Escalated
   filters ("Escalated" = `route == 'human'`), search, unread dot
   (`tickets.customer_last_read_at`) and a Chat badge. Ticket detail is an
   email-style thread with a reply composer (`/reply` runs the same

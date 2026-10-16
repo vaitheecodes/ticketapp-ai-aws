@@ -10,7 +10,6 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -19,8 +18,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
-from backend import auth, db, email_utils, graph, handoff_signals
-from backend.closing_ack import is_closing_acknowledgment
+from backend import auth, chats, db, email_utils, graph, handoff_signals, runtime
+from backend.conversation import ESCALATION_MARKER as _ESCALATION_MARKER
+from backend.conversation import Outbox as _Outbox
+from backend.conversation import customer_row as _customer_row
+from backend.conversation import followup_gate
+from backend.conversation import insert_ticket_message as _insert_message
+from backend.conversation import now as _now
 from backend.email_utils import clean_email
 
 logger = logging.getLogger(__name__)
@@ -49,15 +53,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_graph = None
+app.include_router(chats.router)
 
 
 @app.on_event("startup")
 def on_startup() -> None:
     db.init_db()
     auth.ensure_admin()
-    global _graph
-    _graph = graph.build_graph()
+    runtime.set_graph(graph.build_graph())
 
 
 # ---------------------------------------------------------------------------
@@ -80,22 +83,6 @@ def _validate_category(value: str | None) -> str | None:
     if value not in graph.CATEGORIES:
         raise ValueError("Unknown category")
     return value
-
-
-class NewTicketRequest(BaseModel):
-    """Start a chat. The pre-chat form's one-line issue is ticket_text."""
-
-    ticket_text: str
-    channel: str
-    subject: str | None = None
-    # Customer-chosen category: shown back to them, and kept separately
-    # from the classifier's category, which alone drives routing (a
-    # customer picking a low-risk category must not bypass the stricter
-    # ACCOUNT/DATA confidence bar).
-    category: str | None = None
-    contact_name: str | None = None
-
-    _check_category = field_validator("category")(_validate_category)
 
 
 class CreateTicketRequest(BaseModel):
@@ -157,8 +144,6 @@ _STATUS_FOR_ROUTE = {"ai": "resolved", "clarify": "pending_customer", "human": "
 # instead of silently doing nothing.
 _TICKET_CLOSED_MESSAGE = "Ticket marked resolved — conversation closed."
 
-_ESCALATED_MESSAGE = "This conversation has been escalated to a human agent."
-_ESCALATION_MARKER = "--- Escalated after chat ---"
 _REOPENED_MESSAGE = "Ticket reopened by the customer."
 
 # Ticket-type (email-style) hand-off: the customer isn't watching a live
@@ -170,6 +155,11 @@ _EMAIL_HANDOFF_BODY = (
 )
 _EMAIL_HANDOFF_CLOSING = "You don't need to do anything else for now."
 
+_AI_UNAVAILABLE = (
+    "Our AI assistant is unavailable right now. Your message is saved and "
+    "nothing about your ticket has changed — please try again shortly."
+)
+
 AI_SENDER_NAME = "Site24x7 AI Assistant"
 SUPPORT_TEAM_NAME = "Site24x7 Support"
 
@@ -177,21 +167,6 @@ SUPPORT_TEAM_NAME = "Site24x7 Support"
 # ---------------------------------------------------------------------------
 # Message helpers
 # ---------------------------------------------------------------------------
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _insert_message(conn, ticket_id: str, sender: str, message: str,
-                    author_id: str | None = None) -> str:
-    message_id = f"MSG-{uuid.uuid4().hex[:8]}"
-    conn.execute(
-        "INSERT INTO ticket_messages (message_id, ticket_id, sender, message, "
-        "created_at, author_id) VALUES (?, ?, ?, ?, ?, ?)",
-        (message_id, ticket_id, sender, message, _now(), author_id),
-    )
-    return message_id
-
-
 def _build_transcript(messages: list[dict]) -> str:
     speaker = {"customer": "Customer", "ai": "Agent (AI)"}
     return "\n".join(
@@ -230,12 +205,6 @@ def _customer_ticket_or_error(conn, ticket_id: str, customer_id: str):
     return ticket
 
 
-def _customer_row(conn, customer_id: str):
-    return conn.execute(
-        "SELECT name, email FROM customers WHERE customer_id = ?", (customer_id,)
-    ).fetchone()
-
-
 def _display_name(conn, ticket) -> str:
     return ticket["contact_name"] or _customer_row(conn, ticket["customer_id"])["name"]
 
@@ -245,16 +214,6 @@ def _subject_for(ticket) -> str:
         return ticket["subject"]
     first_line = ticket["ticket_text"].split("\n", 1)[0].strip()
     return first_line if len(first_line) <= 80 else first_line[:77].rstrip() + "..."
-
-
-class _Outbox(list):
-    """Emails to send after the request's DB work commits (FastAPI
-    BackgroundTasks), so SMTP latency or failure never affects the
-    response or the stored thread."""
-
-    def flush(self, background_tasks: BackgroundTasks) -> None:
-        for to, subject, body in self:
-            background_tasks.add_task(email_utils.send_email, to, subject, body)
 
 
 def _record_ai_reply(conn, ticket, text: str, outbox: _Outbox) -> str:
@@ -271,15 +230,20 @@ def _record_ai_reply(conn, ticket, text: str, outbox: _Outbox) -> str:
 
 def _escalate_to_human(conn, ticket, transcript: str, category, confidence,
                        outbox: _Outbox) -> None:
-    """Shared escalation: summarize the conversation for the technician
-    and fold it into `ticket_text` (technicians only ever see
-    ticket_text), move the ticket into the open human queue, and tell the
-    customer — a system note in a chat, an email-style reply on a
-    ticket-type request. Used by decide_route's own 'human' route, both
-    hand-off signals in backend/handoff_signals.py, and a customer
-    reopening an AI-resolved ticket — one mechanism, so a ticket
-    escalated for any reason reaches the queue looking the same."""
-    summary = graph.summarize_case(transcript)
+    """Hand an AI-handled ticket to the support team: summarize the
+    thread for the technician and fold it into `ticket_text` (technicians
+    only ever see ticket_text), move the ticket into the open human queue,
+    and tell the customer with an email-style reply. Used by decide_route's
+    own 'human' route, both hand-off signals in backend/handoff_signals.py,
+    and a customer reopening an AI-resolved ticket — one mechanism, so a
+    ticket escalated for any reason reaches the queue looking the same.
+    (Chats escalate through backend/chats.py instead.) A summary failure
+    never blocks the hand-off."""
+    try:
+        summary = graph.summarize_case(transcript)
+    except Exception:  # noqa: BLE001 — the hand-off must not depend on the AI
+        logger.exception("Case summary failed for %s", ticket["ticket_id"])
+        summary = "AI summary unavailable — read the ticket thread."
     original_text = ticket["ticket_text"].split(f"\n\n{_ESCALATION_MARKER}\n", 1)[0]
     conn.execute(
         "UPDATE tickets SET route = 'human', status = 'open', "
@@ -292,17 +256,14 @@ def _escalate_to_human(conn, ticket, transcript: str, category, confidence,
             ticket["ticket_id"],
         ),
     )
-    if ticket["ticket_type"] == "ticket":
-        _record_ai_reply(
-            conn,
-            ticket,
-            email_utils.format_email_reply(
-                _display_name(conn, ticket), _EMAIL_HANDOFF_BODY, _EMAIL_HANDOFF_CLOSING
-            ),
-            outbox,
-        )
-    else:
-        _insert_message(conn, ticket["ticket_id"], "system", _ESCALATED_MESSAGE)
+    _record_ai_reply(
+        conn,
+        ticket,
+        email_utils.format_email_reply(
+            _display_name(conn, ticket), _EMAIL_HANDOFF_BODY, _EMAIL_HANDOFF_CLOSING
+        ),
+        outbox,
+    )
 
 
 def _pipeline_state(conn, ticket, ticket_text: str, **extra) -> dict:
@@ -311,7 +272,7 @@ def _pipeline_state(conn, ticket, ticket_text: str, **extra) -> dict:
         "customer_id": ticket["customer_id"],
         "channel": ticket["channel"],
         "ticket_text": ticket_text,
-        "reply_format": "email" if ticket["ticket_type"] == "ticket" else "chat",
+        "reply_format": "email",
         "customer_name": _display_name(conn, ticket),
     }
     state.update(extra)
@@ -319,71 +280,44 @@ def _pipeline_state(conn, ticket, ticket_text: str, **extra) -> dict:
 
 
 def _handle_followup(conn, ticket, message_text: str, outbox: _Outbox) -> dict:
-    """A customer follow-up on an AI-handled ticket (live chat message or
-    email-style reply). The per-message gate, in order: hand-off
-    acceptance, closing acknowledgment, continuation, then normal
-    classification. Each is a different thing a follow-up message can
-    be, and only the last one needs the confidence machinery meant for
-    triaging brand-new issues. Stores the customer message itself.
-    Caller commits."""
+    """A customer reply on a ticket the AI is still handling (route ai or
+    clarify). Stores the message, then acts on conversation.followup_gate.
+    If any AI step fails, everything after the stored message is rolled
+    back: the ticket is never resolved, closed or escalated because an AI
+    call failed. Caller commits."""
     ticket_id = ticket["ticket_id"]
     prior_ai_response = _last_ai_message(conn, ticket_id)
+    _insert_message(conn, ticket_id, "customer", message_text)
+    conn.execute("SAVEPOINT followup")
+    try:
+        response = _run_followup(conn, ticket, message_text, prior_ai_response, outbox)
+        conn.execute("RELEASE followup")
+        return response
+    except Exception:  # noqa: BLE001 — provider/network/parse failures alike
+        logger.exception("AI follow-up failed for %s", ticket_id)
+        conn.execute("ROLLBACK TO followup")
+        conn.execute("RELEASE followup")
+        outbox.clear()
+        return {"route": ticket["route"], "ai_error": _AI_UNAVAILABLE}
 
-    # GATE 1 — the customer accepting a hand-off the AI itself
-    # offered ("yes please" to "shall I connect you with billing?").
-    # That's an escalation request, not a new question: re-running
-    # classification on it just produced another round of
-    # self-service navigation text instead of a queued ticket.
-    # Checked before the closing-ack gate because with an offer on
-    # the table "ok"/"sure" means "yes, escalate me", not "we're
-    # done" -- bare gratitude ("thanks") is deliberately excluded
-    # from the affirmative set, so it still reads as a close.
-    if handoff_signals.is_escalation_acceptance(message_text, prior_ai_response or ""):
-        _insert_message(conn, ticket_id, "customer", message_text)
+
+def _run_followup(conn, ticket, message_text: str, prior_ai_response, outbox: _Outbox) -> dict:
+    ticket_id = ticket["ticket_id"]
+    gate = followup_gate(message_text, prior_ai_response, answered=ticket["status"] == "resolved")
+
+    if gate == "handoff":
         _escalate_to_human(
             conn, ticket, _transcript_for(conn, ticket_id),
             ticket["category"], ticket["confidence"], outbox,
         )
         return {"route": "human"}
 
-    # GATE 2 — a bare "thanks"/"got it" on an already-resolved
-    # ticket isn't a new support request: re-running the graph on it
-    # would classify with near-zero confidence and wrongly escalate
-    # a solved ticket. Store the message, close the ticket, and skip
-    # the pipeline entirely. Ambiguous or substantive follow-ups
-    # (a question, "but it's still not working", etc.) fall through
-    # to the normal pipeline below, unchanged.
-    if ticket["status"] == "resolved" and is_closing_acknowledgment(message_text):
-        _insert_message(conn, ticket_id, "customer", message_text)
+    if gate == "close":
         _insert_message(conn, ticket_id, "system", _TICKET_CLOSED_MESSAGE)
         conn.execute("UPDATE tickets SET status = 'closed' WHERE ticket_id = ?", (ticket_id,))
         return {"route": "closed", "message": _TICKET_CLOSED_MESSAGE}
 
-    # GATE 3 — a follow-up to an already-resolved ticket that refers
-    # back to the AI's own last reply ("what's the difference", "can
-    # you elaborate") isn't a new support request to triage -- it's a
-    # continuation of the same answered thread. classify_ticket
-    # judges each message's own classifiability, and a short
-    # follow-up fragment has almost no standalone content, which
-    # used to collapse decide_route's confidence and wrongly
-    # escalate an on-topic question. Skip classify_ticket/
-    # decide_route entirely for a genuine continuation and answer
-    # directly, grounded in the agent's prior reply. A genuinely new/
-    # different message (checked by the same call) falls through to
-    # the normal pipeline below, unchanged -- and so does one with an
-    # escalation-language signal (negation/offensive/coordinated),
-    # checked FIRST and short-circuiting the continuation call
-    # entirely: a frustrated "thanks, but it's still not working" is
-    # topically a continuation, but the hard override must still win
-    # and send it to decide_route's normal escalation path, not get
-    # auto-answered just because it's on-topic.
-    if (
-        ticket["status"] == "resolved"
-        and prior_ai_response
-        and not graph.has_escalation_language(message_text)
-        and graph.is_continuation_of_prior_response(message_text, prior_ai_response)
-    ):
-        _insert_message(conn, ticket_id, "customer", message_text)
+    if gate == "continuation":
         state = _pipeline_state(
             conn,
             ticket,
@@ -398,9 +332,7 @@ def _handle_followup(conn, ticket, message_text: str, outbox: _Outbox) -> dict:
         state.update(graph.lookup_order(state))
         ai_response = graph.generate_response(state)["ai_response"]
         _record_ai_reply(conn, ticket, ai_response, outbox)
-
-        # Even on the continuation path, an answer that concedes it
-        # can't actually help hasn't resolved anything.
+        # An answer that concedes it can't actually help hasn't resolved anything.
         if handoff_signals.admits_limitation(ai_response):
             _escalate_to_human(
                 conn, ticket, _transcript_for(conn, ticket_id),
@@ -409,29 +341,22 @@ def _handle_followup(conn, ticket, message_text: str, outbox: _Outbox) -> dict:
             return {"route": "human", "message": ai_response}
         return {"route": "ai", "message": ai_response}
 
-    # GATE 4 — normal classification for a genuinely new/different
-    # request.
-    _insert_message(conn, ticket_id, "customer", message_text)
     transcript = _transcript_for(conn, ticket_id)
-    result = _graph.invoke(
+    result = runtime.get_graph().invoke(
         _pipeline_state(
             conn, ticket, transcript, clarification_attempts=ticket["clarification_attempts"]
         )
     )
-
     if result["route"] in ("ai", "clarify"):
         _record_ai_reply(conn, ticket, result["ai_response"], outbox)
-
-        # An "ai" answer that concedes it can't do the thing is a
-        # hand-off signal, not a resolution — escalate instead of
-        # recording it as one (see backend/handoff_signals.py).
+        # An "ai" answer that concedes it can't do the thing is a hand-off
+        # signal, not a resolution (see backend/handoff_signals.py).
         if result["route"] == "ai" and handoff_signals.admits_limitation(result["ai_response"]):
             _escalate_to_human(
                 conn, ticket, _transcript_for(conn, ticket_id),
                 result.get("category"), result.get("confidence"), outbox,
             )
             return {"route": "human", "message": result["ai_response"]}
-
         conn.execute(
             "UPDATE tickets SET category = ?, confidence = ?, route = ?, "
             "status = ?, clarification_attempts = ? WHERE ticket_id = ?",
@@ -498,10 +423,10 @@ def categories():
 
 @app.get("/api/tickets/mine")
 def tickets_mine(customer_id: str = Depends(auth.get_current_customer)):
-    """The customer's ticket list, newest first. A chat is only a ticket
-    once it has been handed to the support team (route 'human'); chats the
-    AI is handling or has resolved are not listed. Curated fields only:
-    no confidence, route reasoning, or the internal case summary."""
+    """The customer's ticket list, newest first. Chats live in
+    /api/chats and only become tickets when escalated (ticket_type
+    'chat'). Curated fields only: no confidence, route reasoning, or the
+    internal case summary."""
     conn = db.get_connection()
     try:
         rows = conn.execute(
@@ -512,7 +437,6 @@ def tickets_mine(customer_id: str = Depends(auth.get_current_customer)):
             "          AND m.sender IN ('ai', 'staff') "
             "          AND m.created_at > COALESCE(t.customer_last_read_at, '')) AS unread "
             "FROM tickets t WHERE t.customer_id = ? "
-            "AND (t.ticket_type = 'ticket' OR t.route = 'human') "
             "ORDER BY t.created_at DESC",
             (customer_id,),
         ).fetchall()
@@ -592,11 +516,18 @@ def ticket_detail(ticket_id: str, customer_id: str = Depends(auth.get_current_cu
                 (ticket_id,),
             )
         ]
+        chat = None
+        if ticket["chat_session_id"]:
+            chat = {
+                "session_id": ticket["chat_session_id"],
+                "transcript": chats.transcript_rows(conn, ticket["chat_session_id"]),
+            }
         conn.execute(
             "UPDATE tickets SET customer_last_read_at = ? WHERE ticket_id = ?", (_now(), ticket_id)
         )
         conn.commit()
         return {
+            "chat": chat,
             "ticket": {
                 "ticket_id": ticket["ticket_id"],
                 "ticket_type": ticket["ticket_type"],
@@ -611,43 +542,6 @@ def ticket_detail(ticket_id: str, customer_id: str = Depends(auth.get_current_cu
         }
     finally:
         conn.close()
-
-
-@app.post("/api/tickets/new")
-def tickets_new(
-    body: NewTicketRequest,
-    background_tasks: BackgroundTasks,
-    customer_id: str = Depends(auth.get_current_customer),
-):
-    """Start a chat (ticket_type 'chat'): the pre-chat form's one-line
-    issue is the first message, answered live by the pipeline."""
-    ticket_text = body.ticket_text.strip()
-    if not ticket_text:
-        raise HTTPException(status_code=400, detail="ticket_text cannot be empty")
-    if body.channel == "email":
-        ticket_text = clean_email(ticket_text)
-
-    ticket_id = f"TCK-{uuid.uuid4().hex[:8]}"
-    conn = db.get_connection()
-    try:
-        contact_name = (body.contact_name or "").strip() or _customer_row(conn, customer_id)["name"]
-    finally:
-        conn.close()
-    result = _graph.invoke(
-        {
-            "ticket_id": ticket_id,
-            "customer_id": customer_id,
-            "channel": body.channel,
-            "ticket_text": ticket_text,
-            "reply_format": "chat",
-            "customer_name": contact_name,
-        }
-    )
-    return _store_new_ticket(
-        ticket_id, customer_id, ticket_text, result, background_tasks,
-        ticket_type="chat", channel=body.channel, subject=(body.subject or "").strip() or None,
-        priority="medium", requested_category=body.category, contact_name=contact_name,
-    )
 
 
 @app.post("/api/tickets")
@@ -675,7 +569,7 @@ def tickets_create(
     finally:
         conn.close()
     try:
-        result = _graph.invoke(
+        result = runtime.get_graph().invoke(
             {
                 "ticket_id": ticket_id,
                 "customer_id": customer_id,
@@ -691,14 +585,13 @@ def tickets_create(
 
     return _store_new_ticket(
         ticket_id, customer_id, ticket_text, result, background_tasks,
-        ticket_type="ticket", channel="email", subject=subject, priority=body.priority,
-        requested_category=body.category, contact_name=contact_name,
+        subject=subject, priority=body.priority, requested_category=body.category,
+        contact_name=contact_name,
     )
 
 
 def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_tasks, *,
-                      ticket_type, channel, subject, priority, requested_category,
-                      contact_name) -> dict:
+                      subject, priority, requested_category, contact_name) -> dict:
     route = result["route"]
     ai_response = result.get("ai_response")
 
@@ -723,10 +616,10 @@ def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_ta
             "requested_category, contact_name) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                ticket_id, customer_id, channel, ticket_text,
+                ticket_id, customer_id, "email", ticket_text,
                 result.get("category"), result.get("confidence"), route, ai_response,
                 _STATUS_FOR_ROUTE[route], None, result.get("clarification_attempts", 0),
-                _now(), ticket_type, subject, priority, requested_category, contact_name,
+                _now(), "ticket", subject, priority, requested_category, contact_name,
             ),
         )
         ticket = _load_ticket(conn, ticket_id)
@@ -738,9 +631,8 @@ def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_ta
                 conn, ticket, _transcript_for(conn, ticket_id),
                 result.get("category"), result.get("confidence"), outbox,
             )
-        elif route == "human" and ticket_type == "ticket" and not result.get("pipeline_failed"):
+        elif route == "human" and not result.get("pipeline_failed"):
             # decide_route sent it straight to a human: tell the customer.
-            # (Chat escalations show the live chat's own escalation note.)
             _record_ai_reply(
                 conn,
                 ticket,
@@ -757,56 +649,11 @@ def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_ta
     return {
         "ticket_id": ticket_id,
         "message_id": message_id,
-        "ticket_type": ticket_type,
+        "ticket_type": "ticket",
         "route": route,
         "status": _STATUS_FOR_ROUTE[route],
         "ai_response": ai_response,
     }
-
-
-@app.get("/api/tickets/{ticket_id}/messages")
-def ticket_messages(ticket_id: str, customer_id: str = Depends(auth.get_current_customer)):
-    conn = db.get_connection()
-    try:
-        _customer_ticket_or_error(conn, ticket_id, customer_id)
-        rows = conn.execute(
-            "SELECT sender, message, created_at FROM ticket_messages "
-            "WHERE ticket_id = ? ORDER BY created_at ASC, rowid ASC",
-            (ticket_id,),
-        ).fetchall()
-        return [dict(row) for row in rows]
-    finally:
-        conn.close()
-
-
-@app.post("/api/tickets/{ticket_id}/chat")
-def ticket_chat(
-    ticket_id: str,
-    body: ChatMessageRequest,
-    background_tasks: BackgroundTasks,
-    customer_id: str = Depends(auth.get_current_customer),
-):
-    message_text = body.message.strip()
-    if not message_text:
-        raise HTTPException(status_code=400, detail="message cannot be empty")
-
-    outbox = _Outbox()
-    conn = db.get_connection()
-    try:
-        ticket = _customer_ticket_or_error(conn, ticket_id, customer_id)
-        if ticket["route"] == "human":
-            raise HTTPException(
-                status_code=400,
-                detail="This ticket has already been escalated to a human agent.",
-            )
-        if ticket["status"] == "closed":
-            raise HTTPException(status_code=400, detail="This ticket has been closed.")
-        response = _handle_followup(conn, ticket, message_text, outbox)
-        conn.commit()
-    finally:
-        conn.close()
-    outbox.flush(background_tasks)
-    return response
 
 
 @app.post("/api/tickets/{ticket_id}/reply")
@@ -1428,7 +1275,7 @@ def admin_simulate_ticket(
     if body.channel == "email":
         ticket_text = clean_email(ticket_text)
 
-    result = _graph.invoke(
+    result = runtime.get_graph().invoke(
         {
             "ticket_id": f"SIM-{uuid.uuid4().hex[:8]}",
             "customer_id": body.customer_id or f"SIM-CUST-{uuid.uuid4().hex[:6]}",

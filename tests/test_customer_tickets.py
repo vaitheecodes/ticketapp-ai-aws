@@ -2,8 +2,8 @@
 statuses, email-format AI replies, the My tickets list, the thread
 detail, reply/reopen, and the attachment endpoint.
 
-Real temporary SQLite DB via FastAPI's TestClient; backend.main._graph is
-replaced by a stub, and graph.summarize_case by a canned summary, so no
+Real temporary SQLite DB via FastAPI's TestClient; the pipeline
+(backend.runtime) is replaced by a stub, and graph.summarize_case by a canned summary, so no
 LLM call is made. The email-format wrapping in graph.generate_response is
 tested separately against a stubbed Azure OpenAI client.
 """
@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from backend import db, email_utils, graph, main  # noqa: E402
+from backend import db, email_utils, graph, main, runtime  # noqa: E402
 
 _counter = itertools.count()
 
@@ -75,7 +75,7 @@ def _customer(client, name="Dana Smith"):
 
 
 def _raise(client, headers, result, **overrides):
-    main._graph = _StubGraph([result])
+    runtime.set_graph(_StubGraph([result]))
     body = {"subject": "Agent not reporting", "description": "Installed the Linux agent, no data.",
             "priority": "high", "category": "AGENT"}
     body.update(overrides)
@@ -85,10 +85,8 @@ def _raise(client, headers, result, **overrides):
 
 
 def _start_chat(client, headers, result, text="how do I install the agent"):
-    main._graph = _StubGraph([result])
-    res = client.post("/api/tickets/new", json={"ticket_text": text, "channel": "chat",
-                                                "subject": text, "category": "AGENT"},
-                      headers=headers)
+    runtime.set_graph(_StubGraph([result]))
+    res = client.post("/api/chats", json={"issue": text, "category": "AGENT"}, headers=headers)
     assert res.status_code == 200, res.text
     return res.json()
 
@@ -131,22 +129,25 @@ def test_raise_ticket_creates_ticket_type_with_form_fields(client):
 def test_raise_ticket_asks_pipeline_for_an_email_reply(client):
     headers, _ = _customer(client, name="Dana Smith")
     _raise(client, headers, _ai())
-    state = main._graph.invocations[0]
+    state = runtime.get_graph().invocations[0]
     assert state["reply_format"] == "email"
     assert state["customer_name"] == "Dana Smith"
 
 
-def test_start_chat_creates_chat_type(client):
+def test_chats_only_become_tickets_when_escalated(client):
     headers, _ = _customer(client)
-    created = _start_chat(client, headers, _ai("Here's how..."))
-    row = _row(created["ticket_id"])
+    active = _start_chat(client, headers, _ai("Here's how..."))
+    assert active["ticket_id"] is None
+    escalated = _start_chat(client, headers, _HUMAN, text="cancel my licence")
+    row = _row(escalated["ticket_id"])
     assert row["ticket_type"] == "chat"
-    assert main._graph.invocations[0]["reply_format"] == "chat"
+    assert row["chat_session_id"] == escalated["session_id"]
+    assert runtime.get_graph().invocations[0]["reply_format"] == "chat"
 
 
 def test_invalid_category_and_priority_are_rejected(client):
     headers, _ = _customer(client)
-    main._graph = _StubGraph([_ai()])
+    runtime.set_graph(_StubGraph([_ai()]))
     bad_cat = client.post("/api/tickets", json={"subject": "s", "description": "d", "category": "NOPE"},
                           headers=headers)
     bad_pri = client.post("/api/tickets", json={"subject": "s", "description": "d", "priority": "asap"},
@@ -269,13 +270,12 @@ def test_generate_response_wraps_email_replies(monkeypatch):
 def test_my_tickets_lists_tickets_and_escalated_chats_only(client):
     headers, _ = _customer(client)
     ticket = _raise(client, headers, _ai())
-    resolved_chat = _start_chat(client, headers, _ai("Here's how..."))
+    _start_chat(client, headers, _ai("Here's how..."))
     escalated_chat = _start_chat(client, headers, _HUMAN, text="cancel my licence")
 
     listed = client.get("/api/tickets/mine", headers=headers).json()
     ids = [t["ticket_id"] for t in listed]
     assert ids == [escalated_chat["ticket_id"], ticket["ticket_id"]]  # newest first
-    assert resolved_chat["ticket_id"] not in ids
     item = listed[1]
     assert item["subject"] == "Agent not reporting"
     assert item["ticket_type"] == "ticket"
@@ -317,7 +317,7 @@ def test_customer_cannot_read_someone_elses_ticket(client):
 def test_reply_on_human_ticket_is_appended_without_rerunning_pipeline(client):
     headers, _ = _customer(client)
     ticket_id = _raise(client, headers, _HUMAN)["ticket_id"]
-    main._graph = _StubGraph([])  # any invoke would fail
+    runtime.set_graph(_StubGraph([]))  # any invoke would fail
     res = client.post(f"/api/tickets/{ticket_id}/reply", json={"message": "Extra detail"}, headers=headers)
     assert res.status_code == 200, res.text
     assert res.json()["route"] == "human"
@@ -330,11 +330,11 @@ def test_reply_on_pending_customer_ticket_reruns_pipeline_with_email_format(clie
     clarify = {"route": "clarify", "category": "ALERTS", "confidence": 0.5,
                "ai_response": "Which alert?", "clarification_attempts": 1}
     ticket_id = _raise(client, headers, clarify)["ticket_id"]
-    main._graph = _StubGraph([_ai("Hi Dana,\n\nDo X.\n\nRegards,\nSite24x7 Support Team")])
+    runtime.set_graph(_StubGraph([_ai("Hi Dana,\n\nDo X.\n\nRegards,\nSite24x7 Support Team")]))
     res = client.post(f"/api/tickets/{ticket_id}/reply", json={"message": "The email alert"},
                       headers=headers)
     assert res.json()["status"] == "resolved"
-    assert main._graph.invocations[0]["reply_format"] == "email"
+    assert runtime.get_graph().invocations[0]["reply_format"] == "email"
 
 
 def test_reopen_ai_resolved_ticket_escalates_to_open(client):

@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { api } from "../api";
 import PortalHeader from "../components/PortalHeader";
+import ChatReviews from "../components/ChatReviews";
 import RoutingPolicyPanel from "../components/RoutingPolicyPanel";
 import TeamPanel from "../components/TeamPanel";
 import { RoutePill, StatusPill } from "../components/StatusPill";
@@ -269,6 +270,9 @@ export default function AdminPortal() {
         <button className={tab === "team" ? "active" : ""} onClick={() => setTab("team")}>
           Team
         </button>
+        <button className={tab === "reviews" ? "active" : ""} onClick={() => setTab("reviews")}>
+          Chat Reviews
+        </button>
         <button className={tab === "try" ? "active" : ""} onClick={() => setTab("try")}>
           Try a Ticket
         </button>
@@ -279,6 +283,7 @@ export default function AdminPortal() {
       <div className="tab-content">
         {tab === "tickets" && <AllTickets />}
         {tab === "team" && <TeamPanel />}
+        {tab === "reviews" && <ChatReviews />}
         {tab === "try" && <TryATicket />}
         {tab === "policy" && <RoutingPolicyPanel />}
       </div>

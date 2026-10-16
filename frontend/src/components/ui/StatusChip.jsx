@@ -42,9 +42,24 @@ function Chip({ tone, label, title, dot = true }) {
   );
 }
 
-export function StatusChip({ status }) {
+export function StatusChip({ status, label }) {
   if (!status) return null;
   const meta = STATUS[status] || { tone: "neutral", label: titleCase(status) };
+  return <Chip tone={meta.tone} label={label || meta.label} />;
+}
+
+/* AI chat sessions have their own lifecycle (backend/chats.py), drawn
+ * from the same tones: an active chat waits on the customer, an escalated
+ * one is with the support team, a resolved one is done. */
+const CHAT_STATUS = {
+  active: { tone: "accent", label: "Active" },
+  escalated: { tone: "warn", label: "Escalated" },
+  resolved: { tone: "ok", label: "Resolved" },
+  abandoned: { tone: "neutral", label: "Ended" },
+};
+
+export function ChatStatusChip({ status }) {
+  const meta = CHAT_STATUS[status] || { tone: "neutral", label: titleCase(status) };
   return <Chip tone={meta.tone} label={meta.label} />;
 }
 

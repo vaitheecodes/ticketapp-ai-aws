@@ -9,18 +9,19 @@
  *   └──────────────────────────────┴──────────────────┘
  *
  * Stacks to one column on narrow screens (workspace first, then the list).
- * A chat only shows up in My tickets once it has been handed to the
- * support team; chats the AI resolves aren't tickets.
+ * Chats and tickets are separate (backend/chats.py): the right panel has
+ * My tickets and Chats. A chat only becomes a ticket when it's handed to
+ * the support team, and then shows in My tickets with a Chat badge.
  */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import AttachmentPicker from "../components/AttachmentPicker";
 import PortalHeader from "../components/PortalHeader";
-import TicketChat from "../components/TicketChat";
+import ChatSession from "../components/ChatSession";
 import TicketThread from "../components/TicketThread";
 import Toast from "../components/Toast";
-import { StatusChip } from "../components/ui/StatusChip";
+import { ChatStatusChip, StatusChip } from "../components/ui/StatusChip";
 import { categoryLabel } from "../utils/categories";
 import { absoluteTime, relativeTime } from "../utils/time";
 
@@ -101,12 +102,7 @@ function PreChatForm({ defaultName, categories, onStarted }) {
     setSubmitting(true);
     setError("");
     try {
-      const res = await api.ticketsNew(text, "chat", {
-        subject: text,
-        category,
-        contact_name: name.trim(),
-      });
-      onStarted({ ...res, issue: text });
+      onStarted(await api.chatStart({ issue: text, category, contact_name: name.trim() }));
     } catch (err) {
       setError(err.message);
       setSubmitting(false);
@@ -155,36 +151,6 @@ function PreChatForm({ defaultName, categories, onStarted }) {
         </button>
       </div>
     </form>
-  );
-}
-
-function LiveChat({ chat, onEscalated }) {
-  const escalatedAtStart = chat.route === "human";
-  return (
-    <div className="card live-chat">
-      <header className="live-chat-head">
-        <h2 className="workspace-title">Chat</h2>
-        <span className="live-chat-issue">{chat.issue}</span>
-      </header>
-      {escalatedAtStart ? (
-        <div className="result-box">
-          <p className="pending-text">This needs our support team.</p>
-          <p>
-            We've created ticket <span className="mono">{chat.ticket_id}</span> for you — it's in My
-            tickets, and an agent will reply there.
-          </p>
-        </div>
-      ) : (
-        <TicketChat
-          ticketId={chat.ticket_id}
-          initialMessages={[
-            { sender: "customer", message: chat.issue },
-            { sender: "ai", message: chat.ai_response },
-          ]}
-          onRoute={(route) => route === "human" && onEscalated()}
-        />
-      )}
-    </div>
   );
 }
 
@@ -334,10 +300,7 @@ function MyTickets({ tickets, error, selectedId, onSelect }) {
   }, [tickets, filter, query]);
 
   return (
-    <aside className="my-tickets" aria-labelledby="my-tickets-heading">
-      <h2 id="my-tickets-heading" className="my-tickets-title">
-        My tickets
-      </h2>
+    <>
       <div className="filter-tabs" role="group" aria-label="Filter tickets">
         {FILTERS.map((f) => (
           <button
@@ -412,6 +375,77 @@ function MyTickets({ tickets, error, selectedId, onSelect }) {
           ))}
         </ul>
       )}
+    </>
+  );
+}
+
+function ChatHistory({ chats, error, selectedId, onSelect }) {
+  if (error) return <p className="error">{error}</p>;
+  if (!chats) return <TicketListSkeleton />;
+  if (chats.length === 0) {
+    return (
+      <div className="empty empty-compact">
+        <p className="empty-title">No chats yet</p>
+        <p className="empty-body">Start a chat for a quick answer from our AI assistant.</p>
+      </div>
+    );
+  }
+  return (
+    <ul className="my-tickets-list">
+      {chats.map((c) => (
+        <li key={c.session_id}>
+          <button
+            type="button"
+            className={`my-ticket ${selectedId === c.session_id ? "is-selected" : ""}`}
+            aria-current={selectedId === c.session_id ? "true" : undefined}
+            onClick={() => onSelect(c.session_id)}
+          >
+            <span className="my-ticket-top">
+              <span className="my-ticket-id">{c.ticket_id ? `Ticket ${c.ticket_id}` : "Chat"}</span>
+              <time
+                className="my-ticket-time"
+                dateTime={c.updated_at}
+                title={`Last message ${absoluteTime(c.updated_at)}`}
+              >
+                {relativeTime(c.updated_at)}
+              </time>
+            </span>
+            <span className="my-ticket-subject">{c.issue}</span>
+            <span className="my-ticket-bottom">
+              <ChatStatusChip status={c.status} />
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function SidePanel({ panel, onPanel, ticketCount, chatCount, children }) {
+  const titles = { tickets: "My tickets", chats: "Chats" };
+  return (
+    <aside className="my-tickets" aria-labelledby="side-panel-heading">
+      <div className="panel-switch" role="group" aria-label="Show">
+        {[
+          ["tickets", "My tickets", ticketCount],
+          ["chats", "Chats", chatCount],
+        ].map(([key, label, count]) => (
+          <button
+            key={key}
+            type="button"
+            className={panel === key ? "active" : ""}
+            aria-pressed={panel === key}
+            onClick={() => onPanel(key)}
+          >
+            {label}
+            {count != null && <span className="panel-count">{count}</span>}
+          </button>
+        ))}
+      </div>
+      <h2 id="side-panel-heading" className="sr-only">
+        {titles[panel]}
+      </h2>
+      {children}
     </aside>
   );
 }
@@ -420,10 +454,14 @@ function MyTickets({ tickets, error, selectedId, onSelect }) {
 // Page
 // ---------------------------------------------------------------------------
 export default function CustomerPortal() {
-  // null | "chat-form" | "ticket-form" | { chat } | { ticketId }
+  // null | "chat-form" | "ticket-form" | { chat } | { chatId } | { ticketId }
+  // ({ chat } carries a just-started session so it renders without a refetch.)
   const [view, setView] = useState(null);
+  const [panel, setPanel] = useState("tickets");
   const [tickets, setTickets] = useState(null);
   const [listError, setListError] = useState("");
+  const [chats, setChats] = useState(null);
+  const [chatsError, setChatsError] = useState("");
   const [categories, setCategories] = useState([]);
   const [name, setName] = useState("");
   const [toast, setToast] = useState(null);
@@ -439,11 +477,28 @@ export default function CustomerPortal() {
       .catch((err) => setListError(err.message));
   }, []);
 
+  const refreshChats = useCallback(() => {
+    api
+      .chatsList()
+      .then((rows) => {
+        setChats(rows);
+        setChatsError("");
+      })
+      .catch((err) => setChatsError(err.message));
+  }, []);
+
+  // A chat changing state can create a ticket (escalation), so refresh both.
+  const refreshAll = useCallback(() => {
+    refreshChats();
+    refreshTickets();
+  }, [refreshChats, refreshTickets]);
+
   useEffect(() => {
     refreshTickets();
+    refreshChats();
     api.categories().then(setCategories).catch(() => setCategories([]));
     api.me().then((me) => setName(me.name)).catch(() => {});
-  }, [refreshTickets]);
+  }, [refreshTickets, refreshChats]);
 
   const dismissToast = useCallback(() => setToast(null), []);
 
@@ -456,6 +511,12 @@ export default function CustomerPortal() {
   }
 
   const selectedId = view && typeof view === "object" ? view.ticketId : null;
+  const selectedChatId = view?.chat?.session_id || view?.chatId || null;
+
+  function openTicket(ticketId) {
+    setPanel("tickets");
+    show({ ticketId });
+  }
 
   return (
     <div className="page page-portal">
@@ -465,8 +526,8 @@ export default function CustomerPortal() {
           <div className="request-cards" role="group" aria-label="New request">
             <button
               type="button"
-              className={`request-card ${view === "chat-form" || view?.chat ? "is-active" : ""}`}
-              aria-pressed={view === "chat-form" || Boolean(view?.chat)}
+              className={`request-card ${view === "chat-form" || selectedChatId ? "is-active" : ""}`}
+              aria-pressed={view === "chat-form" || Boolean(selectedChatId)}
               onClick={() => show("chat-form")}
             >
               <ChatIcon />
@@ -491,7 +552,7 @@ export default function CustomerPortal() {
                 <p className="empty-title">How can we help?</p>
                 <p className="empty-body">
                   Start a chat for a quick answer, raise a ticket for anything that needs details or
-                  files, or pick a ticket from My tickets to see its replies.
+                  files, or pick a ticket or chat on the right to see its history.
                 </p>
               </div>
             )}
@@ -501,12 +562,18 @@ export default function CustomerPortal() {
                 categories={categories}
                 onStarted={(chat) => {
                   setView({ chat });
-                  if (chat.route === "human") refreshTickets();
+                  refreshAll();
                 }}
               />
             )}
-            {view?.chat && (
-              <LiveChat key={view.chat.ticket_id} chat={view.chat} onEscalated={refreshTickets} />
+            {selectedChatId && (
+              <ChatSession
+                key={selectedChatId}
+                initialSession={view.chat}
+                sessionId={selectedChatId}
+                onChanged={refreshAll}
+                onOpenTicket={openTicket}
+              />
             )}
             {view === "ticket-form" && (
               <RaiseTicketForm
@@ -530,12 +597,28 @@ export default function CustomerPortal() {
           </div>
         </div>
 
-        <MyTickets
-          tickets={tickets}
-          error={listError}
-          selectedId={selectedId}
-          onSelect={(ticketId) => show({ ticketId })}
-        />
+        <SidePanel
+          panel={panel}
+          onPanel={setPanel}
+          ticketCount={tickets?.length}
+          chatCount={chats?.length}
+        >
+          {panel === "tickets" ? (
+            <MyTickets
+              tickets={tickets}
+              error={listError}
+              selectedId={selectedId}
+              onSelect={(ticketId) => show({ ticketId })}
+            />
+          ) : (
+            <ChatHistory
+              chats={chats}
+              error={chatsError}
+              selectedId={selectedChatId}
+              onSelect={(chatId) => show({ chatId })}
+            />
+          )}
+        </SidePanel>
       </div>
       <Toast toast={toast} onDismiss={dismissToast} />
     </div>
