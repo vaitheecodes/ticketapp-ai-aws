@@ -31,7 +31,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from backend import auth, db, graph, handoff_signals, incidents, runtime
+from backend import audit, auth, db, graph, handoff_signals, incidents, runtime
 from backend import ticket_lifecycle as lifecycle
 from backend.ai_service import AIError, summarize_conversation
 from backend.conversation import (
@@ -517,6 +517,8 @@ def update_chat_review(
             "WHERE review_id = ?",
             (body.status, reviewer_id, now(), review_id),
         )
+        audit.record(conn, reviewer_id, "chat_review.updated", "chat_review", review_id,
+                     status=body.status)
         conn.commit()
         return {"review_id": review_id, "status": body.status}
     finally:

@@ -7,9 +7,9 @@
 - format_email_reply: wrap an AI-written body in the fixed greeting /
   closing / signature used for ticket-type replies. Done in code rather
   than asked of the LLM so every reply has exactly the same frame.
-- send_email: deliver a reply over SMTP when SMTP_HOST and SMTP_FROM are
-  set; otherwise a silent no-op (the reply still lands in the ticket
-  thread, which is the source of truth).
+- send_email: deliver a reply over SMTP only when EMAIL_ENABLED=true and
+  SMTP_HOST/SMTP_FROM are set; otherwise a silent no-op (the reply still
+  lands in the ticket thread, which is the source of truth).
 """
 
 from __future__ import annotations
@@ -68,14 +68,19 @@ def format_email_reply(name: str | None, body: str, closing: str = DEFAULT_CLOSI
     return f"Hi {first_name(name)},\n\n{body.strip()}\n\n{closing}\n\n{SIGNATURE}"
 
 
-def email_configured() -> bool:
-    return bool(os.environ.get("SMTP_HOST") and os.environ.get("SMTP_FROM"))
+def email_enabled() -> bool:
+    """Real email is OFF unless EMAIL_ENABLED=true and SMTP is configured.
+    The email-style thread is an in-app format either way."""
+    return (
+        os.environ.get("EMAIL_ENABLED", "false").strip().lower() == "true"
+        and bool(os.environ.get("SMTP_HOST") and os.environ.get("SMTP_FROM"))
+    )
 
 
 def send_email(to: str, subject: str, body: str) -> bool:
     """Best effort: returns False (and logs) instead of raising, so a mail
     outage never fails the request that produced the reply."""
-    if not email_configured():
+    if not email_enabled():
         return False
     message = EmailMessage()
     message["From"] = os.environ["SMTP_FROM"]

@@ -63,6 +63,10 @@ def client(tmp_path, monkeypatch):
 
 @pytest.fixture()
 def sent_emails(monkeypatch):
+    # Real email is off unless explicitly enabled and configured.
+    monkeypatch.setenv("EMAIL_ENABLED", "true")
+    monkeypatch.setenv("SMTP_HOST", "smtp.test.invalid")
+    monkeypatch.setenv("SMTP_FROM", "support@test.invalid")
     sent = []
     monkeypatch.setattr(email_utils, "send_email", lambda to, subject, body: sent.append((to, subject, body)))
     return sent

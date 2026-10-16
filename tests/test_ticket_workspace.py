@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from backend import db, email_utils, main, runtime, seed_data
 
 _counter = itertools.count()
-_HUMAN = {"route": "human", "category": "MONITORING", "confidence": 0.4, "clarification_attempts": 0}
+_HUMAN = {"route": "human", "category": "SERVER_MONITORING", "confidence": 0.4, "clarification_attempts": 0}
 NOTE = "Internal: customer is on the legacy plan, check with billing first."
 
 
@@ -37,6 +37,10 @@ def client(tmp_path, monkeypatch):
 
 @pytest.fixture()
 def sent_emails(monkeypatch):
+    # Real email is off unless explicitly enabled and configured.
+    monkeypatch.setenv("EMAIL_ENABLED", "true")
+    monkeypatch.setenv("SMTP_HOST", "smtp.test.invalid")
+    monkeypatch.setenv("SMTP_FROM", "support@test.invalid")
     sent = []
     monkeypatch.setattr(email_utils, "send_email", lambda to, subject, body: sent.append((to, subject, body)))
     return sent
@@ -79,7 +83,7 @@ def _new_technician(client):
     return headers, res.json()["staff_id"]
 
 
-def _raise(client, customer, subject="Website monitor shows down", category="MONITORING",
+def _raise(client, customer, subject="Website monitor shows down", category="SERVER_MONITORING",
            expected_status="open"):
     res = client.post("/api/tickets", json={
         "subject": subject, "description": "Our site monitor says down but the site is up.",
@@ -344,8 +348,8 @@ def test_escalated_chat_shows_ai_panel_and_transcript_to_technician(client, monk
 
 def test_manager_oversees_own_departments_read_only(client):
     customer = _customer(client)
-    # Demo manager owns Monitoring & Alerts + Infrastructure; NETFLOW is Network.
-    in_scope = _raise(client, customer, category="MONITORING")
+    # Demo manager's department is Infrastructure; NETFLOW is Network.
+    in_scope = _raise(client, customer, category="SERVER_MONITORING")
     runtime.set_graph(type("G", (), {"invoke": lambda self, s: {**_HUMAN, "category": "NETFLOW"}})())
     out_of_scope = _raise(client, customer, category="NETFLOW")
     tech = _demo(client, "technician")

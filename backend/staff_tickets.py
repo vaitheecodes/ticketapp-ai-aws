@@ -27,7 +27,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend import auth, chats, db, incidents
+from backend import audit, auth, chats, db, incidents
 from backend import ticket_lifecycle as lifecycle
 from backend.conversation import (
     ESCALATION_MARKER,
@@ -63,14 +63,13 @@ class StaffMessageRequest(BaseModel):
 # Scope helpers
 # ---------------------------------------------------------------------------
 def manager_categories(conn, manager_id: str) -> set[str]:
-    categories: set[str] = set()
-    for row in conn.execute(
-        "SELECT d.categories FROM departments d JOIN manager_departments md "
-        "ON md.department_id = d.department_id WHERE md.manager_id = ?",
+    """Categories owned by the manager's (single) department."""
+    row = conn.execute(
+        "SELECT d.categories FROM departments d JOIN staff s ON s.department_id = d.department_id "
+        "WHERE s.staff_id = ?",
         (manager_id,),
-    ):
-        categories.update(json.loads(row["categories"]))
-    return categories
+    ).fetchone()
+    return set(json.loads(row["categories"])) if row else set()
 
 
 def _ticket_category(ticket) -> str | None:
@@ -333,6 +332,7 @@ def claim_ticket(ticket_id: str, technician_id: str = Depends(auth.get_current_t
                 raise HTTPException(status_code=409, detail="Someone else already claimed this ticket")
             raise HTTPException(status_code=409, detail="This ticket can't be claimed")
         lifecycle.record_assignment(conn, ticket_id, None, technician_id, technician_id)
+        audit.record(conn, technician_id, "ticket.claimed", "ticket", ticket_id)
         lifecycle.set_status(conn, ticket_id, "in_progress", technician_id)
         name = conn.execute("SELECT name FROM staff WHERE staff_id = ?", (technician_id,)).fetchone()["name"]
         insert_ticket_message(conn, ticket_id, "system", f"{name} is now handling your ticket.")

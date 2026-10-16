@@ -134,8 +134,9 @@ FastAPI backend (backend/main.py, :8000)
   /api/staff/tickets/{id}, /{id}/{claim,status,messages}   technician workspace
   /api/manager/overview, /api/manager/departments          manager (read-only)
   /api/incidents[/{id}[/review|/departments]], /run        manager + admin
-  /api/admin/tickets, /api/admin/simulate-ticket   admin-facing
-  /api/admin/{staff,departments,technicians}  admin-facing (Team page)
+  /api/admin/{tickets,technicians,simulate-ticket,staff,customers,
+              departments,settings,audit}            admin (backend/admin.py)
+  /api/meta                                   public: status labels, categories
   /api/debug/routing-policy                   dev-only, unauthenticated
         |
         v
@@ -149,7 +150,7 @@ LangGraph pipeline (backend/graph.py)
         v
 SQLite (backend/ticketapp.db, auto-created, gitignored)
   customers / staff / admins / tickets / ticket_messages / attachments /
-  orders / departments / manager_departments
+  orders / departments / audit_events / app_settings / chat_* / incident_*
 ```
 
 - **KB grounding — `retrieve_kb_candidates`** (`backend/graph.py`,
@@ -337,7 +338,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `POST /api/admin/tickets/{id}/reassign`; picking "Unassigned" sends it
   back to the open queue), **Team** (`components/TeamPanel.jsx`: create
   technicians/managers with a temporary password, deactivate/reactivate,
-  reset password, set each manager's departments; create/edit/delete
+  reset password, edit role and the manager's one department; create/edit/delete
   departments and their KB-category mapping — each category belongs to
   at most one department, enforced server-side), **Try a Ticket**
   (`POST /api/admin/simulate-ticket` — runs a ticket through the live
@@ -436,6 +437,33 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   and may open any linked ticket. Customers on a confirmed cluster's
   tickets get a neutral `incident_notice`. No reply-to-all fan-out.
   Covered by `tests/test_incidents.py`.
+- **Admin console, settings, audit** (reconcile sub-stage E;
+  `backend/admin.py`, `backend/app_settings.py`, `backend/audit.py`).
+  All admin endpoints live in `admin.py` (admin role on every one):
+  tickets + reassign + simulator, Team (`PATCH /api/admin/staff/{id}`:
+  name/email/role/department; a technician with open tickets can't change
+  role; a role change invalidates their token), Customers (create with a
+  forced password change, edit, deactivate — live sessions blocked —
+  reset password), departments, settings, audit log. **A manager belongs
+  to one department** (`staff.department_id`; the legacy
+  `manager_departments` table is read once by the migration — first
+  mapping kept — and no longer written); technicians have none.
+  **Settings** (`app_settings`): `routing` (confidence bars, high-risk
+  categories, escalation language tags, max clarifying rounds — read by
+  `graph.decide_route` on every decision), `incidents` (window, min
+  tickets, similarity, routing confidence — admin value > `INCIDENT_*`
+  env > default), `statuses` (display labels only; the five statuses are
+  fixed; served by public `GET /api/meta` and loaded by `main.jsx` before
+  render). Cached in memory per process (loaded at startup, refreshed on
+  save). **Audit log** (`audit_events`): ticket status/assignment changes
+  and claims (via `ticket_lifecycle`), incident reviews and department
+  corrections, chat review updates, staff/customer/department/settings
+  admin changes, password changes and failed logins — ids, statuses and
+  field names only, never bodies or passwords; filterable at
+  `GET /api/admin/audit` (Activity tab). **Real email is off** unless
+  `EMAIL_ENABLED=true` + SMTP (`Outbox.flush` / `email_utils.email_enabled`).
+  Attachments are only served by the authorised download endpoint (no
+  static mount). Covered by `tests/test_admin_console.py`.
 - **Auth / roles** (`backend/auth.py`): customer, technician, manager,
   admin. Tables: `customers`, `staff` (technicians + managers, `role`
   column, `active`, `must_change_password`), `admins`. One login page /

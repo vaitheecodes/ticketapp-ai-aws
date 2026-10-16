@@ -103,14 +103,14 @@ DEMO_STAFF = [
         "email": "manager@example.com",
         "password": "manager-demo-pass",
         "role": "manager",
-        "departments": ["Monitoring & Alerts", "Infrastructure"],
+        "department": "Infrastructure",
     },
     {
         "name": "Demo Technician",
         "email": "technician@example.com",
         "password": "technician-demo-pass",
         "role": "technician",
-        "departments": [],
+        "department": None,
     },
 ]
 
@@ -125,25 +125,19 @@ def seed_demo_staff(conn) -> None:
             continue
         prefix = "MGR" if person["role"] == "manager" else "TECH"
         staff_id = f"{prefix}-{uuid.uuid4().hex[:8]}"
+        department = conn.execute(
+            "SELECT department_id FROM departments WHERE name = ?", (person["department"],)
+        ).fetchone() if person["department"] else None
         conn.execute(
-            "INSERT INTO staff (staff_id, name, email, password_hash, role) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO staff (staff_id, name, email, password_hash, role, department_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (
                 staff_id,
                 person["name"],
                 person["email"],
                 bcrypt.hashpw(person["password"].encode(), bcrypt.gensalt()).decode(),
                 person["role"],
+                department["department_id"] if department else None,
             ),
         )
-        for dept_name in person["departments"]:
-            dept = conn.execute(
-                "SELECT department_id FROM departments WHERE name = ?", (dept_name,)
-            ).fetchone()
-            if dept:
-                conn.execute(
-                    "INSERT OR IGNORE INTO manager_departments (manager_id, department_id) "
-                    "VALUES (?, ?)",
-                    (staff_id, dept["department_id"]),
-                )
     conn.commit()

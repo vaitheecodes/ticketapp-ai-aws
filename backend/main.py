@@ -18,9 +18,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
-from backend import auth, chats, db, email_utils, graph, handoff_signals, incidents, runtime, staff_tickets
+from backend import admin, app_settings, auth, chats, db, email_utils, graph, handoff_signals, incidents
+from backend import runtime, staff_tickets
 from backend import ticket_lifecycle as lifecycle
-from backend.ai_service import AIError
 from backend.conversation import ESCALATION_MARKER as _ESCALATION_MARKER
 from backend.conversation import Outbox as _Outbox
 from backend.conversation import customer_row as _customer_row
@@ -28,7 +28,6 @@ from backend.conversation import followup_gate, handoff_brief
 from backend.conversation import insert_ticket_message as _insert_message
 from backend.conversation import now as _now
 from backend.conversation import subject_for as _subject_for
-from backend.email_utils import clean_email
 
 logger = logging.getLogger(__name__)
 
@@ -59,12 +58,18 @@ app.add_middleware(
 app.include_router(chats.router)
 app.include_router(staff_tickets.router)
 app.include_router(incidents.router)
+app.include_router(admin.router)
 
 
 @app.on_event("startup")
 def on_startup() -> None:
     db.init_db()
     auth.ensure_admin()
+    conn = db.get_connection()
+    try:
+        app_settings.load(conn)
+    finally:
+        conn.close()
     runtime.set_graph(graph.build_graph())
 
 
@@ -101,43 +106,13 @@ class CreateTicketRequest(BaseModel):
     _check_category = field_validator("category")(_validate_category)
 
 
-class SimulateTicketRequest(BaseModel):
-    ticket_text: str
-    channel: str = "chat"
-    customer_id: str | None = None
-
-
 class ChatMessageRequest(BaseModel):
     message: str
-
-
-class ReassignRequest(BaseModel):
-    technician_id: str | None = None
 
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
-
-
-class CreateStaffRequest(BaseModel):
-    name: str = Field(min_length=1)
-    email: str = Field(min_length=3)
-    role: Literal["technician", "manager"]
-    temporary_password: str
-
-
-class ResetPasswordRequest(BaseModel):
-    temporary_password: str
-
-
-class DepartmentRequest(BaseModel):
-    name: str = Field(min_length=1)
-    categories: list[str] = []
-
-
-class ManagerDepartmentsRequest(BaseModel):
-    department_ids: list[str]
 
 
 # route -> ticket status after the pipeline runs. "clarify" means the AI
@@ -895,361 +870,31 @@ def download_attachment(
 
 
 # ---------------------------------------------------------------------------
-# Admin endpoints
-# ---------------------------------------------------------------------------
-@app.get("/api/admin/tickets")
-def admin_tickets(admin_id: str = Depends(auth.get_current_admin)):
-    conn = db.get_connection()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM tickets ORDER BY created_at DESC"
-        ).fetchall()
-        return [dict(row) for row in rows]
-    finally:
-        conn.close()
-
-
-@app.get("/api/admin/technicians")
-def admin_technicians(admin_id: str = Depends(auth.get_current_admin)):
-    """Active technicians with live ticket counts — the reassignment
-    dropdown on All Tickets."""
-    conn = db.get_connection()
-    try:
-        rows = conn.execute(
-            "SELECT s.staff_id, s.name, s.email, "
-            "SUM(CASE WHEN t.status NOT IN ('resolved', 'closed') THEN 1 ELSE 0 END) "
-            "AS active_count, "
-            "SUM(CASE WHEN t.status = 'resolved' THEN 1 ELSE 0 END) AS resolved_count "
-            "FROM staff s LEFT JOIN tickets t ON t.assigned_technician_id = s.staff_id "
-            "WHERE s.role = 'technician' AND s.active = 1 "
-            "GROUP BY s.staff_id, s.name, s.email "
-            "ORDER BY s.name COLLATE NOCASE"
-        ).fetchall()
-        return [dict(row) for row in rows]
-    finally:
-        conn.close()
-
-
-@app.post("/api/admin/tickets/{ticket_id}/reassign")
-def admin_reassign_ticket(
-    ticket_id: str, body: ReassignRequest, admin_id: str = Depends(auth.get_current_admin)
-):
-    """Admin override: (re)assign a human-routed ticket to a different
-    technician, or unassign it back to the open queue (technician_id=null)."""
-    conn = db.get_connection()
-    try:
-        ticket = _load_ticket(conn, ticket_id)
-        if ticket is None:
-            raise HTTPException(status_code=404, detail="Ticket not found")
-        if ticket["route"] != "human":
-            raise HTTPException(
-                status_code=400,
-                detail="Only tickets routed to a human agent can be (re)assigned",
-            )
-
-        if body.technician_id:
-            technician = conn.execute(
-                "SELECT name FROM staff WHERE staff_id = ? AND role = 'technician' AND active = 1",
-                (body.technician_id,),
-            ).fetchone()
-            if technician is None:
-                raise HTTPException(status_code=404, detail="Technician not found")
-            note = f"Reassigned to {technician['name']} by the administrator."
-        else:
-            note = "Returned to the unassigned queue by the administrator."
-
-        if lifecycle.set_assignee(conn, ticket_id, body.technician_id, admin_id):
-            _insert_message(conn, ticket_id, "system", note, customer_visible=False)
-            if body.technician_id and ticket["status"] == "open":
-                lifecycle.set_status(conn, ticket_id, "in_progress", admin_id)
-            elif not body.technician_id and ticket["status"] == "in_progress":
-                lifecycle.set_status(conn, ticket_id, "open", admin_id)
-        conn.commit()
-        return {"ticket_id": ticket_id, "assigned_technician_id": body.technician_id}
-    finally:
-        conn.close()
-
-
-# --- Team (staff accounts) -------------------------------------------------
-def _staff_with_departments(conn) -> list[dict]:
-    staff = [
-        dict(row)
-        for row in conn.execute(
-            "SELECT staff_id, name, email, role, active, must_change_password FROM staff "
-            "ORDER BY role, name COLLATE NOCASE"
-        )
-    ]
-    links: dict[str, list[str]] = {}
-    for row in conn.execute("SELECT manager_id, department_id FROM manager_departments"):
-        links.setdefault(row["manager_id"], []).append(row["department_id"])
-    for person in staff:
-        person["active"] = bool(person["active"])
-        person["must_change_password"] = bool(person["must_change_password"])
-        person["department_ids"] = links.get(person["staff_id"], [])
-    return staff
-
-
-def _get_staff_or_404(conn, staff_id: str):
-    row = conn.execute("SELECT * FROM staff WHERE staff_id = ?", (staff_id,)).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Staff member not found")
-    return row
-
-
-@app.get("/api/admin/staff")
-def admin_list_staff(admin_id: str = Depends(auth.get_current_admin)):
-    conn = db.get_connection()
-    try:
-        return _staff_with_departments(conn)
-    finally:
-        conn.close()
-
-
-@app.post("/api/admin/staff")
-def admin_create_staff(body: CreateStaffRequest, admin_id: str = Depends(auth.get_current_admin)):
-    """Create a technician or manager with a temporary password; they
-    must change it on first login (auth.require_role blocks every other
-    endpoint until they do)."""
-    auth.validate_new_password(body.temporary_password)
-    email = body.email.strip()
-    conn = db.get_connection()
-    try:
-        if auth.email_in_use(conn, email):
-            raise HTTPException(status_code=400, detail="Email already registered")
-        prefix = "MGR" if body.role == "manager" else "TECH"
-        staff_id = f"{prefix}-{uuid.uuid4().hex[:8]}"
-        conn.execute(
-            "INSERT INTO staff (staff_id, name, email, password_hash, role, active, "
-            "must_change_password) VALUES (?, ?, ?, ?, ?, 1, 1)",
-            (staff_id, body.name.strip(), email, auth.hash_password(body.temporary_password), body.role),
-        )
-        conn.commit()
-        (created,) = [p for p in _staff_with_departments(conn) if p["staff_id"] == staff_id]
-        return created
-    finally:
-        conn.close()
-
-
-def _set_staff_active(staff_id: str, active: bool) -> dict:
-    conn = db.get_connection()
-    try:
-        _get_staff_or_404(conn, staff_id)
-        conn.execute("UPDATE staff SET active = ? WHERE staff_id = ?", (int(active), staff_id))
-        conn.commit()
-        return {"staff_id": staff_id, "active": active}
-    finally:
-        conn.close()
-
-
-@app.post("/api/admin/staff/{staff_id}/deactivate")
-def admin_deactivate_staff(staff_id: str, admin_id: str = Depends(auth.get_current_admin)):
-    """Blocks login and invalidates live sessions immediately. Tickets
-    already assigned to them stay put; reassign them from All Tickets."""
-    return _set_staff_active(staff_id, False)
-
-
-@app.post("/api/admin/staff/{staff_id}/activate")
-def admin_activate_staff(staff_id: str, admin_id: str = Depends(auth.get_current_admin)):
-    return _set_staff_active(staff_id, True)
-
-
-@app.post("/api/admin/staff/{staff_id}/reset-password")
-def admin_reset_staff_password(
-    staff_id: str, body: ResetPasswordRequest, admin_id: str = Depends(auth.get_current_admin)
-):
-    auth.validate_new_password(body.temporary_password)
-    conn = db.get_connection()
-    try:
-        _get_staff_or_404(conn, staff_id)
-        conn.execute(
-            "UPDATE staff SET password_hash = ?, must_change_password = 1 WHERE staff_id = ?",
-            (auth.hash_password(body.temporary_password), staff_id),
-        )
-        conn.commit()
-        return {"staff_id": staff_id, "must_change_password": True}
-    finally:
-        conn.close()
-
-
-@app.put("/api/admin/staff/{staff_id}/departments")
-def admin_set_manager_departments(
-    staff_id: str, body: ManagerDepartmentsRequest, admin_id: str = Depends(auth.get_current_admin)
-):
-    conn = db.get_connection()
-    try:
-        if _get_staff_or_404(conn, staff_id)["role"] != "manager":
-            raise HTTPException(status_code=400, detail="Only managers own departments")
-        department_ids = sorted(set(body.department_ids))
-        known = {
-            row["department_id"]
-            for row in conn.execute("SELECT department_id FROM departments")
-        }
-        unknown = [d for d in department_ids if d not in known]
-        if unknown:
-            raise HTTPException(status_code=404, detail=f"Unknown department(s): {', '.join(unknown)}")
-        conn.execute("DELETE FROM manager_departments WHERE manager_id = ?", (staff_id,))
-        conn.executemany(
-            "INSERT INTO manager_departments (manager_id, department_id) VALUES (?, ?)",
-            [(staff_id, d) for d in department_ids],
-        )
-        conn.commit()
-        return {"staff_id": staff_id, "department_ids": department_ids}
-    finally:
-        conn.close()
-
-
-# --- Departments -----------------------------------------------------------
-def _department_rows(conn, where: str = "", params: tuple = ()) -> list[dict]:
-    departments = []
-    for row in conn.execute(
-        f"SELECT department_id, name, categories FROM departments {where} "
-        "ORDER BY name COLLATE NOCASE",
-        params,
-    ):
-        dept = dict(row)
-        dept["categories"] = json.loads(dept["categories"])
-        dept["manager_ids"] = [
-            r["manager_id"]
-            for r in conn.execute(
-                "SELECT manager_id FROM manager_departments WHERE department_id = ?",
-                (dept["department_id"],),
-            )
-        ]
-        departments.append(dept)
-    return departments
-
-
-def _validate_department(conn, body: DepartmentRequest, department_id: str | None) -> list[str]:
-    """Categories must be real KB categories, and each category may
-    belong to only one department — otherwise "route to the department
-    that owns this category" has two answers."""
-    categories = sorted(set(body.categories))
-    invalid = [c for c in categories if c not in graph.CATEGORIES]
-    if invalid:
-        raise HTTPException(status_code=400, detail=f"Unknown category: {', '.join(invalid)}")
-    clash = conn.execute(
-        "SELECT department_id FROM departments WHERE name = ? COLLATE NOCASE AND department_id != ?",
-        (body.name.strip(), department_id or ""),
-    ).fetchone()
-    if clash:
-        raise HTTPException(status_code=400, detail="A department with that name already exists")
-    for other in _department_rows(conn):
-        if other["department_id"] == department_id:
-            continue
-        overlap = sorted(set(categories) & set(other["categories"]))
-        if overlap:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{', '.join(overlap)} already belongs to {other['name']}",
-            )
-    return categories
-
-
-@app.get("/api/admin/departments")
-def admin_list_departments(admin_id: str = Depends(auth.get_current_admin)):
-    conn = db.get_connection()
-    try:
-        return {"departments": _department_rows(conn), "categories": graph.CATEGORIES}
-    finally:
-        conn.close()
-
-
-@app.post("/api/admin/departments")
-def admin_create_department(body: DepartmentRequest, admin_id: str = Depends(auth.get_current_admin)):
-    conn = db.get_connection()
-    try:
-        categories = _validate_department(conn, body, None)
-        department_id = f"DEPT-{uuid.uuid4().hex[:8]}"
-        conn.execute(
-            "INSERT INTO departments (department_id, name, categories) VALUES (?, ?, ?)",
-            (department_id, body.name.strip(), json.dumps(categories)),
-        )
-        conn.commit()
-        return _department_rows(conn, "WHERE department_id = ?", (department_id,))[0]
-    finally:
-        conn.close()
-
-
-@app.put("/api/admin/departments/{department_id}")
-def admin_update_department(
-    department_id: str, body: DepartmentRequest, admin_id: str = Depends(auth.get_current_admin)
-):
-    conn = db.get_connection()
-    try:
-        if not conn.execute(
-            "SELECT 1 FROM departments WHERE department_id = ?", (department_id,)
-        ).fetchone():
-            raise HTTPException(status_code=404, detail="Department not found")
-        categories = _validate_department(conn, body, department_id)
-        conn.execute(
-            "UPDATE departments SET name = ?, categories = ? WHERE department_id = ?",
-            (body.name.strip(), json.dumps(categories), department_id),
-        )
-        conn.commit()
-        return _department_rows(conn, "WHERE department_id = ?", (department_id,))[0]
-    finally:
-        conn.close()
-
-
-@app.delete("/api/admin/departments/{department_id}")
-def admin_delete_department(department_id: str, admin_id: str = Depends(auth.get_current_admin)):
-    conn = db.get_connection()
-    try:
-        deleted = conn.execute(
-            "DELETE FROM departments WHERE department_id = ?", (department_id,)
-        ).rowcount
-        conn.commit()
-        if not deleted:
-            raise HTTPException(status_code=404, detail="Department not found")
-        return {"department_id": department_id, "deleted": True}
-    finally:
-        conn.close()
-
-
-@app.post("/api/admin/simulate-ticket")
-def admin_simulate_ticket(
-    body: SimulateTicketRequest, admin_id: str = Depends(auth.get_current_admin)
-):
-    """Run a ticket through the pipeline without persisting it — the
-    per-ticket classify/route trace view, admin-only. Mirrors what the
-    old src/ui/app.py Streamlit demo showed for a single ticket."""
-    ticket_text = body.ticket_text.strip()
-    if not ticket_text:
-        raise HTTPException(status_code=400, detail="ticket_text cannot be empty")
-    if body.channel == "email":
-        ticket_text = clean_email(ticket_text)
-
-    try:
-        result = runtime.get_graph().invoke(
-            {
-                "ticket_id": f"SIM-{uuid.uuid4().hex[:8]}",
-                "customer_id": body.customer_id or f"SIM-CUST-{uuid.uuid4().hex[:6]}",
-                "channel": body.channel,
-                "ticket_text": ticket_text,
-            }
-        )
-    except AIError as exc:
-        raise HTTPException(status_code=503, detail="The AI provider is unavailable right now") from exc
-    return result
-
-
-# ---------------------------------------------------------------------------
 # Manager endpoints
 # ---------------------------------------------------------------------------
 @app.get("/api/manager/departments")
 def manager_departments(manager_id: str = Depends(auth.get_current_manager)):
-    """The departments (and so the KB categories) this manager owns —
-    the scope their dashboard will filter incidents and tickets by."""
+    """The manager's department (a list of zero or one) and the KB
+    categories it owns — the scope of their dashboard."""
     conn = db.get_connection()
     try:
-        return _department_rows(
+        return admin.department_rows(
             conn,
-            "WHERE department_id IN "
-            "(SELECT department_id FROM manager_departments WHERE manager_id = ?)",
+            "WHERE department_id = (SELECT department_id FROM staff WHERE staff_id = ?)",
             (manager_id,),
         )
     finally:
         conn.close()
+
+
+@app.get("/api/meta")
+def meta():
+    """Public display configuration: admin-configured status labels and
+    the KB categories."""
+    return {
+        "status_labels": app_settings.get("statuses").model_dump(),
+        "categories": graph.CATEGORIES,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1257,16 +902,18 @@ def manager_departments(manager_id: str = Depends(auth.get_current_manager)):
 # ---------------------------------------------------------------------------
 @app.get("/api/debug/routing-policy")
 def debug_routing_policy():
+    """The live routing policy (admin settings applied)."""
+    policy = app_settings.get("routing")
     return {
-        "confidence_threshold": graph.CONFIDENCE_THRESHOLD,
-        "high_risk_confidence_threshold": graph.HIGH_RISK_CONFIDENCE_THRESHOLD,
-        "high_risk_categories": sorted(graph.HIGH_RISK_CATEGORIES),
-        "escalation_language_tags": sorted(graph.ESCALATION_LANGUAGE_TAGS),
+        "confidence_threshold": policy.confidence_threshold,
+        "high_risk_confidence_threshold": policy.high_risk_confidence_threshold,
+        "high_risk_categories": policy.high_risk_categories,
+        "escalation_language_tags": policy.escalation_language_tags,
         "categories": graph.CATEGORIES,
-        "max_clarification_attempts": graph.MAX_CLARIFICATION_ATTEMPTS,
+        "max_clarification_attempts": policy.max_clarification_attempts,
         "decision_order": [
             "escalation language tags (hard override -> human, always)",
-            f"high-risk category ({'/'.join(sorted(graph.HIGH_RISK_CATEGORIES))}) "
+            f"high-risk category ({'/'.join(policy.high_risk_categories) or 'none'}) "
             "below its stricter confidence bar -> human immediately, no "
             "clarify round at all",
             "other categories below the base confidence threshold -> "

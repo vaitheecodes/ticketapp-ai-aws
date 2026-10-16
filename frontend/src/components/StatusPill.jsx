@@ -1,10 +1,7 @@
-const STATUS_LABELS = {
-  in_progress: "in progress",
-  pending_customer: "pending customer",
-};
+import { statusLabel } from "../utils/statusLabels";
 
 export function StatusPill({ status }) {
-  return <span className={`pill pill-${status}`}>{STATUS_LABELS[status] || status}</span>;
+  return <span className={`pill pill-${status}`}>{statusLabel(status)}</span>;
 }
 
 const ROUTE_LABELS = { ai: "AI", clarify: "Clarifying", human: "Human" };

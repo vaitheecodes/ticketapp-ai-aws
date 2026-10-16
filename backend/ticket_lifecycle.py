@@ -8,17 +8,15 @@ AI pipeline.
 
 from __future__ import annotations
 
+from backend import app_settings, audit
 from backend.conversation import insert_ticket_message, now
 
 SYSTEM = "system"
 
-STATUS_LABELS = {
-    "open": "Open",
-    "in_progress": "In Progress",
-    "pending_customer": "Pending Customer",
-    "resolved": "Resolved",
-    "closed": "Closed",
-}
+
+def status_label(status: str) -> str:
+    """The admin-configured display label (app_settings "statuses")."""
+    return getattr(app_settings.get("statuses"), status)
 
 
 def record_created(conn, ticket_id: str, status: str, actor: str) -> None:
@@ -44,9 +42,11 @@ def set_status(conn, ticket_id: str, new_status: str, actor: str, *,
         "changed_at) VALUES (?, ?, ?, ?, ?)",
         (ticket_id, row["status"], new_status, actor, now()),
     )
+    audit.record(conn, actor, "ticket.status_changed", "ticket", ticket_id,
+                 from_status=row["status"], to_status=new_status)
     if event:
         insert_ticket_message(
-            conn, ticket_id, "system", f"Status changed to {STATUS_LABELS[new_status]}.",
+            conn, ticket_id, "system", f"Status changed to {status_label(new_status)}.",
             customer_visible=customer_visible,
         )
     return True
@@ -59,6 +59,8 @@ def record_assignment(conn, ticket_id: str, from_user: str | None, to_user: str 
         "changed_at) VALUES (?, ?, ?, ?, ?)",
         (ticket_id, from_user, to_user, actor, now()),
     )
+    audit.record(conn, actor, "ticket.assignment_changed", "ticket", ticket_id,
+                 from_user=from_user, to_user=to_user)
 
 
 def set_assignee(conn, ticket_id: str, new_assignee: str | None, actor: str) -> bool:

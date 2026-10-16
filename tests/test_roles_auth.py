@@ -303,7 +303,7 @@ def test_department_crud_and_validation(client):
     assert client.delete(f"/api/admin/departments/{dept_id}", headers=headers).status_code == 404
 
 
-def test_admin_assigns_manager_departments_and_manager_sees_them(client):
+def test_admin_sets_a_managers_single_department(client):
     headers = _admin_headers(client)
     depts = client.get("/api/admin/departments", headers=headers).json()["departments"]
     network = next(d for d in depts if d["name"] == "Network")
@@ -311,9 +311,10 @@ def test_admin_assigns_manager_departments_and_manager_sees_them(client):
     staff = client.get("/api/admin/staff", headers=headers).json()
     (row,) = [s for s in staff if s["email"] == manager["email"]]
 
-    res = client.put(f"/api/admin/staff/{row['staff_id']}/departments",
-                     json={"department_ids": [network["department_id"]]}, headers=headers)
+    res = client.patch(f"/api/admin/staff/{row['staff_id']}",
+                       json={"department_id": network["department_id"]}, headers=headers)
     assert res.status_code == 200
+    assert res.json()["department_name"] == "Network"
 
     mine = client.get("/api/manager/departments", headers=_headers_for(client, "manager")).json()
     assert [d["name"] for d in mine] == ["Network"]
@@ -323,8 +324,9 @@ def test_admin_assigns_manager_departments_and_manager_sees_them(client):
 def test_technicians_cannot_own_departments(client):
     headers = _admin_headers(client)
     tech_id = _create_staff(client, role="technician", email="t3@example.com").json()["staff_id"]
-    res = client.put(f"/api/admin/staff/{tech_id}/departments", json={"department_ids": []},
-                     headers=headers)
+    depts = client.get("/api/admin/departments", headers=headers).json()["departments"]
+    res = client.patch(f"/api/admin/staff/{tech_id}", json={"department_id": depts[0]["department_id"]},
+                       headers=headers)
     assert res.status_code == 400
 
 

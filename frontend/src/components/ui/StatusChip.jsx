@@ -12,12 +12,15 @@
  * customer" read as the same family of fact.
  */
 
-const STATUS = {
-  open: { tone: "warn", label: "Open" },
-  in_progress: { tone: "info", label: "In Progress" },
-  pending_customer: { tone: "accent", label: "Pending Customer" },
-  resolved: { tone: "ok", label: "Resolved" },
-  closed: { tone: "neutral", label: "Closed" },
+import { statusLabel } from "../../utils/statusLabels";
+
+// Labels come from the admin's settings (utils/statusLabels.js).
+const STATUS_TONE = {
+  open: "warn",
+  in_progress: "info",
+  pending_customer: "accent",
+  resolved: "ok",
+  closed: "neutral",
 };
 
 const ROUTE = {
@@ -44,8 +47,7 @@ function Chip({ tone, label, title, dot = true }) {
 
 export function StatusChip({ status, label }) {
   if (!status) return null;
-  const meta = STATUS[status] || { tone: "neutral", label: titleCase(status) };
-  return <Chip tone={meta.tone} label={label || meta.label} />;
+  return <Chip tone={STATUS_TONE[status] || "neutral"} label={label || statusLabel(status)} />;
 }
 
 /* AI chat sessions have their own lifecycle (backend/chats.py), drawn

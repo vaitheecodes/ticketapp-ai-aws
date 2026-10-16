@@ -12,6 +12,7 @@ import ChatReviews from "../components/ChatReviews";
 import PortalHeader from "../components/PortalHeader";
 import StaffTicketRow from "../components/StaffTicketRow";
 import StaffTicketView from "../components/StaffTicketView";
+import { STATUS_KEYS, statusLabel } from "../utils/statusLabels";
 
 const VIEWS = [
   ["unassigned", "Unassigned"],
@@ -94,11 +95,11 @@ function Workspace() {
             <span>Status</span>
             <select id={statusId} value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">Any</option>
-              <option value="open">Open</option>
-              <option value="in_progress">In Progress</option>
-              <option value="pending_customer">Pending Customer</option>
-              <option value="resolved">Resolved</option>
-              <option value="closed">Closed</option>
+              {STATUS_KEYS.map((key) => (
+                <option key={key} value={key}>
+                  {statusLabel(key)}
+                </option>
+              ))}
             </select>
           </label>
         </div>

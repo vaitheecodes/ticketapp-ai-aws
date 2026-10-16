@@ -1431,3 +1431,57 @@
   background: var(--status-info-soft);
   font-size: var(--text-base);
 }
+
+/* ===========================================================================
+   Admin console: customers, settings, activity
+   ========================================================================= */
+
+.table-search {
+  width: 100%;
+  max-width: 28rem;
+  margin: 0 0 var(--space-3);
+}
+
+.settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-section .section-title,
+.settings-section > .hint,
+.settings-section .error,
+.settings-section .success-text {
+  margin: 0;
+}
+
+.settings-section .field-row {
+  flex-wrap: wrap;
+}
+
+.settings-section input[type="number"] {
+  max-width: 9rem;
+}
+
+.status-labels .field-group {
+  flex: 1 1 10rem;
+}
+
+.audit-filters {
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}

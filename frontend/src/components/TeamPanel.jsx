@@ -1,46 +1,36 @@
 import { useEffect, useId, useState } from "react";
 import { api } from "../api";
+import { generateTempPassword } from "../utils/password";
+import TempPasswordInput from "./TempPasswordInput";
 
 /* Admin Team page: technician/manager accounts and departments.
  *
  * Accounts are created with a temporary password the admin passes on
  * out of band; the backend forces a change on first sign-in. Departments
- * map to KB categories (each category to at most one department) and
- * managers own departments — that mapping is what later routes incidents
+ * map to KB categories (each category to at most one department) and each
+ * manager belongs to one department — that mapping is what routes incidents
  * and escalations to the right manager. */
 
 const ROLE_LABELS = { technician: "Technician", manager: "Manager" };
 
-function generateTempPassword() {
-  const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(14));
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
-}
-
-function TempPasswordInput({ id, value, onChange }) {
+function DepartmentSelect({ id, value, onChange, departments }) {
   return (
-    <div className="input-with-action">
-      <input
-        id={id}
-        type="text"
-        autoComplete="off"
-        spellCheck={false}
-        minLength={8}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        required
-      />
-      <button type="button" onClick={() => onChange(generateTempPassword())}>
-        Generate
-      </button>
-    </div>
+    <select id={id} value={value || ""} onChange={(e) => onChange(e.target.value)}>
+      <option value="">No department yet</option>
+      {departments.map((d) => (
+        <option key={d.department_id} value={d.department_id}>
+          {d.name}
+        </option>
+      ))}
+    </select>
   );
 }
 
-function AddStaffForm({ onCreated }) {
+function AddStaffForm({ departments, onCreated }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("technician");
+  const [departmentId, setDepartmentId] = useState("");
   const [tempPassword, setTempPassword] = useState(generateTempPassword);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -48,6 +38,7 @@ function AddStaffForm({ onCreated }) {
   const nameId = useId();
   const emailId = useId();
   const roleId = useId();
+  const departmentFieldId = useId();
   const passwordId = useId();
 
   async function handleSubmit(e) {
@@ -56,7 +47,13 @@ function AddStaffForm({ onCreated }) {
     setNotice("");
     setSaving(true);
     try {
-      const created = await api.adminCreateStaff(name.trim(), email.trim(), role, tempPassword);
+      const created = await api.adminCreateStaff(
+        name.trim(),
+        email.trim(),
+        role,
+        tempPassword,
+        role === "manager" ? departmentId : null,
+      );
       setNotice(
         `Created ${created.name} (${ROLE_LABELS[created.role]}) with temporary password ` +
           `${tempPassword}. Share it with them securely — they'll set their own on first sign-in.`,
@@ -106,6 +103,19 @@ function AddStaffForm({ onCreated }) {
             <option value="manager">Manager</option>
           </select>
         </div>
+        {role === "manager" && (
+          <div className="field-group">
+            <label className="field-label" htmlFor={departmentFieldId}>
+              Department
+            </label>
+            <DepartmentSelect
+              id={departmentFieldId}
+              value={departmentId}
+              onChange={setDepartmentId}
+              departments={departments}
+            />
+          </div>
+        )}
         <div className="field-group" style={{ flex: 1 }}>
           <label className="field-label" htmlFor={passwordId}>
             Temporary password
@@ -172,25 +182,31 @@ function ResetPasswordForm({ person, onDone, onCancel }) {
   );
 }
 
-function ManagerDepartmentsForm({ person, departments, onDone, onCancel }) {
-  const [selected, setSelected] = useState(new Set(person.department_ids));
+function EditStaffForm({ person, departments, onDone, onCancel }) {
+  const [name, setName] = useState(person.name);
+  const [email, setEmail] = useState(person.email);
+  const [role, setRole] = useState(person.role);
+  const [departmentId, setDepartmentId] = useState(person.department_id || "");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-
-  function toggle(id) {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelected(next);
-  }
+  const nameId = useId();
+  const emailId = useId();
+  const roleId = useId();
+  const departmentFieldId = useId();
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
     setError("");
     try {
-      await api.adminSetManagerDepartments(person.staff_id, [...selected]);
-      onDone(`Updated ${person.name}'s departments.`);
+      const changes = { name: name.trim(), email: email.trim(), role };
+      if (role === "manager") changes.department_id = departmentId || null;
+      await api.adminUpdateStaff(person.staff_id, changes);
+      onDone(
+        role !== person.role
+          ? `${name.trim()} is now a ${ROLE_LABELS[role].toLowerCase()} and has been signed out.`
+          : `Updated ${name.trim()}.`,
+      );
     } catch (err) {
       setError(err.message);
       setSaving(false);
@@ -199,22 +215,52 @@ function ManagerDepartmentsForm({ person, departments, onDone, onCancel }) {
 
   return (
     <form className="inline-form" onSubmit={handleSubmit}>
-      <fieldset className="checkbox-grid">
-        <legend className="field-label">Departments {person.name} manages</legend>
-        {departments.map((d) => (
-          <label key={d.department_id} className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={selected.has(d.department_id)}
-              onChange={() => toggle(d.department_id)}
-            />
-            {d.name}
+      <div className="field-row">
+        <div className="field-group" style={{ flex: 1 }}>
+          <label className="field-label" htmlFor={nameId}>
+            Name
           </label>
-        ))}
-      </fieldset>
+          <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} required />
+        </div>
+        <div className="field-group" style={{ flex: 1 }}>
+          <label className="field-label" htmlFor={emailId}>
+            Email
+          </label>
+          <input id={emailId} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </div>
+      </div>
+      <div className="field-row">
+        <div className="field-group">
+          <label className="field-label" htmlFor={roleId}>
+            Role
+          </label>
+          <select id={roleId} value={role} onChange={(e) => setRole(e.target.value)}>
+            <option value="technician">Technician</option>
+            <option value="manager">Manager</option>
+          </select>
+        </div>
+        {role === "manager" && (
+          <div className="field-group">
+            <label className="field-label" htmlFor={departmentFieldId}>
+              Department
+            </label>
+            <DepartmentSelect
+              id={departmentFieldId}
+              value={departmentId}
+              onChange={setDepartmentId}
+              departments={departments}
+            />
+          </div>
+        )}
+      </div>
+      {role !== person.role && (
+        <p className="hint" style={{ margin: 0 }}>
+          Changing the role signs {person.name} out. Technicians don't belong to a department.
+        </p>
+      )}
       <div className="row-actions">
         <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? "Saving..." : "Save departments"}
+          {saving ? "Saving..." : "Save changes"}
         </button>
         <button type="button" onClick={onCancel}>
           Cancel
@@ -226,11 +272,10 @@ function ManagerDepartmentsForm({ person, departments, onDone, onCancel }) {
 }
 
 function StaffTable({ staff, departments, workload, onChanged }) {
-  // { staffId, kind: "reset" | "departments" } — at most one inline editor open.
+  // { staffId, kind: "reset" | "edit" } — at most one inline editor open.
   const [editing, setEditing] = useState(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const deptName = Object.fromEntries(departments.map((d) => [d.department_id, d.name]));
 
   async function toggleActive(person) {
     setError("");
@@ -269,7 +314,7 @@ function StaffTable({ staff, departments, workload, onChanged }) {
               <th>Email</th>
               <th>Role</th>
               <th>Status</th>
-              <th>Departments / workload</th>
+              <th>Department / workload</th>
               <th>
                 <span className="sr-only">Actions</span>
               </th>
@@ -300,24 +345,19 @@ function StaffTable({ staff, departments, workload, onChanged }) {
                   </td>
                   <td className="wrap">
                     {p.role === "manager"
-                      ? p.department_ids.map((id) => deptName[id]).filter(Boolean).join(", ") ||
-                        "None assigned"
+                      ? p.department_name || "No department"
                       : load
                         ? `${load.active_count || 0} active · ${load.resolved_count || 0} resolved`
                         : "—"}
                   </td>
                   <td>
                     <div className="row-actions">
-                      {p.role === "manager" && (
-                        <button
-                          aria-expanded={open === "departments"}
-                          onClick={() =>
-                            setEditing(open === "departments" ? null : { staffId: p.staff_id, kind: "departments" })
-                          }
-                        >
-                          Departments
-                        </button>
-                      )}
+                      <button
+                        aria-expanded={open === "edit"}
+                        onClick={() => setEditing(open === "edit" ? null : { staffId: p.staff_id, kind: "edit" })}
+                      >
+                        Edit
+                      </button>
                       <button
                         aria-expanded={open === "reset"}
                         onClick={() =>
@@ -341,7 +381,7 @@ function StaffTable({ staff, departments, workload, onChanged }) {
                       {open === "reset" ? (
                         <ResetPasswordForm person={p} onDone={done} onCancel={() => setEditing(null)} />
                       ) : (
-                        <ManagerDepartmentsForm
+                        <EditStaffForm
                           person={p}
                           departments={departments}
                           onDone={done}
@@ -586,7 +626,7 @@ export default function TeamPanel() {
         <h2 id="team-heading" className="section-title">
           Team members
         </h2>
-        <AddStaffForm onCreated={refresh} />
+        <AddStaffForm departments={departments} onCreated={refresh} />
         <StaffTable staff={staff} departments={departments} workload={workload} onChanged={refresh} />
       </section>
       <DepartmentsSection

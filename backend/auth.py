@@ -10,10 +10,10 @@ three identity tables and the token carries the role, which the frontend
 uses to pick a portal. Emails are kept unique across tables (checked on
 every account creation) so that lookup is never ambiguous.
 
-Staff and admin dependencies re-read their row on every request rather
-than trusting the token alone, so a deactivated account or a pending
-forced password change takes effect immediately, not when the 24h token
-expires.
+Every dependency re-reads the user's row on each request rather than
+trusting the token alone, so a deactivated account (staff or customer) or
+a pending forced password change takes effect immediately, not when the
+24h token expires. Failed sign-ins are recorded in the audit log.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from backend import db
+from backend import audit, db
 
 logger = logging.getLogger(__name__)
 
@@ -197,16 +197,17 @@ def login(email: str, password: str) -> dict:
         if row:
             candidates.append((row, row["role"], bool(row["must_change_password"]), bool(row["active"])))
         row = conn.execute(
-            "SELECT customer_id AS id, name, password_hash FROM customers "
-            "WHERE email = ? COLLATE NOCASE",
+            "SELECT customer_id AS id, name, password_hash, active, must_change_password "
+            "FROM customers WHERE email = ? COLLATE NOCASE",
             (email,),
         ).fetchone()
         if row:
-            candidates.append((row, "customer", False, True))
+            candidates.append((row, "customer", bool(row["must_change_password"]), bool(row["active"])))
 
         for row, role, must_change, active in candidates:
             if verify_password(password, row["password_hash"]):
                 if not active:
+                    _login_failed(conn, email, "deactivated", row["id"])
                     raise HTTPException(status_code=403, detail="This account has been deactivated")
                 return {
                     "user_id": row["id"],
@@ -215,9 +216,18 @@ def login(email: str, password: str) -> dict:
                     "must_change_password": must_change,
                     "token": create_token(row["id"], role),
                 }
+        _login_failed(conn, email, "bad_credentials", candidates[0][0]["id"] if candidates else None)
         raise HTTPException(status_code=401, detail="Invalid email or password")
     finally:
         conn.close()
+
+
+def _login_failed(conn, email: str, reason: str, account_id: str | None) -> None:
+    """Audit a failed sign-in: the attempted email (truncated), why, and
+    the matching account if any. Never the password."""
+    audit.record(conn, audit.ANONYMOUS, "auth.login_failed", "account", account_id,
+                 email=email[:254], reason=reason)
+    conn.commit()
 
 
 def change_password(user: dict, current_password: str, new_password: str) -> None:
@@ -232,9 +242,9 @@ def change_password(user: dict, current_password: str, new_password: str) -> Non
         ).fetchone()
         if row is None or not verify_password(current_password, row["password_hash"]):
             raise HTTPException(status_code=400, detail="Current password is incorrect")
-        if table == "staff":
+        if table in ("staff", "customers"):
             conn.execute(
-                "UPDATE staff SET password_hash = ?, must_change_password = 0 WHERE staff_id = ?",
+                f"UPDATE {table} SET password_hash = ?, must_change_password = 0 WHERE {id_col} = ?",
                 (hash_password(new_password), user["id"]),
             )
         else:
@@ -242,6 +252,7 @@ def change_password(user: dict, current_password: str, new_password: str) -> Non
                 f"UPDATE {table} SET password_hash = ? WHERE {id_col} = ?",
                 (hash_password(new_password), user["id"]),
             )
+        audit.record(conn, user["id"], "auth.password_changed", "account", user["id"])
         conn.commit()
     finally:
         conn.close()
@@ -277,12 +288,11 @@ def _load_user(credentials: HTTPAuthorizationCredentials | None) -> dict:
     if row is None:
         raise HTTPException(status_code=401, detail="Account no longer exists")
     row = dict(row)
-    if table == "staff":
-        # A role change by the admin invalidates tokens minted for the old role.
-        if row["role"] != role:
-            raise HTTPException(status_code=401, detail="Invalid or expired token")
-        if not row["active"]:
-            raise HTTPException(status_code=403, detail="This account has been deactivated")
+    # A role change by the admin invalidates tokens minted for the old role.
+    if table == "staff" and row["role"] != role:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if not row.get("active", 1):
+        raise HTTPException(status_code=403, detail="This account has been deactivated")
     return {
         "id": payload["sub"],
         "role": role,

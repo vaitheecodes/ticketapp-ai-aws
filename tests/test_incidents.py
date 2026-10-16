@@ -88,7 +88,7 @@ def _admin(client):
 
 
 def _demo_manager(client):
-    """Owns Monitoring & Alerts + Infrastructure (SERVER_MONITORING)."""
+    """Manages Infrastructure (AGENT, SERVER_MONITORING, ...)."""
     (p,) = [p for p in seed_data.DEMO_STAFF if p["role"] == "manager"]
     return _login(client, p["email"], p["password"])
 
@@ -101,8 +101,8 @@ def _network_manager(client):
         "temporary_password": "temp-pass-123"}, headers=admin).json()["staff_id"]
     depts = client.get("/api/admin/departments", headers=admin).json()["departments"]
     network = next(d for d in depts if d["name"] == "Network")
-    client.put(f"/api/admin/staff/{staff_id}/departments",
-               json={"department_ids": [network["department_id"]]}, headers=admin)
+    client.patch(f"/api/admin/staff/{staff_id}",
+                 json={"department_id": network["department_id"]}, headers=admin)
     headers = _login(client, email, "temp-pass-123")
     client.post("/api/auth/change-password",
                 json={"current_password": "temp-pass-123", "new_password": "real-pass-456"}, headers=headers)

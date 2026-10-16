@@ -127,6 +127,7 @@ export const api = {
     }),
 
   categories: () => request("/categories"),
+  meta: () => request("/meta"),
   ticketsMine: () => request("/tickets/mine", { auth: true }),
   // Raise a ticket: email-style, no chat.
   ticketsCreate: ({ subject, category, priority, description }) =>
@@ -221,12 +222,14 @@ export const api = {
     }),
 
   adminStaff: () => request("/admin/staff", { auth: true }),
-  adminCreateStaff: (name, email, role, temporary_password) =>
+  adminCreateStaff: (name, email, role, temporary_password, department_id) =>
     request("/admin/staff", {
       method: "POST",
-      body: { name, email, role, temporary_password },
+      body: { name, email, role, temporary_password, department_id: department_id || null },
       auth: true,
     }),
+  adminUpdateStaff: (staffId, changes) =>
+    request(`/admin/staff/${staffId}`, { method: "PATCH", body: changes, auth: true }),
   adminSetStaffActive: (staffId, active) =>
     request(`/admin/staff/${staffId}/${active ? "activate" : "deactivate"}`, {
       method: "POST",
@@ -238,12 +241,36 @@ export const api = {
       body: { temporary_password },
       auth: true,
     }),
-  adminSetManagerDepartments: (staffId, department_ids) =>
-    request(`/admin/staff/${staffId}/departments`, {
-      method: "PUT",
-      body: { department_ids },
+
+  adminCustomers: (q) =>
+    request(`/admin/customers${q ? `?q=${encodeURIComponent(q)}` : ""}`, { auth: true }),
+  adminCreateCustomer: (name, email, temporary_password) =>
+    request("/admin/customers", { method: "POST", body: { name, email, temporary_password }, auth: true }),
+  adminUpdateCustomer: (customerId, changes) =>
+    request(`/admin/customers/${customerId}`, { method: "PATCH", body: changes, auth: true }),
+  adminSetCustomerActive: (customerId, active) =>
+    request(`/admin/customers/${customerId}/${active ? "activate" : "deactivate"}`, {
+      method: "POST",
       auth: true,
     }),
+  adminResetCustomerPassword: (customerId, temporary_password) =>
+    request(`/admin/customers/${customerId}/reset-password`, {
+      method: "POST",
+      body: { temporary_password },
+      auth: true,
+    }),
+
+  adminSettings: () => request("/admin/settings", { auth: true }),
+  adminSaveSettings: (section, values) =>
+    request(`/admin/settings/${section}`, { method: "PUT", body: values, auth: true }),
+  adminResetSettings: (section) =>
+    request(`/admin/settings/${section}`, { method: "DELETE", auth: true }),
+
+  adminAudit: (filters = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
+    return request(`/admin/audit?${params}`, { auth: true });
+  },
 
   adminDepartments: () => request("/admin/departments", { auth: true }),
   adminCreateDepartment: (name, categories) =>

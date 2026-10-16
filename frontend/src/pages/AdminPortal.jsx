@@ -1,7 +1,10 @@
 import { useEffect, useId, useState } from "react";
 import { api } from "../api";
 import PortalHeader from "../components/PortalHeader";
+import AuditPanel from "../components/AuditPanel";
 import ChatReviews from "../components/ChatReviews";
+import CustomersPanel from "../components/CustomersPanel";
+import SettingsPanel from "../components/SettingsPanel";
 import IncidentsPanel from "../components/IncidentsPanel";
 import RoutingPolicyPanel from "../components/RoutingPolicyPanel";
 import TeamPanel from "../components/TeamPanel";
@@ -271,11 +274,20 @@ export default function AdminPortal() {
         <button className={tab === "team" ? "active" : ""} onClick={() => setTab("team")}>
           Team
         </button>
+        <button className={tab === "customers" ? "active" : ""} onClick={() => setTab("customers")}>
+          Customers
+        </button>
         <button className={tab === "reviews" ? "active" : ""} onClick={() => setTab("reviews")}>
           Chat Reviews
         </button>
         <button className={tab === "incidents" ? "active" : ""} onClick={() => setTab("incidents")}>
           Incidents
+        </button>
+        <button className={tab === "activity" ? "active" : ""} onClick={() => setTab("activity")}>
+          Activity
+        </button>
+        <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
+          Settings
         </button>
         <button className={tab === "try" ? "active" : ""} onClick={() => setTab("try")}>
           Try a Ticket
@@ -289,6 +301,9 @@ export default function AdminPortal() {
         {tab === "team" && <TeamPanel />}
         {tab === "reviews" && <ChatReviews />}
         {tab === "incidents" && <IncidentsPanel />}
+        {tab === "activity" && <AuditPanel />}
+        {tab === "settings" && <SettingsPanel />}
+        {tab === "customers" && <CustomersPanel />}
         {tab === "try" && <TryATicket />}
         {tab === "policy" && <RoutingPolicyPanel />}
       </div>

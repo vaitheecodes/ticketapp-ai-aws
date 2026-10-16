@@ -19,19 +19,13 @@ import { api } from "../api";
 import { categoryLabel } from "../utils/categories";
 import { Markdown } from "../utils/markdown";
 import { absoluteTime, relativeTime } from "../utils/time";
+import { STATUS_KEYS, statusLabel } from "../utils/statusLabels";
 import { formatBytes } from "../utils/text";
 import { PaperclipIcon } from "./AttachmentPicker";
 import ChatMessage from "./ui/ChatMessage";
 import { IncidentStatusChip, StatusChip } from "./ui/StatusChip";
 
-const STATUSES = [
-  ["open", "Open"],
-  ["in_progress", "In Progress"],
-  ["pending_customer", "Pending Customer"],
-  ["resolved", "Resolved"],
-  ["closed", "Closed"],
-];
-const STATUS_LABEL = Object.fromEntries(STATUSES);
+const statusOptions = () => STATUS_KEYS.map((key) => [key, statusLabel(key)]);
 
 function initials(name) {
   const parts = (name || "").trim().split(/\s+/).filter(Boolean);
@@ -257,7 +251,7 @@ function Composer({ ws, onSaved }) {
               Then set status to
             </label>
             <select id={statusId} value={setStatus} onChange={(e) => setSetStatus(e.target.value)}>
-              {STATUSES.map(([value, label]) => (
+              {statusOptions().map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -283,8 +277,8 @@ function History({ ws }) {
     ...ws.status_history.map((h) => ({
       at: h.changed_at,
       text: h.from_status
-        ? `${STATUS_LABEL[h.from_status]} → ${STATUS_LABEL[h.to_status]}`
-        : `Created as ${STATUS_LABEL[h.to_status]}`,
+        ? `${statusLabel(h.from_status)} → ${statusLabel(h.to_status)}`
+        : `Created as ${statusLabel(h.to_status)}`,
       by: h.changed_by_name,
     })),
     ...ws.assignment_history.map((h) => ({
@@ -414,7 +408,7 @@ export default function StaffTicketView({ ticketId, onChanged }) {
                 disabled={busy}
                 onChange={(e) => run(() => api.staffSetStatus(ticket.ticket_id, e.target.value))}
               >
-                {STATUSES.map(([value, label]) => (
+                {statusOptions().map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>

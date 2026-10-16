@@ -46,10 +46,12 @@ _LEGACY_STATUSES = {"awaiting_reply": "pending_customer", "assigned": "in_progre
 # through the API.
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS customers (
-    customer_id   TEXT PRIMARY KEY,
-    name          TEXT NOT NULL,
-    email         TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL
+    customer_id          TEXT PRIMARY KEY,
+    name                 TEXT NOT NULL,
+    email                TEXT NOT NULL UNIQUE,
+    password_hash        TEXT NOT NULL,
+    active               INTEGER NOT NULL DEFAULT 1,
+    must_change_password INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS staff (
@@ -59,7 +61,9 @@ CREATE TABLE IF NOT EXISTS staff (
     password_hash        TEXT NOT NULL,
     role                 TEXT NOT NULL DEFAULT 'technician',
     active               INTEGER NOT NULL DEFAULT 1,
-    must_change_password INTEGER NOT NULL DEFAULT 0
+    must_change_password INTEGER NOT NULL DEFAULT 0,
+    -- Managers only: the one department they manage. Technicians have none.
+    department_id        TEXT REFERENCES departments(department_id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS admins (
@@ -241,6 +245,29 @@ CREATE TABLE IF NOT EXISTS ticket_embeddings (
     vector    TEXT NOT NULL
 );
 
+-- Who did what, for the admin's audit log. detail is a small JSON object
+-- (ids, statuses, names) — never message bodies, passwords or tokens.
+CREATE TABLE IF NOT EXISTS audit_events (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_id  TEXT NOT NULL,
+    action    TEXT NOT NULL,
+    entity    TEXT NOT NULL,
+    entity_id TEXT,
+    detail    TEXT NOT NULL DEFAULT '{}',
+    at        TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_events_at ON audit_events(at);
+CREATE INDEX IF NOT EXISTS idx_audit_events_entity ON audit_events(entity, entity_id);
+
+-- Admin-editable application settings (backend/app_settings.py): one JSON
+-- value per section. A missing row means "use the env/default value".
+CREATE TABLE IF NOT EXISTS app_settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_by TEXT,
+    updated_at TIMESTAMP NOT NULL
+);
+
 -- Files live on disk under uploads_dir() with a server-generated
 -- stored_name; `filename` is the customer's original name, display only.
 CREATE TABLE IF NOT EXISTS attachments (
@@ -273,6 +300,8 @@ CREATE TABLE IF NOT EXISTS departments (
     categories    TEXT NOT NULL DEFAULT '[]'
 );
 
+-- Legacy (pre one-department-per-manager): read once by the migration
+-- that sets staff.department_id, kept for history, no longer written.
 CREATE TABLE IF NOT EXISTS manager_departments (
     manager_id    TEXT NOT NULL REFERENCES staff(staff_id) ON DELETE CASCADE,
     department_id TEXT NOT NULL REFERENCES departments(department_id) ON DELETE CASCADE,
@@ -338,6 +367,11 @@ _ADDED_COLUMNS = {
         ("ai_summary", "TEXT"),
         ("ai_suggestions", "TEXT"),
     ],
+    "customers": [
+        ("active", "INTEGER NOT NULL DEFAULT 1"),
+        ("must_change_password", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "staff": [("department_id", "TEXT REFERENCES departments(department_id) ON DELETE SET NULL")],
     "ticket_messages": [
         ("author_id", "TEXT"),
         ("visibility", "TEXT NOT NULL DEFAULT 'public_reply'"),
@@ -355,6 +389,13 @@ def _add_missing_columns(conn) -> None:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
     for old, new in _LEGACY_STATUSES.items():
         conn.execute("UPDATE tickets SET status = ? WHERE status = ?", (new, old))
+    # One department per manager: keep each manager's first legacy mapping.
+    conn.execute(
+        "UPDATE staff SET department_id = ("
+        "  SELECT md.department_id FROM manager_departments md "
+        "  WHERE md.manager_id = staff.staff_id ORDER BY md.rowid LIMIT 1) "
+        "WHERE role = 'manager' AND department_id IS NULL"
+    )
     # Messages from before visibility types: system notes were always shown
     # to the customer, so they become customer-visible system events.
     conn.execute(

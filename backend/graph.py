@@ -47,7 +47,7 @@ from typing import Literal, TypedDict
 from langgraph.graph import END, StateGraph
 from typing_extensions import NotRequired
 
-from backend import db, kb_retrieval
+from backend import app_settings, db, kb_retrieval
 from backend.ai_service import categorize_ticket as categorize_op
 from backend.ai_service import chat_response
 from backend.ai_service.schemas import CATEGORIES as _CATEGORIES
@@ -63,14 +63,11 @@ from backend.ai_service.schemas import (
 # ---------------------------------------------------------------------------
 # Routing config — ported from src/agent/state.py
 # ---------------------------------------------------------------------------
-CONFIDENCE_THRESHOLD = 0.75
-HIGH_RISK_CONFIDENCE_THRESHOLD = 0.90
-HIGH_RISK_CATEGORIES = {"ACCOUNT", "DATA"}
-ESCALATION_LANGUAGE_TAGS = {"offensive_language", "coordinated_syntax", "negation"}
-
-# Ambiguous tickets get this many clarifying rounds before decide_route
-# forces a human escalation instead of asking yet another question.
-MAX_CLARIFICATION_ATTEMPTS = 3
+# Thresholds, high-risk categories, escalation language tags and the
+# clarification limit are admin-editable: app_settings.get("routing")
+# (defaults: 75% base bar, 90% for ACCOUNT/DATA, all three language tags,
+# 3 clarifying rounds). Read on every decision, so a saved change applies
+# to the next message.
 
 # 17-category enum, ported from src/pipeline/config.py:CATEGORY_INTENTS
 CATEGORIES = list(_CATEGORIES)
@@ -185,7 +182,10 @@ def has_escalation_language(text: str) -> bool:
     on-topic a frustrated or abusive follow-up is (e.g. "thanks, but
     it's still not working" is topically a continuation, but the
     negation means it still needs a human, not an auto-answer)."""
-    return bool(set(_detect_language_tags(text)) & ESCALATION_LANGUAGE_TAGS)
+    return bool(
+        set(_detect_language_tags(text))
+        & set(app_settings.get("routing").escalation_language_tags)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +305,7 @@ def classify_ticket(state: TicketState) -> dict:
             # direct match — trust it over a conservative raw confidence
             # number for a short/common phrasing.
             confidence = max(confidence, grounded_confidence)
-        elif llm_confidence < CONFIDENCE_THRESHOLD:
+        elif llm_confidence < app_settings.get("routing").confidence_threshold:
             # LLM was unsure AND retrieval strongly points elsewhere —
             # trust the grounded KB match over an ungrounded guess.
             category, confidence = top["category"], grounded_confidence
@@ -331,11 +331,14 @@ def decide_route(state: TicketState) -> dict:
     tags = set(state.get("language_tags", []))
     clarification_attempts = state.get("clarification_attempts", 0)
 
-    triggered_tags = tags & ESCALATION_LANGUAGE_TAGS
+    policy = app_settings.get("routing")
+    max_attempts = policy.max_clarification_attempts
+    triggered_tags = tags & set(policy.escalation_language_tags)
     high_risk_below_bar = (
-        category in HIGH_RISK_CATEGORIES and confidence < HIGH_RISK_CONFIDENCE_THRESHOLD
+        category in policy.high_risk_categories
+        and confidence < policy.high_risk_confidence_threshold
     )
-    below_base_bar = confidence < CONFIDENCE_THRESHOLD
+    below_base_bar = confidence < policy.confidence_threshold
 
     if triggered_tags:
         # Hard override: fires immediately regardless of confidence, category,
@@ -352,20 +355,20 @@ def decide_route(state: TicketState) -> dict:
         # place to let the AI keep guessing.
         route, reason = "human", (
             f"high-risk category {category!r} requires confidence >= "
-            f"{HIGH_RISK_CONFIDENCE_THRESHOLD}, got {confidence:.2f} — "
+            f"{policy.high_risk_confidence_threshold}, got {confidence:.2f} — "
             "escalating immediately, no clarification for licensing/data risk"
         )
         clarification_attempts_out = clarification_attempts
-    elif below_base_bar and clarification_attempts < MAX_CLARIFICATION_ATTEMPTS:
+    elif below_base_bar and clarification_attempts < max_attempts:
         route, reason = "clarify", (
             f"confidence {confidence:.2f} for category {category!r} is below the "
             f"required bar (clarification attempt "
-            f"{clarification_attempts + 1}/{MAX_CLARIFICATION_ATTEMPTS})"
+            f"{clarification_attempts + 1}/{max_attempts})"
         )
         clarification_attempts_out = clarification_attempts + 1
     elif below_base_bar:
         route, reason = "human", (
-            f"still below the confidence bar after {MAX_CLARIFICATION_ATTEMPTS} "
+            f"still below the confidence bar after {max_attempts} "
             f"clarification attempts (confidence {confidence:.2f}, category "
             f"{category!r}) — forcing escalation"
         )

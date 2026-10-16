@@ -16,12 +16,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.graph import (  # noqa: E402
-    CONFIDENCE_THRESHOLD,
-    HIGH_RISK_CONFIDENCE_THRESHOLD,
-    MAX_CLARIFICATION_ATTEMPTS,
-    decide_route,
-)
+from backend import app_settings  # noqa: E402
+from backend.graph import decide_route  # noqa: E402
+
+# The routing policy is admin-editable (backend/app_settings.py); these
+# tests run against its defaults.
+_POLICY = app_settings.RoutingSettings()
+CONFIDENCE_THRESHOLD = _POLICY.confidence_threshold
+HIGH_RISK_CONFIDENCE_THRESHOLD = _POLICY.high_risk_confidence_threshold
+MAX_CLARIFICATION_ATTEMPTS = _POLICY.max_clarification_attempts
 
 VAGUE_CONFIDENCE = CONFIDENCE_THRESHOLD - 0.05
 CLEAR_CONFIDENCE = min(CONFIDENCE_THRESHOLD + 0.20, 1.0)
@@ -138,3 +141,20 @@ def test_clear_confidence_routes_to_ai_without_clarifying():
     result = decide_route(_state(confidence=CLEAR_CONFIDENCE, clarification_attempts=0))
     assert result["route"] == "ai"
     assert result["clarification_attempts"] == 0
+
+
+def test_admin_routing_settings_change_the_decision(monkeypatch):
+    """A saved policy applies to the next decision: with ALERTS marked
+    high-risk, a 0.85 ALERTS ticket escalates instead of auto-resolving;
+    with negation no longer an escalation tag, it doesn't force a human."""
+    state = {"category": "ALERTS", "confidence": 0.85, "language_tags": ["negation"],
+             "clarification_attempts": 0}
+    assert decide_route(state)["route"] == "human"  # default: negation forces a human
+
+    monkeypatch.setitem(app_settings._overrides, "routing", {
+        "escalation_language_tags": ["offensive_language"], "high_risk_categories": ["ALERTS"]})
+    assert decide_route(state)["route"] == "human"  # now: high-risk below its 0.90 bar
+    assert decide_route({**state, "confidence": 0.95})["route"] == "ai"
+
+    monkeypatch.setitem(app_settings._overrides, "routing", {"escalation_language_tags": []})
+    assert decide_route(state)["route"] == "ai"

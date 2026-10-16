@@ -33,7 +33,6 @@ import hashlib
 import json
 import logging
 import math
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -41,7 +40,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from backend import auth, db
+from backend import app_settings, audit, auth, db
 from backend.ai_service import AIError, correlate_incidents, provider, summarize_incident
 from backend.ai_service.schemas import (
     CorrelateInput,
@@ -61,23 +60,11 @@ CUSTOMER_NOTICE = "We're aware of this issue affecting multiple customers and ar
 
 
 # ---------------------------------------------------------------------------
-# Settings (read at call time so tests and the admin console can change them)
+# Settings (read at call time so the admin console can change them)
 # ---------------------------------------------------------------------------
-def _env_number(name: str, default, cast):
-    try:
-        return cast(os.environ.get(name, default))
-    except (TypeError, ValueError):
-        logger.warning("Invalid %s; using default %s", name, default)
-        return default
-
-
 def settings() -> dict:
-    return {
-        "window_hours": _env_number("INCIDENT_WINDOW_HOURS", 12, int),
-        "min_tickets": max(2, _env_number("INCIDENT_MIN_TICKETS", 3, int)),
-        "similarity": _env_number("INCIDENT_SIMILARITY", 0.80, float),
-        "routing_confidence": _env_number("INCIDENT_ROUTING_CONFIDENCE", 0.6, float),
-    }
+    """Admin settings > INCIDENT_* env vars > defaults (app_settings)."""
+    return app_settings.get("incidents").model_dump()
 
 
 # ---------------------------------------------------------------------------
@@ -356,8 +343,11 @@ _reviewer = auth.require_user("manager", "admin")
 
 
 def manager_department_ids(conn, manager_id: str) -> set[str]:
-    return {r["department_id"] for r in conn.execute(
-        "SELECT department_id FROM manager_departments WHERE manager_id = ?", (manager_id,))}
+    """A manager has one department (or none yet); a set for easy overlap checks."""
+    row = conn.execute(
+        "SELECT department_id FROM staff WHERE staff_id = ? AND department_id IS NOT NULL",
+        (manager_id,)).fetchone()
+    return {row["department_id"]} if row else set()
 
 
 def _cluster_departments(conn, incident_id: str) -> list[dict]:
@@ -511,6 +501,8 @@ def review_incident(incident_id: str, body: ReviewRequest, user: dict = Depends(
             "INSERT INTO incident_reviews (incident_id, reviewer, action, note, at) VALUES (?, ?, ?, ?, ?)",
             (incident_id, user["id"], body.action, body.note.strip(), now()),
         )
+        audit.record(conn, user["id"], f"incident.{body.action}", "incident", incident_id,
+                     status=_STATUS_FOR_ACTION[body.action])
         conn.commit()
     finally:
         conn.close()
@@ -548,6 +540,8 @@ def set_incident_departments(
             "INSERT INTO incident_reviews (incident_id, reviewer, action, note, at) VALUES (?, ?, ?, ?, ?)",
             (incident_id, user["id"], "departments_changed", ", ".join(names) or "Needs routing", now()),
         )
+        audit.record(conn, user["id"], "incident.departments_changed", "incident", incident_id,
+                     departments=names)
         conn.commit()
     finally:
         conn.close()

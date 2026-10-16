@@ -102,6 +102,8 @@ class Outbox(list):
     response or the stored thread."""
 
     def flush(self, background_tasks: BackgroundTasks) -> None:
+        if not email_utils.email_enabled():
+            return  # real email is off by default (EMAIL_ENABLED)
         for to, subject, body in self:
             background_tasks.add_task(email_utils.send_email, to, subject, body)
 
