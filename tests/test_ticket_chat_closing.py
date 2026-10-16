@@ -95,10 +95,9 @@ def _raise_ticket(client, headers, stub_result, ticket_text="how do I install th
 
 
 def _ticket_status(client, headers, ticket_id) -> str:
-    res = client.get("/api/tickets/mine", headers=headers)
+    res = client.get(f"/api/tickets/{ticket_id}", headers=headers)
     assert res.status_code == 200, res.text
-    (row,) = [t for t in res.json() if t["ticket_id"] == ticket_id]
-    return row["status"]
+    return res.json()["ticket"]["status"]
 
 
 _RESOLVED_RESULT = {

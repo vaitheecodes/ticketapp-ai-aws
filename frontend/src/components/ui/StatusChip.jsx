@@ -1,22 +1,22 @@
 /* One status vocabulary, used everywhere a ticket appears: the customer's
- * past tickets, the agent queue, My Tickets, the admin table, the simulator
- * trace. A reader should learn the colors once.
+ * My tickets, the technician queue, the admin table, the simulator trace.
+ * A reader should learn the colors once.
  *
- *   ok       resolved        the AI or an agent answered it
- *   accent   awaiting_reply  the AI is waiting on the customer
- *   info     assigned        a specific human has it
- *   warn     open            queued, nobody on it yet
- *   neutral  closed          terminal, archived
+ *   warn     open              waiting on the support team, nobody on it yet
+ *   info     in_progress       a technician has it
+ *   accent   pending_customer  waiting on the customer's reply
+ *   ok       resolved          the AI or a technician answered it
+ *   neutral  closed            terminal, archived
  *
  * Route chips share the scale so "handled by AI" and "waiting on the
  * customer" read as the same family of fact.
  */
 
 const STATUS = {
-  resolved: { tone: "ok", label: "Resolved" },
-  awaiting_reply: { tone: "accent", label: "Awaiting reply" },
-  assigned: { tone: "info", label: "Assigned" },
   open: { tone: "warn", label: "Open" },
+  in_progress: { tone: "info", label: "In Progress" },
+  pending_customer: { tone: "accent", label: "Pending Customer" },
+  resolved: { tone: "ok", label: "Resolved" },
   closed: { tone: "neutral", label: "Closed" },
 };
 

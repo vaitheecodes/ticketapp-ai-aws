@@ -22,6 +22,17 @@ from backend.seed_data import seed_demo_staff, seed_departments, seed_orders
 _DEFAULT_DB_PATH = Path(__file__).resolve().parent / "ticketapp.db"
 DB_PATH = Path(os.environ.get("DB_PATH") or _DEFAULT_DB_PATH)
 
+# Ticket statuses (customer- and staff-facing, one vocabulary):
+#   open              waiting on the support team (human queue, unassigned)
+#   in_progress       a technician has picked it up
+#   pending_customer  waiting on the customer (e.g. the AI asked a question)
+#   resolved          answered, by the AI or a technician
+#   closed            done; no further replies accepted
+TICKET_STATUSES = ("open", "in_progress", "pending_customer", "resolved", "closed")
+
+# Pre-Stage-2 status names -> current ones (migrated in place on startup).
+_LEGACY_STATUSES = {"awaiting_reply": "pending_customer", "assigned": "in_progress"}
+
 # Staff = technicians and managers, one table with a role column. The
 # single admin and customers stay in their own tables: customers own
 # tickets (FK), and the admin is bootstrapped from env, never created
@@ -63,15 +74,38 @@ CREATE TABLE IF NOT EXISTS tickets (
     status                 TEXT NOT NULL,
     assigned_technician_id TEXT REFERENCES staff(staff_id),
     clarification_attempts INTEGER NOT NULL DEFAULT 0,
-    created_at             TIMESTAMP NOT NULL
+    created_at             TIMESTAMP NOT NULL,
+    ticket_type            TEXT NOT NULL DEFAULT 'chat',
+    subject                TEXT,
+    priority               TEXT NOT NULL DEFAULT 'medium',
+    requested_category     TEXT,
+    contact_name           TEXT,
+    customer_last_read_at  TIMESTAMP
 );
 
+-- sender: customer | ai | staff | system. author_id is the staff_id for
+-- staff messages (null otherwise).
 CREATE TABLE IF NOT EXISTS ticket_messages (
     message_id  TEXT PRIMARY KEY,
     ticket_id   TEXT NOT NULL REFERENCES tickets(ticket_id),
     sender      TEXT NOT NULL,
     message     TEXT NOT NULL,
-    created_at  TIMESTAMP NOT NULL
+    created_at  TIMESTAMP NOT NULL,
+    author_id   TEXT
+);
+
+-- Files live on disk under uploads_dir() with a server-generated
+-- stored_name; `filename` is the customer's original name, display only.
+CREATE TABLE IF NOT EXISTS attachments (
+    attachment_id TEXT PRIMARY KEY,
+    ticket_id     TEXT NOT NULL REFERENCES tickets(ticket_id),
+    message_id    TEXT NOT NULL REFERENCES ticket_messages(message_id),
+    filename      TEXT NOT NULL,
+    stored_name   TEXT NOT NULL UNIQUE,
+    content_type  TEXT NOT NULL,
+    size_bytes    INTEGER NOT NULL,
+    uploaded_by   TEXT NOT NULL,
+    created_at    TIMESTAMP NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS orders (
@@ -143,6 +177,40 @@ def _migrate_agents_to_staff(conn) -> None:
         )
 
 
+# Columns added after the first release. CREATE TABLE IF NOT EXISTS
+# never alters an existing table, so older databases get them here.
+_ADDED_COLUMNS = {
+    "tickets": [
+        ("ticket_type", "TEXT NOT NULL DEFAULT 'chat'"),
+        ("subject", "TEXT"),
+        ("priority", "TEXT NOT NULL DEFAULT 'medium'"),
+        ("requested_category", "TEXT"),
+        ("contact_name", "TEXT"),
+        ("customer_last_read_at", "TIMESTAMP"),
+    ],
+    "ticket_messages": [("author_id", "TEXT")],
+}
+
+
+def _add_missing_columns(conn) -> None:
+    for table, columns in _ADDED_COLUMNS.items():
+        existing = _columns(conn, table)
+        for name, ddl in columns:
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+    for old, new in _LEGACY_STATUSES.items():
+        conn.execute("UPDATE tickets SET status = ? WHERE status = ?", (new, old))
+
+
+def uploads_dir() -> Path:
+    """Attachment storage, next to the database so it follows DB_PATH: on
+    App Service DB_PATH=/home/data/ticketapp.db puts uploads under
+    /home/data/uploads, which persists across restarts."""
+    path = Path(DB_PATH).parent / "uploads"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def init_db() -> None:
     # Reads the module attribute rather than the import-time constant so a
     # test (or a script) that repoints DB_PATH still gets its directory
@@ -156,6 +224,7 @@ def init_db() -> None:
         # an empty `staff` next to the legacy `agents` table.
         _migrate_agents_to_staff(conn)
         conn.executescript(SCHEMA)
+        _add_missing_columns(conn)
         conn.commit()
         seed_orders(conn)
         seed_departments(conn)

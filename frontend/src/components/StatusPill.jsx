@@ -1,5 +1,6 @@
 const STATUS_LABELS = {
-  awaiting_reply: "awaiting reply",
+  in_progress: "in progress",
+  pending_customer: "pending customer",
 };
 
 export function StatusPill({ status }) {

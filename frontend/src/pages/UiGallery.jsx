@@ -46,7 +46,7 @@ const TICKETS = [
   },
   {
     ticket_id: "TCK-1c93de77",
-    status: "awaiting_reply",
+    status: "pending_customer",
     route: "clarify",
     category: "SUPPORT",
     confidence: 0.42,
@@ -138,8 +138,8 @@ export default function UiGallery() {
       <Section title="Status vocabulary" note="Learned once, used in all three portals.">
         <div className="gallery-cluster">
           <StatusChip status="resolved" />
-          <StatusChip status="awaiting_reply" />
-          <StatusChip status="assigned" />
+          <StatusChip status="pending_customer" />
+          <StatusChip status="in_progress" />
           <StatusChip status="open" />
           <StatusChip status="closed" />
         </div>

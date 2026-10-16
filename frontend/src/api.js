@@ -76,6 +76,42 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
   return res.json();
 }
 
+async function errorDetail(res) {
+  try {
+    const data = await res.json();
+    return typeof data.detail === "string" ? data.detail : res.statusText;
+  } catch {
+    return res.statusText;
+  }
+}
+
+// Multipart upload; the browser sets the boundary Content-Type itself.
+async function upload(path, formData) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${getToken()}` },
+    body: formData,
+  });
+  if (!res.ok) throw new Error(await errorDetail(res));
+  return res.json();
+}
+
+// Attachments need the bearer token, so a plain <a href> can't fetch them.
+async function downloadFile(path, filename) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error(await errorDetail(res));
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export const api = {
   // Customer signup is the only public signup; staff are created by the admin.
   customerSignup: (name, email, password) =>
@@ -90,12 +126,41 @@ export const api = {
       auth: true,
     }),
 
+  categories: () => request("/categories"),
   ticketsMine: () => request("/tickets/mine", { auth: true }),
-  ticketsNew: (ticket_text, channel) =>
-    request("/tickets/new", { method: "POST", body: { ticket_text, channel }, auth: true }),
+  // Start a chat: the pre-chat form's one-line issue opens the conversation.
+  ticketsNew: (ticket_text, channel, { subject, category, contact_name } = {}) =>
+    request("/tickets/new", {
+      method: "POST",
+      body: { ticket_text, channel, subject, category: category || null, contact_name },
+      auth: true,
+    }),
+  // Raise a ticket: email-style, no chat.
+  ticketsCreate: ({ subject, category, priority, description }) =>
+    request("/tickets", {
+      method: "POST",
+      body: { subject, category: category || null, priority, description },
+      auth: true,
+    }),
+  ticketDetail: (ticketId) => request(`/tickets/${ticketId}`, { auth: true }),
   ticketMessages: (ticketId) => request(`/tickets/${ticketId}/messages`, { auth: true }),
   ticketChat: (ticketId, message) =>
     request(`/tickets/${ticketId}/chat`, { method: "POST", body: { message }, auth: true }),
+  ticketReply: (ticketId, message) =>
+    request(`/tickets/${ticketId}/reply`, { method: "POST", body: { message }, auth: true }),
+  ticketReopen: (ticketId) =>
+    request(`/tickets/${ticketId}/reopen`, { method: "POST", auth: true }),
+  uploadAttachments: (ticketId, messageId, files) => {
+    const form = new FormData();
+    form.append("message_id", messageId);
+    for (const file of files) form.append("files", file);
+    return upload(`/tickets/${ticketId}/attachments`, form);
+  },
+  downloadAttachment: (ticketId, attachment) =>
+    downloadFile(
+      `/tickets/${ticketId}/attachments/${attachment.attachment_id}`,
+      attachment.filename,
+    ),
 
   queue: () => request("/queue", { auth: true }),
   queueMine: () => request("/queue/mine", { auth: true }),

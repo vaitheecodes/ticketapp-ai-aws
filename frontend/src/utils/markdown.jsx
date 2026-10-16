@@ -94,7 +94,10 @@ function toBlocks(source) {
   return blocks;
 }
 
-export function Markdown({ children }) {
+/* `breaks`: keep single newlines inside a paragraph as line breaks. Email
+ * replies (the ticket thread) put the signature and short address lines
+ * on their own lines on purpose; chat replies wrap freely. */
+export function Markdown({ children, breaks = false }) {
   const source = typeof children === "string" ? children : "";
   if (!source.trim()) return null;
 
@@ -116,6 +119,18 @@ export function Markdown({ children }) {
                 <li key={j}>{renderInline(item, `l${i}-${j}`)}</li>
               ))}
             </List>
+          );
+        }
+        if (breaks) {
+          return (
+            <p key={i}>
+              {block.lines.map((line, j) => (
+                <span key={j}>
+                  {j > 0 && <br />}
+                  {renderInline(line, `p${i}-${j}`)}
+                </span>
+              ))}
+            </p>
           );
         }
         return <p key={i}>{renderInline(block.lines.join(" "), `p${i}`)}</p>;

@@ -104,10 +104,13 @@ def _raise_ticket(client, headers, stub_results, ticket_text="can I see my invoi
 
 
 def _ticket_row(client, headers, ticket_id) -> dict:
-    res = client.get("/api/tickets/mine", headers=headers)
-    assert res.status_code == 200, res.text
-    (row,) = [t for t in res.json() if t["ticket_id"] == ticket_id]
-    return row
+    # Internal fields (route, ticket_text with the case summary) aren't
+    # exposed to customers, so read the row directly.
+    conn = db.get_connection()
+    try:
+        return dict(conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone())
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------

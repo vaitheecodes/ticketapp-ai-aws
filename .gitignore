@@ -35,6 +35,8 @@ backend/*.db
 backend/*.db-journal
 backend/*.db-wal
 backend/*.db-shm
+# Customer attachments (db.uploads_dir(), next to the DB)
+backend/uploads/
 
 # React frontend
 frontend/node_modules/

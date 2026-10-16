@@ -21,7 +21,7 @@ import ChatMessage from "./ui/ChatMessage";
 
 const ESCALATED_NOTE = "This conversation has been escalated to a human agent.";
 
-export default function TicketChat({ ticketId, initialMessages, readOnly = false }) {
+export default function TicketChat({ ticketId, initialMessages, readOnly = false, onRoute }) {
   const [messages, setMessages] = useState(initialMessages);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -67,6 +67,7 @@ export default function TicketChat({ ticketId, initialMessages, readOnly = false
       }
 
       setMessages((prev) => [...prev, ...incoming]);
+      onRoute?.(res.route);
     } catch (err) {
       setError(err.message);
       inputRef.current?.focus();

@@ -1,5 +1,6 @@
 @import "./styles/tokens.css";
 @import "./styles/components.css";
+@import "./styles/portal.css";
 
 /* ===========================================================================
    Page styles.
@@ -463,9 +464,9 @@ a:focus-visible {
 }
 
 .pill-open { background: var(--color-warning-soft); color: var(--color-warning); }
-.pill-assigned { background: var(--color-info-soft); color: var(--color-info); }
+.pill-in_progress { background: var(--color-info-soft); color: var(--color-info); }
 .pill-resolved { background: var(--color-success-soft); color: var(--color-success); }
-.pill-awaiting_reply { background: var(--color-info-soft); color: var(--color-info); }
+.pill-pending_customer { background: var(--color-primary-soft); color: var(--accent-400); }
 .pill-closed { background: var(--color-surface-muted); color: var(--color-text-muted); }
 .pill-ai { background: var(--color-primary-soft); color: var(--color-primary); }
 .pill-clarify { background: var(--color-info-soft); color: var(--color-info); }

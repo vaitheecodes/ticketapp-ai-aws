@@ -48,7 +48,7 @@ from langgraph.graph import END, StateGraph
 from openai import AzureOpenAI
 from typing_extensions import NotRequired
 
-from backend import db, kb_retrieval
+from backend import db, email_utils, kb_retrieval
 
 load_dotenv()
 
@@ -139,6 +139,13 @@ class TicketState(TypedDict):
     # ticket/decide_route "ai" resolution -- tweaks the prompt to treat
     # the transcript as an ongoing exchange it should build on.
     continuation: NotRequired[bool]
+
+    # "email" for ticket-type requests (raised via the form, answered in
+    # an email-style thread): the LLM writes only the body and it is
+    # wrapped in a fixed greeting/closing/signature addressed to
+    # customer_name. Absent/"chat" keeps the conversational chat reply.
+    reply_format: NotRequired[Literal["chat", "email"]]
+    customer_name: NotRequired[str]
 
     route: NotRequired[Literal["ai", "human", "clarify"]]
     route_reason: NotRequired[str]
@@ -518,6 +525,18 @@ def _format_kb_grounding(candidates: list[dict]) -> str:
     )
 
 
+_EMAIL_BODY_NOTE = (
+    " This reply is sent as an email. Write ONLY the body: no greeting, "
+    "no sign-off, no signature, no subject line — those are added for you."
+)
+
+
+def _as_email(state: TicketState, body: str) -> str:
+    if state.get("reply_format") != "email":
+        return body
+    return email_utils.format_email_reply(state.get("customer_name"), body)
+
+
 def generate_response(state: TicketState) -> dict:
     history_summary = "\n".join(
         f"- [{h['category'] or 'uncategorized'}] {h['ticket_text'][:120]}"
@@ -537,7 +556,8 @@ def generate_response(state: TicketState) -> dict:
     system_prompt = (
         "You are a helpful customer support agent for Site24x7 (an "
         "infrastructure monitoring product). Write a clear, concise, "
-        f"friendly reply that resolves the customer's request.{continuation_note}\n\n"
+        f"friendly reply that resolves the customer's request.{continuation_note}"
+        f"{_EMAIL_BODY_NOTE if state.get('reply_format') == 'email' else ''}\n\n"
         "CRITICAL — grounding rule: only state specific facts (order "
         "status, monitor/alert behavior, account details, etc.) that were "
         "actually given to you below or in the ticket text. Never invent "
@@ -564,7 +584,7 @@ def generate_response(state: TicketState) -> dict:
         ],
         temperature=0.3,
     )
-    return {"ai_response": completion.choices[0].message.content}
+    return {"ai_response": _as_email(state, completion.choices[0].message.content)}
 
 
 def ask_clarifying_question(state: TicketState) -> dict:
@@ -605,6 +625,7 @@ def ask_clarifying_question(state: TicketState) -> dict:
         f"{grounding} Do not answer the ticket, do not ask a generic 'can "
         "you tell me more?', and do not assume details the customer "
         "hasn't given you."
+        f"{_EMAIL_BODY_NOTE if state.get('reply_format') == 'email' else ''}"
     )
     user_prompt = (
         f"Best-guess category so far: {state['category']} "
@@ -620,7 +641,7 @@ def ask_clarifying_question(state: TicketState) -> dict:
         ],
         temperature=0.3,
     )
-    return {"ai_response": completion.choices[0].message.content}
+    return {"ai_response": _as_email(state, completion.choices[0].message.content)}
 
 
 def summarize_case(transcript_text: str) -> str:

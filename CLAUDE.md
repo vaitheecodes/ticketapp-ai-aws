@@ -126,8 +126,9 @@ Customer/Agent/Admin React portals (frontend/, Vite, :5173)
 FastAPI backend (backend/main.py, :8000)
   /api/auth/login (all roles), /api/auth/customer/signup,
   /api/auth/{me,change-password}            JWT (backend/auth.py)
-  /api/tickets/{mine,new}                     customer-facing
-  /api/tickets/{id}/messages, /{id}/chat      customer-facing (AI chat)
+  /api/tickets/mine, POST /api/tickets/new (start chat),
+  POST /api/tickets (raise ticket), GET /api/tickets/{id} (thread),
+  /{id}/{chat,reply,reopen,attachments}       customer-facing
   /api/queue, /api/queue/mine, /assign, /resolve   technician-facing
   /api/manager/departments                    manager-facing
   /api/admin/tickets, /api/admin/simulate-ticket   admin-facing
@@ -144,8 +145,8 @@ LangGraph pipeline (backend/graph.py)
         |
         v
 SQLite (backend/ticketapp.db, auto-created, gitignored)
-  customers / staff / admins / tickets / ticket_messages / orders /
-  departments / manager_departments
+  customers / staff / admins / tickets / ticket_messages / attachments /
+  orders / departments / manager_departments
 ```
 
 - **KB grounding — `retrieve_kb_candidates`** (`backend/graph.py`,
@@ -195,10 +196,9 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `clarification_attempts` (even mid-clarification, discovering a
   ticket is actually high-risk and still uncertain forces an immediate
   human handoff). The escalation-language-tag hard override is checked
-  before even that, and always wins. Ticket `status` gains a fourth
-  value, `awaiting_reply`, for tickets currently sitting in a clarify
-  round (customer-facing; distinct from `open`, which means waiting on
-  a human). Covered by `tests/test_decide_route.py` (pure-function
+  before even that, and always wins. A ticket sitting in a clarify
+  round has status `pending_customer` (distinct from `open`, which means
+  waiting on the support team). Covered by `tests/test_decide_route.py` (pure-function
   tests, no LLM calls).
 
 - **Order grounding — `lookup_order`** (`backend/graph.py`): before
@@ -287,6 +287,35 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   unchanged. Covered by `tests/test_continuation_check.py`
   (stubbed-client prompt/parsing tests) and
   `tests/test_ticket_chat_closing.py` (endpoint-level).
+
+- **Customer portal + ticket model (Stage 2)**
+  (`frontend/src/pages/CustomerPortal.jsx`, `components/TicketThread.jsx`):
+  two request cards — **Start a chat** (pre-chat form -> live
+  `TicketChat`, `ticket_type = 'chat'`) and **Raise a ticket** (subject,
+  category, priority, description, drag-and-drop attachments;
+  `POST /api/tickets`, `ticket_type = 'ticket'`, no chat). Right panel
+  **My tickets** lists tickets plus chats handed to the support team only
+  (an AI-resolved chat is not a ticket), with All/Open/Resolved/Escalated
+  filters ("Escalated" = `route == 'human'`), search, unread dot
+  (`tickets.customer_last_read_at`) and a Chat badge. Ticket detail is an
+  email-style thread with a reply composer (`/reply` runs the same
+  follow-up gates as `/chat` while the AI owns the ticket; once it's with
+  the support team the reply is just appended) and Reopen on resolved
+  tickets. **Statuses** (`db.TICKET_STATUSES`): `open`, `in_progress`,
+  `pending_customer`, `resolved`, `closed` (legacy `awaiting_reply` /
+  `assigned` are migrated in place). For `ticket_type = 'ticket'`,
+  `generate_response`/`ask_clarifying_question` get
+  `reply_format='email'`: the LLM writes only the body and
+  `email_utils.format_email_reply` adds "Hi <first name>," + closing +
+  "Regards, Site24x7 Support Team"; AI replies are also emailed via
+  `email_utils.send_email` when SMTP is configured (silent no-op
+  otherwise, sent as a BackgroundTask). A pipeline failure on a new ticket
+  still creates it, queued for a human. **Attachments**
+  (`POST /api/tickets/{id}/attachments`, `attachments` table): max 5 per
+  message, 10 MB each, png/jpg/pdf/txt/log with the contents checked
+  against the extension, stored under `db.uploads_dir()` (DB_PATH's
+  parent `/uploads`) with random names. Covered by
+  `tests/test_customer_tickets.py`.
 
 - **Admin portal** (`frontend/src/pages/AdminPortal.jsx`): the single
   admin (see Auth) — four tabs: **All Tickets** (`GET /api/admin/tickets`,
