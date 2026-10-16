@@ -27,7 +27,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend import auth, chats, db
+from backend import auth, chats, db, incidents
 from backend import ticket_lifecycle as lifecycle
 from backend.conversation import (
     ESCALATION_MARKER,
@@ -80,13 +80,18 @@ def _ticket_category(ticket) -> str | None:
 def _ticket_for_staff(conn, ticket_id: str, user: dict):
     """The ticket if this staff member may see it: technicians and admin
     see every ticket with the support team; managers only those in their
-    departments' categories. AI-handled tickets aren't in the workspace."""
+    departments' categories or linked to an incident they can see.
+    AI-handled tickets aren't in the workspace."""
     ticket = conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone()
     if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
     if ticket["route"] != "human" and user["role"] != "admin":
         raise HTTPException(status_code=403, detail="This ticket is being handled by the AI assistant")
-    if user["role"] == "manager" and _ticket_category(ticket) not in manager_categories(conn, user["id"]):
+    if (
+        user["role"] == "manager"
+        and _ticket_category(ticket) not in manager_categories(conn, user["id"])
+        and not incidents.manager_can_see_ticket(conn, user["id"], ticket_id)
+    ):
         raise HTTPException(status_code=403, detail="Ticket is outside your departments")
     return ticket
 
@@ -264,6 +269,13 @@ def _workspace(conn, ticket_id: str, user: dict) -> dict:
              "transcript": chats.transcript_rows(conn, ticket["chat_session_id"])}
             if ticket["chat_session_id"] else None
         ),
+        # Incidents this ticket was linked to by correlation.
+        "incidents": [
+            dict(r) for r in conn.execute(
+                "SELECT c.incident_id, c.title, c.status FROM incident_tickets it "
+                "JOIN incident_clusters c ON c.incident_id = it.incident_id WHERE it.ticket_id = ? "
+                "ORDER BY c.created_at", (ticket_id,))
+        ],
         "status_history": [
             {**dict(r), "changed_by_name": names.get(r["changed_by"], r["changed_by"])}
             for r in conn.execute(

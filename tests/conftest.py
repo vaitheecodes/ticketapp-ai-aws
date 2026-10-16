@@ -26,6 +26,9 @@ def _isolated_app_env(monkeypatch):
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.delenv("ADMIN_EMAIL", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    for name in ("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "INCIDENT_WINDOW_HOURS", "INCIDENT_MIN_TICKETS",
+                 "INCIDENT_SIMILARITY", "INCIDENT_ROUTING_CONFIDENCE", "SMTP_HOST", "SMTP_FROM"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)

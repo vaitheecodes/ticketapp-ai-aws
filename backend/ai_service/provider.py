@@ -122,3 +122,21 @@ def complete_text(instructions: str, data: dict[str, str], *, temperature: float
             return text
         logger.warning("AI text reply empty or too long (%d chars)", len(text))
     raise AIError("AI reply was empty or too long")
+
+
+def embeddings_deployment() -> str | None:
+    """Optional: AZURE_OPENAI_EMBEDDING_DEPLOYMENT. Unset -> callers use
+    their non-embedding fallback (incident grouping by category only)."""
+    return os.environ.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT") or None
+
+
+def embed(texts: list[str]) -> list[list[float]]:
+    deployment = embeddings_deployment()
+    if not deployment:
+        raise AIError("No embeddings deployment configured")
+    try:
+        response = _get_client().embeddings.create(model=deployment, input=texts)
+        return [item.embedding for item in response.data]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("AI embeddings call failed: %s", type(exc).__name__)
+        raise AIError("AI embeddings unavailable") from None

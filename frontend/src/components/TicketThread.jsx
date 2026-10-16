@@ -276,6 +276,12 @@ export default function TicketThread({ ticketId, onChanged }) {
         </dl>
       </header>
 
+      {detail.incident_notice && (
+        <p className="incident-banner" role="status">
+          {detail.incident_notice}
+        </p>
+      )}
+
       {chat && <ChatTranscript chat={chat} />}
 
       <ol className="thread-messages">

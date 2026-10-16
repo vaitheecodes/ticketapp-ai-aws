@@ -28,10 +28,10 @@ import logging
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from backend import auth, db, graph, handoff_signals, runtime
+from backend import auth, db, graph, handoff_signals, incidents, runtime
 from backend import ticket_lifecycle as lifecycle
 from backend.ai_service import AIError, summarize_conversation
 from backend.conversation import (
@@ -142,6 +142,15 @@ def _last_ai(conn, session_id: str) -> str | None:
         (session_id,),
     ).fetchone()
     return row["content"] if row else None
+
+
+def _after_escalation(conn, session_id: str, background_tasks: BackgroundTasks) -> None:
+    """Every caller only acts on an active chat, so an escalated_ticket_id
+    now means this request escalated it: look for other customers
+    reporting the same thing (after the response)."""
+    ticket_id = _reload(conn, session_id)["escalated_ticket_id"]
+    if ticket_id:
+        background_tasks.add_task(incidents.run_for_ticket, ticket_id)
 
 
 def _view(conn, session_id: str, ai_error: str | None = None) -> dict:
@@ -341,7 +350,11 @@ def _store_classification(conn, session_id: str, result: dict, last_route) -> No
 # Customer endpoints
 # ---------------------------------------------------------------------------
 @router.post("/api/chats")
-def start_chat(body: StartChatRequest, customer_id: str = Depends(auth.get_current_customer)):
+def start_chat(
+    body: StartChatRequest,
+    background_tasks: BackgroundTasks,
+    customer_id: str = Depends(auth.get_current_customer),
+):
     issue = body.issue.strip()
     if not issue:
         raise HTTPException(status_code=400, detail="Describe your issue to start a chat")
@@ -357,6 +370,7 @@ def start_chat(body: StartChatRequest, customer_id: str = Depends(auth.get_curre
         )
         ai_error = _run_turn(conn, _reload(conn, session_id), issue)
         conn.commit()
+        _after_escalation(conn, session_id, background_tasks)
         return _view(conn, session_id, ai_error)
     finally:
         conn.close()
@@ -392,7 +406,10 @@ def get_chat(session_id: str, customer_id: str = Depends(auth.get_current_custom
 
 @router.post("/api/chats/{session_id}/messages")
 def send_chat_message(
-    session_id: str, body: ChatMessageRequest, customer_id: str = Depends(auth.get_current_customer)
+    session_id: str,
+    body: ChatMessageRequest,
+    background_tasks: BackgroundTasks,
+    customer_id: str = Depends(auth.get_current_customer),
 ):
     message = body.message.strip()
     if not message:
@@ -403,6 +420,7 @@ def send_chat_message(
         _require_active(session)
         ai_error = _run_turn(conn, session, message)
         conn.commit()
+        _after_escalation(conn, session_id, background_tasks)
         return _view(conn, session_id, ai_error)
     finally:
         conn.close()
@@ -426,7 +444,10 @@ def resolve_chat(session_id: str, customer_id: str = Depends(auth.get_current_cu
 
 @router.post("/api/chats/{session_id}/escalate")
 def escalate_chat(
-    session_id: str, body: EscalateChatRequest, customer_id: str = Depends(auth.get_current_customer)
+    session_id: str,
+    body: EscalateChatRequest,
+    background_tasks: BackgroundTasks,
+    customer_id: str = Depends(auth.get_current_customer),
 ):
     """The customer's "Raise a ticket" button: escalate now. Works even
     while the AI is unavailable."""
@@ -436,6 +457,7 @@ def escalate_chat(
         _require_active(session)
         _escalate(conn, session, "customer_raised_ticket", body.subject)
         conn.commit()
+        _after_escalation(conn, session_id, background_tasks)
         return _view(conn, session_id)
     finally:
         conn.close()

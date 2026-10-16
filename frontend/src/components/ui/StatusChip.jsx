@@ -81,3 +81,18 @@ export function ConfidenceChip({ confidence }) {
     </span>
   );
 }
+
+/* Incident clusters (backend/incidents.py): a fresh AI detection needs a
+ * look (warn), one being investigated is in hand (info), a confirmed one
+ * is a real customer-facing problem (danger), a dismissed one is done. */
+const INCIDENT_STATUS = {
+  detected: { tone: "warn", label: "Detected" },
+  under_investigation: { tone: "info", label: "Under investigation" },
+  confirmed: { tone: "danger", label: "Confirmed" },
+  dismissed: { tone: "neutral", label: "Dismissed" },
+};
+
+export function IncidentStatusChip({ status }) {
+  const meta = INCIDENT_STATUS[status] || { tone: "neutral", label: titleCase(status) };
+  return <Chip tone={meta.tone} label={meta.label} />;
+}

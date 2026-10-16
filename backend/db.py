@@ -183,6 +183,64 @@ CREATE TABLE IF NOT EXISTS chat_reviews (
     created_at  TIMESTAMP NOT NULL
 );
 
+-- AI-detected incident clusters (backend/incidents.py). Tickets are only
+-- ever *linked* to a cluster, never merged, closed or deleted by it.
+--   detected             the AI found a plausible group; nobody has looked
+--   under_investigation  a manager is looking into it
+--   confirmed            a manager confirmed it (customers on linked
+--                        tickets see a neutral "we're aware" banner)
+--   dismissed            not an incident; its tickets aren't re-clustered
+-- summary: JSON of the AI judgement (facts, hypotheses, reasoning,
+-- confidence reasons, next steps) + narrative. needs_routing = no
+-- department was assigned (AI below the routing confidence bar).
+CREATE TABLE IF NOT EXISTS incident_clusters (
+    incident_id   TEXT PRIMARY KEY,
+    title         TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'detected',
+    category      TEXT,
+    summary       TEXT NOT NULL,
+    confidence    REAL NOT NULL,
+    needs_routing INTEGER NOT NULL DEFAULT 0,
+    created_at    TIMESTAMP NOT NULL,
+    updated_at    TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS incident_tickets (
+    incident_id TEXT NOT NULL REFERENCES incident_clusters(incident_id),
+    ticket_id   TEXT NOT NULL REFERENCES tickets(ticket_id),
+    added_at    TIMESTAMP NOT NULL,
+    PRIMARY KEY (incident_id, ticket_id)
+);
+CREATE INDEX IF NOT EXISTS idx_incident_tickets_ticket ON incident_tickets(ticket_id);
+
+-- source 'ai' (proposed by correlation) or 'manager' (set by a manager or
+-- the admin, confirmed = 1). AI re-runs never touch manager rows.
+CREATE TABLE IF NOT EXISTS incident_departments (
+    incident_id   TEXT NOT NULL REFERENCES incident_clusters(incident_id),
+    department_id TEXT NOT NULL REFERENCES departments(department_id) ON DELETE CASCADE,
+    source        TEXT NOT NULL,
+    confirmed     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (incident_id, department_id)
+);
+
+CREATE TABLE IF NOT EXISTS incident_reviews (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident_id TEXT NOT NULL REFERENCES incident_clusters(incident_id),
+    reviewer    TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    note        TEXT,
+    at          TIMESTAMP NOT NULL
+);
+
+-- Cached embedding per ticket text (only used when an embeddings
+-- deployment is configured). text_hash invalidates it if the text changes.
+CREATE TABLE IF NOT EXISTS ticket_embeddings (
+    ticket_id TEXT PRIMARY KEY REFERENCES tickets(ticket_id),
+    model     TEXT NOT NULL,
+    text_hash TEXT NOT NULL,
+    vector    TEXT NOT NULL
+);
+
 -- Files live on disk under uploads_dir() with a server-generated
 -- stored_name; `filename` is the customer's original name, display only.
 CREATE TABLE IF NOT EXISTS attachments (

@@ -115,7 +115,6 @@ def test_suggest_steps_needs_at_least_one_step(monkeypatch):
 
 @pytest.mark.parametrize("bad", [
     _judgement(related_ticket_ids=["TCK-0", "TCK-999"]),        # id not in the group
-    _judgement(candidate_departments=["Made-up Department"]),   # department not offered
     _judgement(related_ticket_ids=["TCK-0"]),                    # "related" with one ticket
     _judgement(confidence=2),
     _judgement(why_related=""),                                  # explanation is required
@@ -133,6 +132,15 @@ def test_correlation_valid_output_and_defaults(monkeypatch):
         CorrelateInput(tickets=_tickets(), departments=_DEPARTMENTS, window_hours=12))
     assert result.related_ticket_ids == ["TCK-0", "TCK-1"]
     assert result.possible_shared_cause == "Requires further investigation"
+
+
+def test_correlation_department_suggestions_are_normalised(monkeypatch):
+    """Advisory, so not a reason to throw the judgement away: a category
+    code maps to its owning department, unknown names are dropped."""
+    _replies(monkeypatch, _judgement(candidate_departments=["SERVER_MONITORING", "Made-up", "Infrastructure"]))
+    result = correlate_incidents.correlate_incidents(
+        CorrelateInput(tickets=_tickets(), departments=_DEPARTMENTS, window_hours=12))
+    assert result.candidate_departments == ["Infrastructure"]
 
 
 def test_correlation_prompt_has_no_customer_identities(monkeypatch):

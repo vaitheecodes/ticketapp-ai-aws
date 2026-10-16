@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
-from backend import auth, chats, db, email_utils, graph, handoff_signals, runtime, staff_tickets
+from backend import auth, chats, db, email_utils, graph, handoff_signals, incidents, runtime, staff_tickets
 from backend import ticket_lifecycle as lifecycle
 from backend.ai_service import AIError
 from backend.conversation import ESCALATION_MARKER as _ESCALATION_MARKER
@@ -58,6 +58,7 @@ app.add_middleware(
 
 app.include_router(chats.router)
 app.include_router(staff_tickets.router)
+app.include_router(incidents.router)
 
 
 @app.on_event("startup")
@@ -535,6 +536,11 @@ def ticket_detail(ticket_id: str, customer_id: str = Depends(auth.get_current_cu
         )
         conn.commit()
         return {
+            # Only for a manager-confirmed incident, and deliberately neutral:
+            # no cause, no outage claim.
+            "incident_notice": (
+                incidents.CUSTOMER_NOTICE if incidents.confirmed_incident_for(conn, ticket_id) else None
+            ),
             "chat": chat,
             "ticket": {
                 "ticket_id": ticket["ticket_id"],
@@ -591,11 +597,14 @@ def tickets_create(
         logger.exception("Pipeline failed for new ticket %s; queueing for a human", ticket_id)
         result = {"route": "human", "category": None, "confidence": None, "pipeline_failed": True}
 
-    return _store_new_ticket(
+    created = _store_new_ticket(
         ticket_id, customer_id, ticket_text, result, background_tasks,
         subject=subject, priority=body.priority, requested_category=body.category,
         contact_name=contact_name,
     )
+    # Look for other customers reporting the same thing (after the response).
+    background_tasks.add_task(incidents.run_for_ticket, ticket_id)
+    return created
 
 
 def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_tasks, *,

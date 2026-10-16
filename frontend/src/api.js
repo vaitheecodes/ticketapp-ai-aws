@@ -197,6 +197,20 @@ export const api = {
     }),
   managerOverview: () => request("/manager/overview", { auth: true }),
 
+  // AI incident correlation (backend/incidents.py): managers + admin.
+  incidents: (includeDismissed = false) =>
+    request(`/incidents${includeDismissed ? "?include_dismissed=true" : ""}`, { auth: true }),
+  incident: (incidentId) => request(`/incidents/${incidentId}`, { auth: true }),
+  incidentReview: (incidentId, action, note) =>
+    request(`/incidents/${incidentId}/review`, { method: "POST", body: { action, note }, auth: true }),
+  incidentDepartments: (incidentId, department_ids) =>
+    request(`/incidents/${incidentId}/departments`, {
+      method: "PUT",
+      body: { department_ids },
+      auth: true,
+    }),
+  incidentsRun: () => request("/incidents/run", { method: "POST", auth: true }),
+
   adminTickets: () => request("/admin/tickets", { auth: true }),
   adminTechnicians: () => request("/admin/technicians", { auth: true }),
   adminReassignTicket: (ticketId, technicianId) =>

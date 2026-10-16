@@ -475,6 +475,10 @@ a:focus-visible {
 /* --------------------------------------------------------------- table */
 
 .table-wrap {
+  /* Positioning context, so absolutely positioned children (.sr-only
+     header labels) are clipped by the scroll box instead of widening the
+     page on narrow screens. */
+  position: relative;
   overflow-x: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);

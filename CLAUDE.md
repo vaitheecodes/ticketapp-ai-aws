@@ -133,6 +133,7 @@ FastAPI backend (backend/main.py, :8000)
   /api/staff/tickets[?view=unassigned|mine|recent|open_pending]
   /api/staff/tickets/{id}, /{id}/{claim,status,messages}   technician workspace
   /api/manager/overview, /api/manager/departments          manager (read-only)
+  /api/incidents[/{id}[/review|/departments]], /run        manager + admin
   /api/admin/tickets, /api/admin/simulate-ticket   admin-facing
   /api/admin/{staff,departments,technicians}  admin-facing (Team page)
   /api/debug/routing-policy                   dev-only, unauthenticated
@@ -413,6 +414,28 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `JWT_SECRET`, so local dev silently used the default secret). Tests
   can't reach the provider (`tests/conftest.py`); covered by
   `tests/test_ai_service.py`.
+- **AI incident correlation** (reconcile sub-stage D; `backend/incidents.py`,
+  `frontend/src/components/IncidentsPanel.jsx`). After every new ticket
+  or chat escalation (BackgroundTask) and on "Check now"
+  (`POST /api/incidents/run`): tickets from the last
+  `INCIDENT_WINDOW_HOURS` (not in a dismissed cluster) are grouped by
+  component area — the department owning their category (the classifier
+  often splits one outage across AGENT/SERVER_MONITORING), else the
+  category — optionally split by embedding similarity
+  (`AZURE_OPENAI_EMBEDDING_DEPLOYMENT`, `INCIDENT_SIMILARITY`). Groups
+  with `INCIDENT_MIN_TICKETS`+ tickets from 2+ customers go to
+  `ai_service.correlate_incidents`; groups already fully inside an open
+  cluster aren't re-sent. Related tickets join the overlapping open
+  cluster or a new one (`incident_clusters`, `incident_tickets`); tickets
+  are only linked, never changed. Departments: owners of the tickets'
+  categories + the AI's (normalised) suggestions, only at confidence >=
+  `INCIDENT_ROUTING_CONFIDENCE`, else `needs_routing`. Manager/admin
+  corrections (`source = 'manager'`) survive AI re-runs. Review:
+  confirm / investigate / dismiss with a note -> `incident_reviews`.
+  Managers see clusters linked to their departments plus unrouted ones,
+  and may open any linked ticket. Customers on a confirmed cluster's
+  tickets get a neutral `incident_notice`. No reply-to-all fan-out.
+  Covered by `tests/test_incidents.py`.
 - **Auth / roles** (`backend/auth.py`): customer, technician, manager,
   admin. Tables: `customers`, `staff` (technicians + managers, `role`
   column, `active`, `must_change_password`), `admins`. One login page /

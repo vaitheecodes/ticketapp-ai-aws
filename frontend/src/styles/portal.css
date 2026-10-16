@@ -1282,3 +1282,152 @@
 .manager-tickets {
   margin-top: var(--space-6);
 }
+
+/* ===========================================================================
+   Incidents
+   ========================================================================= */
+
+.confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.confidence-bar {
+  width: 3rem;
+  height: 0.3rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface-overlay);
+  overflow: hidden;
+}
+
+.confidence-bar span {
+  display: block;
+  height: 100%;
+  background: var(--status-neutral);
+}
+
+.confidence-high .confidence-bar span {
+  background: var(--accent-400);
+}
+
+.confidence-medium .confidence-bar span {
+  background: var(--status-info);
+}
+
+.incident-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.incident-section h4 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.incident-section p {
+  margin: 0;
+}
+
+.incident-section ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.facts-hypotheses {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 640px) {
+  .facts-hypotheses {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.incident-ticket {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.incident-ticket-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.incident-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.incident-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.incident-review .error {
+  margin: 0;
+}
+
+.incident-departments-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.incident-departments-editor > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.incident-departments-editor[open] > fieldset,
+.incident-departments-editor[open] > button {
+  margin-top: var(--space-3);
+}
+
+.incident-reviews {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: var(--text-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.linked-incidents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.linked-incidents li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Customer-facing: neutral, informational, no alarm colour. */
+.incident-banner {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--status-info);
+  background: var(--status-info-soft);
+  font-size: var(--text-base);
+}

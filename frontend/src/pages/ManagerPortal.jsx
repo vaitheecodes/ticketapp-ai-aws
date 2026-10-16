@@ -1,16 +1,36 @@
-/* Manager dashboard: oversight, not assignment. Shows the tickets in the
- * manager's departments (the categories those departments own), each
- * technician's workload on them, and any ticket read-only. Technicians
- * claim their own work; incidents arrive in a later stage. */
+/* Manager dashboard: incidents first (AI-detected clusters of related
+ * reports, for review), then oversight of the tickets in the manager's
+ * departments and each technician's workload on them. Read-only for
+ * tickets: technicians claim their own work. */
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import IncidentsPanel from "../components/IncidentsPanel";
 import PortalHeader from "../components/PortalHeader";
 import StaffTicketView from "../components/StaffTicketView";
 import { categoryLabel } from "../utils/categories";
 import StaffTicketRow from "../components/StaffTicketRow";
 
 export default function ManagerPortal() {
+  const [tab, setTab] = useState("incidents");
+
+  return (
+    <div className="page page-portal">
+      <PortalHeader title="Manager Dashboard" role="manager" />
+      <nav className="tabs">
+        <button className={tab === "incidents" ? "active" : ""} onClick={() => setTab("incidents")}>
+          Incidents
+        </button>
+        <button className={tab === "tickets" ? "active" : ""} onClick={() => setTab("tickets")}>
+          Department tickets
+        </button>
+      </nav>
+      {tab === "incidents" ? <IncidentsPanel /> : <DepartmentOverview />}
+    </div>
+  );
+}
+
+function DepartmentOverview() {
   const [overview, setOverview] = useState(null);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState(null);
@@ -20,8 +40,7 @@ export default function ManagerPortal() {
   }, []);
 
   return (
-    <div className="page page-portal">
-      <PortalHeader title="Manager Dashboard" role="manager" />
+    <div>
       {error && <p className="error">{error}</p>}
       {!error && !overview && <p className="hint">Loading…</p>}
       {overview && overview.categories.length === 0 && (

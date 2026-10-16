@@ -22,7 +22,7 @@ import { absoluteTime, relativeTime } from "../utils/time";
 import { formatBytes } from "../utils/text";
 import { PaperclipIcon } from "./AttachmentPicker";
 import ChatMessage from "./ui/ChatMessage";
-import { StatusChip } from "./ui/StatusChip";
+import { IncidentStatusChip, StatusChip } from "./ui/StatusChip";
 
 const STATUSES = [
   ["open", "Open"],
@@ -363,6 +363,16 @@ export default function StaffTicketView({ ticketId, onChanged }) {
           <span className={`priority-chip priority-${ticket.priority}`}>{ticket.priority}</span>
           {ticket.ticket_type === "chat" && <span className="type-badge">Chat</span>}
         </div>
+        {ws.incidents.length > 0 && (
+          <ul className="linked-incidents" aria-label="Linked incidents">
+            {ws.incidents.map((inc) => (
+              <li key={inc.incident_id}>
+                Part of incident <span className="mono">{inc.incident_id}</span>: {inc.title}{" "}
+                <IncidentStatusChip status={inc.status} />
+              </li>
+            ))}
+          </ul>
+        )}
         <h2 className="thread-title" id={`staff-title-${ticket.ticket_id}`}>
           {ticket.subject}
         </h2>
