@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { api } from "../api";
 import PortalHeader from "../components/PortalHeader";
 import RoutingPolicyPanel from "../components/RoutingPolicyPanel";
+import TeamPanel from "../components/TeamPanel";
 import { RoutePill, StatusPill } from "../components/StatusPill";
 import { parseTicketText } from "../utils/parseTicketText";
 
@@ -18,18 +19,18 @@ function TicketTextCell({ ticketText }) {
   );
 }
 
-function AgentAssignCell({ ticket, agents, onReassigned }) {
+function TechnicianAssignCell({ ticket, technicians, onReassigned }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   if (ticket.route !== "human") return <span className="hint">—</span>;
 
   async function handleChange(e) {
-    const agentId = e.target.value;
+    const technicianId = e.target.value;
     setSaving(true);
     setError("");
     try {
-      await api.adminReassignTicket(ticket.ticket_id, agentId);
+      await api.adminReassignTicket(ticket.ticket_id, technicianId);
       onReassigned();
     } catch (err) {
       setError(err.message);
@@ -42,15 +43,15 @@ function AgentAssignCell({ ticket, agents, onReassigned }) {
     <div>
       <select
         className="select-compact"
-        aria-label={`Handling agent for ticket ${ticket.ticket_id}`}
-        value={ticket.assigned_agent_id || ""}
+        aria-label={`Handling technician for ticket ${ticket.ticket_id}`}
+        value={ticket.assigned_technician_id || ""}
         onChange={handleChange}
         disabled={saving}
       >
         <option value="">Unassigned</option>
-        {agents.map((a) => (
-          <option key={a.agent_id} value={a.agent_id}>
-            {a.name}
+        {technicians.map((t) => (
+          <option key={t.staff_id} value={t.staff_id}>
+            {t.name}
           </option>
         ))}
       </select>
@@ -61,7 +62,7 @@ function AgentAssignCell({ ticket, agents, onReassigned }) {
 
 function AllTickets() {
   const [tickets, setTickets] = useState([]);
-  const [agents, setAgents] = useState([]);
+  const [technicians, setTechnicians] = useState([]);
   const [error, setError] = useState("");
 
   function refresh() {
@@ -70,7 +71,7 @@ function AllTickets() {
 
   useEffect(() => {
     refresh();
-    api.adminAgents().then(setAgents).catch((err) => setError(err.message));
+    api.adminTechnicians().then(setTechnicians).catch((err) => setError(err.message));
   }, []);
 
   if (error) return <p className="error">{error}</p>;
@@ -88,7 +89,7 @@ function AllTickets() {
             <th>Confidence</th>
             <th>Route</th>
             <th>Status</th>
-            <th>Handling agent</th>
+            <th>Technician</th>
             <th>Text</th>
           </tr>
         </thead>
@@ -103,48 +104,9 @@ function AllTickets() {
               <td><RoutePill route={t.route} /></td>
               <td><StatusPill status={t.status} /></td>
               <td>
-                <AgentAssignCell ticket={t} agents={agents} onReassigned={refresh} />
+                <TechnicianAssignCell ticket={t} technicians={technicians} onReassigned={refresh} />
               </td>
               <td className="wrap"><TicketTextCell ticketText={t.ticket_text} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Agents() {
-  const [agents, setAgents] = useState([]);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    api.adminAgents().then(setAgents).catch((err) => setError(err.message));
-  }, []);
-
-  if (error) return <p className="error">{error}</p>;
-  if (agents.length === 0) return <p className="empty-state">No agents have signed up yet.</p>;
-
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Agent ID</th>
-            <th>Active tickets</th>
-            <th>Resolved tickets</th>
-          </tr>
-        </thead>
-        <tbody>
-          {agents.map((a) => (
-            <tr key={a.agent_id}>
-              <td>{a.name}</td>
-              <td>{a.email}</td>
-              <td>{a.agent_id}</td>
-              <td>{a.active_count}</td>
-              <td>{a.resolved_count}</td>
             </tr>
           ))}
         </tbody>
@@ -284,7 +246,7 @@ function TryATicket() {
             <div className="result-box">
               <p className="pending-text">Would escalate to a human agent</p>
               <p className="hint" style={{ margin: 0 }}>
-                Agents would only ever see the ticket text — not this category/confidence/reasoning.
+                Technicians would only ever see the ticket text — not this category/confidence/reasoning.
               </p>
             </div>
           )}
@@ -304,8 +266,8 @@ export default function AdminPortal() {
         <button className={tab === "tickets" ? "active" : ""} onClick={() => setTab("tickets")}>
           All Tickets
         </button>
-        <button className={tab === "agents" ? "active" : ""} onClick={() => setTab("agents")}>
-          Agents
+        <button className={tab === "team" ? "active" : ""} onClick={() => setTab("team")}>
+          Team
         </button>
         <button className={tab === "try" ? "active" : ""} onClick={() => setTab("try")}>
           Try a Ticket
@@ -316,7 +278,7 @@ export default function AdminPortal() {
       </nav>
       <div className="tab-content">
         {tab === "tickets" && <AllTickets />}
-        {tab === "agents" && <Agents />}
+        {tab === "team" && <TeamPanel />}
         {tab === "try" && <TryATicket />}
         {tab === "policy" && <RoutingPolicyPanel />}
       </div>

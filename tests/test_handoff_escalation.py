@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from backend import db, graph, main  # noqa: E402
+from backend import db, graph, main, seed_data  # noqa: E402
 
 _email_counter = itertools.count()
 
@@ -83,11 +83,11 @@ def _signup(client) -> dict:
     return {"Authorization": f"Bearer {res.json()['token']}"}
 
 
-def _agent_headers(client) -> dict:
-    email = f"handoff-agent-{next(_email_counter)}@example.com"
+def _technician_headers(client) -> dict:
+    # Staff can't self-sign-up; use the dev-seeded demo technician.
+    (tech,) = [p for p in seed_data.DEMO_STAFF if p["role"] == "technician"]
     res = client.post(
-        "/api/auth/agent/signup",
-        json={"name": "Test Agent", "email": email, "password": "pw123456"},
+        "/api/auth/login", json={"email": tech["email"], "password": tech["password"]}
     )
     assert res.status_code == 200, res.text
     return {"Authorization": f"Bearer {res.json()['token']}"}
@@ -131,7 +131,7 @@ def test_escalated_limitation_ticket_reaches_the_human_queue_with_a_summary(clie
     ticket, _ = _raise_ticket(client, headers, [_ai_result(_LIMITATION_ANSWER)])
     ticket_id = ticket["ticket_id"]
 
-    queue = client.get("/api/queue", headers=_agent_headers(client)).json()
+    queue = client.get("/api/queue", headers=_technician_headers(client)).json()
     queued = [t for t in queue if t["ticket_id"] == ticket_id]
     assert queued, f"ticket {ticket_id} missing from the human queue"
     assert _CASE_SUMMARY in queued[0]["ticket_text"]

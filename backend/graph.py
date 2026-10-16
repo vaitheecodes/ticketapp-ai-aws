@@ -648,7 +648,7 @@ def summarize_case(transcript_text: str) -> str:
 
 def human_queue(state: TicketState) -> dict:
     """No-op terminal node for the human branch — main.py persists the
-    ticket with route='human', status='open', assigned_agent_id=None."""
+    ticket with route='human', status='open', assigned_technician_id=None."""
     return {}
 
 

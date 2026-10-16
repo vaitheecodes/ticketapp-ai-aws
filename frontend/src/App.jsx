@@ -1,58 +1,66 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { getRole, getToken } from "./api";
-import Landing from "./pages/Landing";
-import CustomerLogin from "./pages/CustomerLogin";
+import { getMustChangePassword, getRole, getToken, HOME_FOR_ROLE } from "./api";
+import Login from "./pages/Login";
+import ChangePassword from "./pages/ChangePassword";
 import CustomerPortal from "./pages/CustomerPortal";
-import AgentLogin from "./pages/AgentLogin";
-import AgentPortal from "./pages/AgentPortal";
-import AdminLogin from "./pages/AdminLogin";
+import TechnicianPortal from "./pages/TechnicianPortal";
+import ManagerPortal from "./pages/ManagerPortal";
 import AdminPortal from "./pages/AdminPortal";
 import DebugPanel from "./pages/DebugPanel";
 import UiGallery from "./pages/UiGallery";
 
-const LOGIN_PATHS = {
-  customer: "/customer/login",
-  agent: "/agent/login",
-  admin: "/admin/login",
-};
-
+// Client-side gate only, for navigation. Every endpoint enforces the
+// same role (and the forced password change) on the backend.
 function RequireRole({ role, children }) {
-  if (getToken() && getRole() === role) return children;
-  return <Navigate to={LOGIN_PATHS[role]} replace />;
+  if (!getToken()) return <Navigate to="/login" replace />;
+  if (getMustChangePassword()) return <Navigate to="/change-password" replace />;
+  if (getRole() !== role) return <Navigate to={HOME_FOR_ROLE[getRole()] || "/login"} replace />;
+  return children;
 }
+
+function LoginRoute() {
+  const role = getRole();
+  if (getToken() && HOME_FOR_ROLE[role]) {
+    return <Navigate to={getMustChangePassword() ? "/change-password" : HOME_FOR_ROLE[role]} replace />;
+  }
+  return <Login />;
+}
+
+function ChangePasswordRoute() {
+  if (!getToken()) return <Navigate to="/login" replace />;
+  return <ChangePassword />;
+}
+
+const PORTALS = [
+  ["customer", CustomerPortal],
+  ["technician", TechnicianPortal],
+  ["manager", ManagerPortal],
+  ["admin", AdminPortal],
+];
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/customer/login" element={<CustomerLogin />} />
-        <Route
-          path="/customer"
-          element={
-            <RequireRole role="customer">
-              <CustomerPortal />
-            </RequireRole>
-          }
-        />
-        <Route path="/agent/login" element={<AgentLogin />} />
-        <Route
-          path="/agent"
-          element={
-            <RequireRole role="agent">
-              <AgentPortal />
-            </RequireRole>
-          }
-        />
-        <Route path="/admin/login" element={<AdminLogin />} />
-        <Route
-          path="/admin"
-          element={
-            <RequireRole role="admin">
-              <AdminPortal />
-            </RequireRole>
-          }
-        />
+        <Route path="/" element={<LoginRoute />} />
+        <Route path="/login" element={<LoginRoute />} />
+        <Route path="/change-password" element={<ChangePasswordRoute />} />
+        {PORTALS.map(([role, Portal]) => (
+          <Route
+            key={role}
+            path={HOME_FOR_ROLE[role]}
+            element={
+              <RequireRole role={role}>
+                <Portal />
+              </RequireRole>
+            }
+          />
+        ))}
+        {/* Pre-unified-login bookmarks. */}
+        <Route path="/customer/login" element={<Navigate to="/login" replace />} />
+        <Route path="/agent/login" element={<Navigate to="/login" replace />} />
+        <Route path="/admin/login" element={<Navigate to="/login" replace />} />
+        <Route path="/agent" element={<Navigate to="/technician" replace />} />
         <Route path="/debug" element={<DebugPanel />} />
         <Route path="/ui" element={<UiGallery />} />
       </Routes>

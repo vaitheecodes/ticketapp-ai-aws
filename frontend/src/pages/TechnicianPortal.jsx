@@ -6,7 +6,7 @@ import { StatusPill } from "../components/StatusPill";
 import TicketTextDetail from "../components/TicketTextDetail";
 import { parseTicketText } from "../utils/parseTicketText";
 
-// The case summary (when present) is what an agent scanning the queue
+// The case summary (when present) is what a technician scanning the queue
 // actually needs — not the start of the raw "original + summary" string.
 function previewFor(ticketText) {
   const { original, summary } = parseTicketText(ticketText);
@@ -121,13 +121,13 @@ function MyTickets() {
   );
 }
 
-export default function AgentPortal() {
+export default function TechnicianPortal() {
   const [tab, setTab] = useState("queue");
   const [refreshKey, setRefreshKey] = useState(0);
 
   return (
     <div className="page">
-      <PortalHeader title="Agent Portal" role="agent" />
+      <PortalHeader title="Technician Portal" role="technician" />
       <nav className="tabs">
         <button className={tab === "queue" ? "active" : ""} onClick={() => setTab("queue")}>
           Queue

@@ -6,7 +6,7 @@ export default function PortalHeader({ title, role }) {
 
   function logout() {
     clearSession();
-    navigate("/");
+    navigate("/login");
   }
 
   return (

@@ -62,7 +62,7 @@
   max-width: 1080px;
 }
 
-/* ------------------------------------------------------------- landing */
+/* --------------------------------------------------------------- login */
 
 .hero-brand {
   display: flex;
@@ -91,49 +91,6 @@
   margin: 0 0 2.5rem;
 }
 
-.portal-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  width: 100%;
-  max-width: 720px;
-}
-
-.portal-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 1.75rem 1.25rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  text-decoration: none;
-  color: var(--color-text);
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
-}
-
-.portal-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-.portal-card-icon {
-  width: 2rem;
-  height: 2rem;
-  color: var(--color-primary);
-}
-
-.portal-card-title {
-  font-weight: 600;
-}
-
-.portal-card-desc {
-  font-size: 0.85rem;
-  color: var(--color-text-muted);
-}
-
 /* ---------------------------------------------------------------- cards */
 
 .card {
@@ -150,7 +107,8 @@
   padding: 2rem;
 }
 
-.auth-card h1 {
+.auth-card h1,
+.auth-card h2 {
   font-size: 1.4rem;
   margin: 0 0 1.5rem;
 }
@@ -680,4 +638,170 @@ td.wrap {
 
 .chat-input-row input {
   flex: 1;
+}
+
+/* ----------------------------------------------------- team / manager */
+
+.section-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem;
+}
+
+.section-head .section-title {
+  margin: 0;
+}
+
+.team-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.team-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin: 0 0 1.25rem;
+}
+
+.team-form h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.team-form .success-text,
+.team-form .error {
+  margin: 0;
+}
+
+.input-with-action {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input-with-action input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.row-actions button {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.btn-danger-outline {
+  color: var(--color-danger);
+  border-color: var(--color-danger-soft);
+}
+
+.btn-danger-outline:hover {
+  background: var(--color-danger-soft);
+}
+
+.chip-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+tbody tr.row-muted td {
+  color: var(--color-text-muted);
+}
+
+tbody tr.row-editor,
+tbody tr.row-editor:hover {
+  background: var(--color-surface-muted);
+}
+
+tbody tr.row-editor td {
+  white-space: normal;
+}
+
+.inline-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 0.25rem 0;
+}
+
+.inline-form .error {
+  margin: 0;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.45rem 1rem;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.checkbox-grid legend {
+  margin-bottom: 0.5rem;
+  padding: 0;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.checkbox-label input {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--color-primary);
+}
+
+.checkbox-label.is-disabled {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.category-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dept-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dept-card h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
 }

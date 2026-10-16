@@ -6,13 +6,16 @@ Run from the repo root: uvicorn backend.main:app --reload
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from datetime import datetime, timezone
 
+from typing import Literal
+
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend import auth, db, graph, handoff_signals
 from backend.closing_ack import is_closing_acknowledgment
@@ -48,6 +51,7 @@ _graph = None
 @app.on_event("startup")
 def on_startup() -> None:
     db.init_db()
+    auth.ensure_admin()
     global _graph
     _graph = graph.build_graph()
 
@@ -82,7 +86,32 @@ class ChatMessageRequest(BaseModel):
 
 
 class ReassignRequest(BaseModel):
-    agent_id: str | None = None
+    technician_id: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class CreateStaffRequest(BaseModel):
+    name: str = Field(min_length=1)
+    email: str = Field(min_length=3)
+    role: Literal["technician", "manager"]
+    temporary_password: str
+
+
+class ResetPasswordRequest(BaseModel):
+    temporary_password: str
+
+
+class DepartmentRequest(BaseModel):
+    name: str = Field(min_length=1)
+    categories: list[str] = []
+
+
+class ManagerDepartmentsRequest(BaseModel):
+    department_ids: list[str]
 
 
 # route -> customer-facing ticket status. "clarify" reads clearly as
@@ -151,7 +180,7 @@ def _escalate_to_human(conn, ticket_id: str, original_text: str, transcript: str
     summary = graph.summarize_case(transcript)
     conn.execute(
         "UPDATE tickets SET route = 'human', status = 'open', "
-        "assigned_agent_id = NULL, category = ?, confidence = ?, "
+        "assigned_technician_id = NULL, category = ?, confidence = ?, "
         "ticket_text = ? WHERE ticket_id = ?",
         (
             category,
@@ -168,32 +197,33 @@ def _escalate_to_human(conn, ticket_id: str, original_text: str, transcript: str
 # ---------------------------------------------------------------------------
 @app.post("/api/auth/customer/signup")
 def customer_signup(body: SignupRequest):
-    return auth.signup_customer(body.name, body.email, body.password)
+    """The only public signup. Technicians and managers are created by
+    the admin (/api/admin/staff); the admin is bootstrapped from env."""
+    return auth.signup_customer(body.name.strip(), body.email.strip(), body.password)
 
 
-@app.post("/api/auth/customer/login")
-def customer_login(body: LoginRequest):
-    return auth.login_customer(body.email, body.password)
+@app.post("/api/auth/login")
+def login(body: LoginRequest):
+    """One login for every role; the response's `role` tells the
+    frontend which portal to open."""
+    return auth.login(body.email.strip(), body.password)
 
 
-@app.post("/api/auth/agent/signup")
-def agent_signup(body: SignupRequest):
-    return auth.signup_agent(body.name, body.email, body.password)
+@app.get("/api/auth/me")
+def me(user: dict = Depends(auth.get_current_user)):
+    return {
+        "user_id": user["id"],
+        "role": user["role"],
+        "name": user["name"],
+        "email": user["email"],
+        "must_change_password": user["must_change_password"],
+    }
 
 
-@app.post("/api/auth/agent/login")
-def agent_login(body: LoginRequest):
-    return auth.login_agent(body.email, body.password)
-
-
-@app.post("/api/auth/admin/signup")
-def admin_signup(body: SignupRequest):
-    return auth.signup_admin(body.name, body.email, body.password)
-
-
-@app.post("/api/auth/admin/login")
-def admin_login(body: LoginRequest):
-    return auth.login_admin(body.email, body.password)
+@app.post("/api/auth/change-password")
+def change_password(body: ChangePasswordRequest, user: dict = Depends(auth.get_current_user)):
+    auth.change_password(user, body.current_password, body.new_password)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +281,7 @@ def tickets_new(
     try:
         conn.execute(
             "INSERT INTO tickets (ticket_id, customer_id, channel, ticket_text, "
-            "category, confidence, route, ai_response, status, assigned_agent_id, "
+            "category, confidence, route, ai_response, status, assigned_technician_id, "
             "clarification_attempts, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
@@ -506,10 +536,10 @@ def ticket_chat(
 
 
 # ---------------------------------------------------------------------------
-# Agent endpoints
+# Technician endpoints
 # ---------------------------------------------------------------------------
 @app.get("/api/queue")
-def queue(agent_id: str = Depends(auth.get_current_agent)):
+def queue(technician_id: str = Depends(auth.get_current_technician)):
     conn = db.get_connection()
     try:
         rows = conn.execute(
@@ -522,13 +552,13 @@ def queue(agent_id: str = Depends(auth.get_current_agent)):
 
 
 @app.get("/api/queue/mine")
-def queue_mine(agent_id: str = Depends(auth.get_current_agent)):
+def queue_mine(technician_id: str = Depends(auth.get_current_technician)):
     conn = db.get_connection()
     try:
         rows = conn.execute(
             "SELECT ticket_id, ticket_text, status FROM tickets "
-            "WHERE assigned_agent_id = ? ORDER BY created_at ASC",
-            (agent_id,),
+            "WHERE assigned_technician_id = ? ORDER BY created_at ASC",
+            (technician_id,),
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
@@ -536,7 +566,7 @@ def queue_mine(agent_id: str = Depends(auth.get_current_agent)):
 
 
 @app.post("/api/queue/{ticket_id}/assign")
-def queue_assign(ticket_id: str, agent_id: str = Depends(auth.get_current_agent)):
+def queue_assign(ticket_id: str, technician_id: str = Depends(auth.get_current_technician)):
     conn = db.get_connection()
     try:
         row = conn.execute(
@@ -548,9 +578,9 @@ def queue_assign(ticket_id: str, agent_id: str = Depends(auth.get_current_agent)
             raise HTTPException(status_code=400, detail="Ticket is not available to assign")
 
         conn.execute(
-            "UPDATE tickets SET status = 'assigned', assigned_agent_id = ? "
+            "UPDATE tickets SET status = 'assigned', assigned_technician_id = ? "
             "WHERE ticket_id = ?",
-            (agent_id, ticket_id),
+            (technician_id, ticket_id),
         )
         conn.commit()
         return {"ticket_id": ticket_id, "status": "assigned"}
@@ -559,15 +589,15 @@ def queue_assign(ticket_id: str, agent_id: str = Depends(auth.get_current_agent)
 
 
 @app.post("/api/queue/{ticket_id}/resolve")
-def queue_resolve(ticket_id: str, agent_id: str = Depends(auth.get_current_agent)):
+def queue_resolve(ticket_id: str, technician_id: str = Depends(auth.get_current_technician)):
     conn = db.get_connection()
     try:
         row = conn.execute(
-            "SELECT assigned_agent_id FROM tickets WHERE ticket_id = ?", (ticket_id,)
+            "SELECT assigned_technician_id FROM tickets WHERE ticket_id = ?", (ticket_id,)
         ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Ticket not found")
-        if row["assigned_agent_id"] != agent_id:
+        if row["assigned_technician_id"] != technician_id:
             raise HTTPException(status_code=403, detail="Ticket not assigned to you")
 
         conn.execute(
@@ -594,17 +624,20 @@ def admin_tickets(admin_id: str = Depends(auth.get_current_admin)):
         conn.close()
 
 
-@app.get("/api/admin/agents")
-def admin_agents(admin_id: str = Depends(auth.get_current_admin)):
+@app.get("/api/admin/technicians")
+def admin_technicians(admin_id: str = Depends(auth.get_current_admin)):
+    """Active technicians with live ticket counts — the reassignment
+    dropdown on All Tickets."""
     conn = db.get_connection()
     try:
         rows = conn.execute(
-            "SELECT a.agent_id, a.name, a.email, "
+            "SELECT s.staff_id, s.name, s.email, "
             "SUM(CASE WHEN t.status = 'assigned' THEN 1 ELSE 0 END) AS active_count, "
             "SUM(CASE WHEN t.status = 'resolved' THEN 1 ELSE 0 END) AS resolved_count "
-            "FROM agents a LEFT JOIN tickets t ON t.assigned_agent_id = a.agent_id "
-            "GROUP BY a.agent_id, a.name, a.email "
-            "ORDER BY a.name COLLATE NOCASE"
+            "FROM staff s LEFT JOIN tickets t ON t.assigned_technician_id = s.staff_id "
+            "WHERE s.role = 'technician' AND s.active = 1 "
+            "GROUP BY s.staff_id, s.name, s.email "
+            "ORDER BY s.name COLLATE NOCASE"
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
@@ -616,7 +649,7 @@ def admin_reassign_ticket(
     ticket_id: str, body: ReassignRequest, admin_id: str = Depends(auth.get_current_admin)
 ):
     """Admin override: (re)assign a human-routed ticket to a different
-    agent, or unassign it back to the open queue (agent_id=null)."""
+    technician, or unassign it back to the open queue (technician_id=null)."""
     conn = db.get_connection()
     try:
         ticket = conn.execute(
@@ -630,25 +663,262 @@ def admin_reassign_ticket(
                 detail="Only tickets routed to a human agent can be (re)assigned",
             )
 
-        if body.agent_id:
-            agent = conn.execute(
-                "SELECT 1 FROM agents WHERE agent_id = ?", (body.agent_id,)
+        if body.technician_id:
+            technician = conn.execute(
+                "SELECT 1 FROM staff WHERE staff_id = ? AND role = 'technician' AND active = 1",
+                (body.technician_id,),
             ).fetchone()
-            if agent is None:
-                raise HTTPException(status_code=404, detail="Agent not found")
+            if technician is None:
+                raise HTTPException(status_code=404, detail="Technician not found")
             conn.execute(
-                "UPDATE tickets SET assigned_agent_id = ?, status = 'assigned' "
+                "UPDATE tickets SET assigned_technician_id = ?, status = 'assigned' "
                 "WHERE ticket_id = ?",
-                (body.agent_id, ticket_id),
+                (body.technician_id, ticket_id),
             )
         else:
             conn.execute(
-                "UPDATE tickets SET assigned_agent_id = NULL, status = 'open' "
+                "UPDATE tickets SET assigned_technician_id = NULL, status = 'open' "
                 "WHERE ticket_id = ?",
                 (ticket_id,),
             )
         conn.commit()
-        return {"ticket_id": ticket_id, "assigned_agent_id": body.agent_id}
+        return {"ticket_id": ticket_id, "assigned_technician_id": body.technician_id}
+    finally:
+        conn.close()
+
+
+# --- Team (staff accounts) -------------------------------------------------
+def _staff_with_departments(conn) -> list[dict]:
+    staff = [
+        dict(row)
+        for row in conn.execute(
+            "SELECT staff_id, name, email, role, active, must_change_password FROM staff "
+            "ORDER BY role, name COLLATE NOCASE"
+        )
+    ]
+    links: dict[str, list[str]] = {}
+    for row in conn.execute("SELECT manager_id, department_id FROM manager_departments"):
+        links.setdefault(row["manager_id"], []).append(row["department_id"])
+    for person in staff:
+        person["active"] = bool(person["active"])
+        person["must_change_password"] = bool(person["must_change_password"])
+        person["department_ids"] = links.get(person["staff_id"], [])
+    return staff
+
+
+def _get_staff_or_404(conn, staff_id: str):
+    row = conn.execute("SELECT * FROM staff WHERE staff_id = ?", (staff_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Staff member not found")
+    return row
+
+
+@app.get("/api/admin/staff")
+def admin_list_staff(admin_id: str = Depends(auth.get_current_admin)):
+    conn = db.get_connection()
+    try:
+        return _staff_with_departments(conn)
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/staff")
+def admin_create_staff(body: CreateStaffRequest, admin_id: str = Depends(auth.get_current_admin)):
+    """Create a technician or manager with a temporary password; they
+    must change it on first login (auth.require_role blocks every other
+    endpoint until they do)."""
+    auth.validate_new_password(body.temporary_password)
+    email = body.email.strip()
+    conn = db.get_connection()
+    try:
+        if auth.email_in_use(conn, email):
+            raise HTTPException(status_code=400, detail="Email already registered")
+        prefix = "MGR" if body.role == "manager" else "TECH"
+        staff_id = f"{prefix}-{uuid.uuid4().hex[:8]}"
+        conn.execute(
+            "INSERT INTO staff (staff_id, name, email, password_hash, role, active, "
+            "must_change_password) VALUES (?, ?, ?, ?, ?, 1, 1)",
+            (staff_id, body.name.strip(), email, auth.hash_password(body.temporary_password), body.role),
+        )
+        conn.commit()
+        (created,) = [p for p in _staff_with_departments(conn) if p["staff_id"] == staff_id]
+        return created
+    finally:
+        conn.close()
+
+
+def _set_staff_active(staff_id: str, active: bool) -> dict:
+    conn = db.get_connection()
+    try:
+        _get_staff_or_404(conn, staff_id)
+        conn.execute("UPDATE staff SET active = ? WHERE staff_id = ?", (int(active), staff_id))
+        conn.commit()
+        return {"staff_id": staff_id, "active": active}
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/staff/{staff_id}/deactivate")
+def admin_deactivate_staff(staff_id: str, admin_id: str = Depends(auth.get_current_admin)):
+    """Blocks login and invalidates live sessions immediately. Tickets
+    already assigned to them stay put; reassign them from All Tickets."""
+    return _set_staff_active(staff_id, False)
+
+
+@app.post("/api/admin/staff/{staff_id}/activate")
+def admin_activate_staff(staff_id: str, admin_id: str = Depends(auth.get_current_admin)):
+    return _set_staff_active(staff_id, True)
+
+
+@app.post("/api/admin/staff/{staff_id}/reset-password")
+def admin_reset_staff_password(
+    staff_id: str, body: ResetPasswordRequest, admin_id: str = Depends(auth.get_current_admin)
+):
+    auth.validate_new_password(body.temporary_password)
+    conn = db.get_connection()
+    try:
+        _get_staff_or_404(conn, staff_id)
+        conn.execute(
+            "UPDATE staff SET password_hash = ?, must_change_password = 1 WHERE staff_id = ?",
+            (auth.hash_password(body.temporary_password), staff_id),
+        )
+        conn.commit()
+        return {"staff_id": staff_id, "must_change_password": True}
+    finally:
+        conn.close()
+
+
+@app.put("/api/admin/staff/{staff_id}/departments")
+def admin_set_manager_departments(
+    staff_id: str, body: ManagerDepartmentsRequest, admin_id: str = Depends(auth.get_current_admin)
+):
+    conn = db.get_connection()
+    try:
+        if _get_staff_or_404(conn, staff_id)["role"] != "manager":
+            raise HTTPException(status_code=400, detail="Only managers own departments")
+        department_ids = sorted(set(body.department_ids))
+        known = {
+            row["department_id"]
+            for row in conn.execute("SELECT department_id FROM departments")
+        }
+        unknown = [d for d in department_ids if d not in known]
+        if unknown:
+            raise HTTPException(status_code=404, detail=f"Unknown department(s): {', '.join(unknown)}")
+        conn.execute("DELETE FROM manager_departments WHERE manager_id = ?", (staff_id,))
+        conn.executemany(
+            "INSERT INTO manager_departments (manager_id, department_id) VALUES (?, ?)",
+            [(staff_id, d) for d in department_ids],
+        )
+        conn.commit()
+        return {"staff_id": staff_id, "department_ids": department_ids}
+    finally:
+        conn.close()
+
+
+# --- Departments -----------------------------------------------------------
+def _department_rows(conn, where: str = "", params: tuple = ()) -> list[dict]:
+    departments = []
+    for row in conn.execute(
+        f"SELECT department_id, name, categories FROM departments {where} "
+        "ORDER BY name COLLATE NOCASE",
+        params,
+    ):
+        dept = dict(row)
+        dept["categories"] = json.loads(dept["categories"])
+        dept["manager_ids"] = [
+            r["manager_id"]
+            for r in conn.execute(
+                "SELECT manager_id FROM manager_departments WHERE department_id = ?",
+                (dept["department_id"],),
+            )
+        ]
+        departments.append(dept)
+    return departments
+
+
+def _validate_department(conn, body: DepartmentRequest, department_id: str | None) -> list[str]:
+    """Categories must be real KB categories, and each category may
+    belong to only one department — otherwise "route to the department
+    that owns this category" has two answers."""
+    categories = sorted(set(body.categories))
+    invalid = [c for c in categories if c not in graph.CATEGORIES]
+    if invalid:
+        raise HTTPException(status_code=400, detail=f"Unknown category: {', '.join(invalid)}")
+    clash = conn.execute(
+        "SELECT department_id FROM departments WHERE name = ? COLLATE NOCASE AND department_id != ?",
+        (body.name.strip(), department_id or ""),
+    ).fetchone()
+    if clash:
+        raise HTTPException(status_code=400, detail="A department with that name already exists")
+    for other in _department_rows(conn):
+        if other["department_id"] == department_id:
+            continue
+        overlap = sorted(set(categories) & set(other["categories"]))
+        if overlap:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{', '.join(overlap)} already belongs to {other['name']}",
+            )
+    return categories
+
+
+@app.get("/api/admin/departments")
+def admin_list_departments(admin_id: str = Depends(auth.get_current_admin)):
+    conn = db.get_connection()
+    try:
+        return {"departments": _department_rows(conn), "categories": graph.CATEGORIES}
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/departments")
+def admin_create_department(body: DepartmentRequest, admin_id: str = Depends(auth.get_current_admin)):
+    conn = db.get_connection()
+    try:
+        categories = _validate_department(conn, body, None)
+        department_id = f"DEPT-{uuid.uuid4().hex[:8]}"
+        conn.execute(
+            "INSERT INTO departments (department_id, name, categories) VALUES (?, ?, ?)",
+            (department_id, body.name.strip(), json.dumps(categories)),
+        )
+        conn.commit()
+        return _department_rows(conn, "WHERE department_id = ?", (department_id,))[0]
+    finally:
+        conn.close()
+
+
+@app.put("/api/admin/departments/{department_id}")
+def admin_update_department(
+    department_id: str, body: DepartmentRequest, admin_id: str = Depends(auth.get_current_admin)
+):
+    conn = db.get_connection()
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM departments WHERE department_id = ?", (department_id,)
+        ).fetchone():
+            raise HTTPException(status_code=404, detail="Department not found")
+        categories = _validate_department(conn, body, department_id)
+        conn.execute(
+            "UPDATE departments SET name = ?, categories = ? WHERE department_id = ?",
+            (body.name.strip(), json.dumps(categories), department_id),
+        )
+        conn.commit()
+        return _department_rows(conn, "WHERE department_id = ?", (department_id,))[0]
+    finally:
+        conn.close()
+
+
+@app.delete("/api/admin/departments/{department_id}")
+def admin_delete_department(department_id: str, admin_id: str = Depends(auth.get_current_admin)):
+    conn = db.get_connection()
+    try:
+        deleted = conn.execute(
+            "DELETE FROM departments WHERE department_id = ?", (department_id,)
+        ).rowcount
+        conn.commit()
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Department not found")
+        return {"department_id": department_id, "deleted": True}
     finally:
         conn.close()
 
@@ -675,6 +945,25 @@ def admin_simulate_ticket(
         }
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Manager endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/manager/departments")
+def manager_departments(manager_id: str = Depends(auth.get_current_manager)):
+    """The departments (and so the KB categories) this manager owns —
+    the scope their dashboard will filter incidents and tickets by."""
+    conn = db.get_connection()
+    try:
+        return _department_rows(
+            conn,
+            "WHERE department_id IN "
+            "(SELECT department_id FROM manager_departments WHERE manager_id = ?)",
+            (manager_id,),
+        )
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------

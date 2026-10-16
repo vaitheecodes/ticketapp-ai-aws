@@ -115,7 +115,7 @@ filled with synthetic Site24x7-style monitor names
 
 ## Ticket Resolution Agent — live app (`backend/`, `frontend/`)
 
-A three-portal app (customer / agent / admin) on top of the same routing
+A four-role app (customer / technician / manager / admin) on top of the same routing
 policy as `src/agent/`, but with real persistence, real auth, and real
 LLM calls instead of stub nodes and dummy tickets.
 
@@ -124,11 +124,14 @@ Customer/Agent/Admin React portals (frontend/, Vite, :5173)
         |  fetch /api/* (proxied to :8000 in dev)
         v
 FastAPI backend (backend/main.py, :8000)
-  /api/auth/{customer,agent,admin}/{signup,login}  JWT (backend/auth.py)
+  /api/auth/login (all roles), /api/auth/customer/signup,
+  /api/auth/{me,change-password}            JWT (backend/auth.py)
   /api/tickets/{mine,new}                     customer-facing
   /api/tickets/{id}/messages, /{id}/chat      customer-facing (AI chat)
-  /api/queue, /api/queue/mine, /assign, /resolve   agent-facing
+  /api/queue, /api/queue/mine, /assign, /resolve   technician-facing
+  /api/manager/departments                    manager-facing
   /api/admin/tickets, /api/admin/simulate-ticket   admin-facing
+  /api/admin/{staff,departments,technicians}  admin-facing (Team page)
   /api/debug/routing-policy                   dev-only, unauthenticated
         |
         v
@@ -141,7 +144,8 @@ LangGraph pipeline (backend/graph.py)
         |
         v
 SQLite (backend/ticketapp.db, auto-created, gitignored)
-  customers / agents / admins / tickets / ticket_messages / orders
+  customers / staff / admins / tickets / ticket_messages / orders /
+  departments / manager_departments
 ```
 
 - **KB grounding — `retrieve_kb_candidates`** (`backend/graph.py`,
@@ -284,16 +288,17 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   (stubbed-client prompt/parsing tests) and
   `tests/test_ticket_chat_closing.py` (endpoint-level).
 
-- **Admin portal** (`frontend/src/pages/AdminPortal.jsx`): its own login
-  role (`admins` table, same bcrypt+JWT pattern as customers/agents) —
-  four tabs: **All Tickets** (`GET /api/admin/tickets`, every field,
-  every customer — unlike the agent queue which is text-only — including
-  a **Handling agent** column with a live dropdown to (re)assign or
-  unassign any human-routed ticket via
+- **Admin portal** (`frontend/src/pages/AdminPortal.jsx`): the single
+  admin (see Auth) — four tabs: **All Tickets** (`GET /api/admin/tickets`,
+  every field, every customer — unlike the technician queue which is
+  text-only — including a **Technician** column with a live dropdown to
+  (re)assign or unassign any human-routed ticket via
   `POST /api/admin/tickets/{id}/reassign`; picking "Unassigned" sends it
-  back to the open queue), **Agents** (`GET /api/admin/agents` — every
-  agent with a live active/resolved ticket count, joined off
-  `tickets.assigned_agent_id`), **Try a Ticket**
+  back to the open queue), **Team** (`components/TeamPanel.jsx`: create
+  technicians/managers with a temporary password, deactivate/reactivate,
+  reset password, set each manager's departments; create/edit/delete
+  departments and their KB-category mapping — each category belongs to
+  at most one department, enforced server-side), **Try a Ticket**
   (`POST /api/admin/simulate-ticket` — runs a ticket through the live
   pipeline with real Azure OpenAI calls without persisting it, and shows
   category/confidence/route/route_reason/language_tags; this is the
@@ -353,11 +358,27 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   would touch. Config: `.env` (see `.env.example`) —
   `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY` /
   `AZURE_OPENAI_API_VERSION` / `AZURE_OPENAI_DEPLOYMENT`.
-- **Auth**: separate `customers`/`agents`/`admins` tables and separate
-  signup/login endpoints (`backend/auth.py`) — bcrypt-hashed passwords,
-  JWT bearer tokens (`JWT_SECRET` env var). Agents only ever see
-  `ticket_id` + `ticket_text` from `/api/queue` — never category,
-  confidence, or `ai_response`; only the admin role sees everything.
+- **Auth / roles** (`backend/auth.py`): customer, technician, manager,
+  admin. Tables: `customers`, `staff` (technicians + managers, `role`
+  column, `active`, `must_change_password`), `admins`. One login page /
+  `POST /api/auth/login` for every role; the token carries the role and
+  the frontend routes to `/customer`, `/technician`, `/manager` or
+  `/admin`. Only customers can sign up publicly; staff are created by the
+  admin with a temporary password and must change it on first login
+  (`require_role` blocks every other endpoint until they do). Exactly one
+  admin, created on startup from `ADMIN_EMAIL`/`ADMIN_PASSWORD`
+  (`auth.ensure_admin`, never overwrites an existing admin); outside
+  production a dev fallback is used with a loud warning, and
+  `APP_ENV=production` refuses to start without them. Staff/admin
+  dependencies re-read the DB per request, so deactivation takes effect
+  immediately. Emails are unique across all three tables. The legacy
+  `agents` table / `assigned_agent_id` column are migrated in place to
+  `staff` / `assigned_technician_id` by `db.init_db()`. Dev-only demo
+  manager + technician are seeded by `seed_data.seed_demo_staff`.
+  bcrypt-hashed passwords, JWT bearer tokens (`JWT_SECRET`). Technicians
+  only ever see `ticket_id` + `ticket_text` from `/api/queue` — never
+  category, confidence, or `ai_response`; only the admin sees everything.
+  Covered by `tests/test_roles_auth.py`.
 - **Run locally**: `uvicorn backend.main:app --reload` (repo root, needs
   `.env`) + `npm run dev` in `frontend/` (proxies `/api` to `:8000`).
 - **Phase 2 (not yet done)**: swap SQLite → Azure SQL/Cosmos in
