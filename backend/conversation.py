@@ -22,15 +22,34 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+Visibility = Literal["public_reply", "internal_note", "system_event"]
+
+
 def insert_ticket_message(conn, ticket_id: str, sender: str, message: str,
-                          author_id: str | None = None) -> str:
+                          author_id: str | None = None, *,
+                          visibility: Visibility | None = None,
+                          customer_visible: bool = True,
+                          subject: str | None = None) -> str:
+    """System messages default to customer-visible system events;
+    everything else to public replies. Internal notes must be asked for."""
+    if visibility is None:
+        visibility = "system_event" if sender == "system" else "public_reply"
     message_id = f"MSG-{uuid.uuid4().hex[:8]}"
     conn.execute(
-        "INSERT INTO ticket_messages (message_id, ticket_id, sender, message, "
-        "created_at, author_id) VALUES (?, ?, ?, ?, ?, ?)",
-        (message_id, ticket_id, sender, message, now(), author_id),
+        "INSERT INTO ticket_messages (message_id, ticket_id, sender, message, created_at, "
+        "author_id, visibility, customer_visible, subject) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (message_id, ticket_id, sender, message, now(), author_id, visibility,
+         int(customer_visible), subject),
     )
     return message_id
+
+
+def subject_for(ticket) -> str:
+    """Tickets from before the subject field: first line of the text."""
+    if ticket["subject"]:
+        return ticket["subject"]
+    first_line = ticket["ticket_text"].split("\n", 1)[0].strip()
+    return first_line if len(first_line) <= 80 else first_line[:77].rstrip() + "..."
 
 
 def customer_row(conn, customer_id: str):

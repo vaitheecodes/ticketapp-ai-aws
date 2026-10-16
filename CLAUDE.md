@@ -130,8 +130,9 @@ FastAPI backend (backend/main.py, :8000)
   /api/chat-reviews, /api/chat-reviews/{id}   technician/admin
   /api/tickets/mine, POST /api/tickets (raise ticket), GET /api/tickets/{id} (thread),
   /{id}/{reply,reopen,attachments}            customer-facing
-  /api/queue, /api/queue/mine, /assign, /resolve   technician-facing
-  /api/manager/departments                    manager-facing
+  /api/staff/tickets[?view=unassigned|mine|recent|open_pending]
+  /api/staff/tickets/{id}, /{id}/{claim,status,messages}   technician workspace
+  /api/manager/overview, /api/manager/departments          manager (read-only)
   /api/admin/tickets, /api/admin/simulate-ticket   admin-facing
   /api/admin/{staff,departments,technicians}  admin-facing (Team page)
   /api/debug/routing-policy                   dev-only, unauthenticated
@@ -330,8 +331,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
 
 - **Admin portal** (`frontend/src/pages/AdminPortal.jsx`): the single
   admin (see Auth) — four tabs: **All Tickets** (`GET /api/admin/tickets`,
-  every field, every customer — unlike the technician queue which is
-  text-only — including a **Technician** column with a live dropdown to
+  every field, every customer — including a **Technician** column with a live dropdown to
   (re)assign or unassign any human-routed ticket via
   `POST /api/admin/tickets/{id}/reassign`; picking "Unassigned" sends it
   back to the open queue), **Team** (`components/TeamPanel.jsx`: create
@@ -415,10 +415,29 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `agents` table / `assigned_agent_id` column are migrated in place to
   `staff` / `assigned_technician_id` by `db.init_db()`. Dev-only demo
   manager + technician are seeded by `seed_data.seed_demo_staff`.
-  bcrypt-hashed passwords, JWT bearer tokens (`JWT_SECRET`). Technicians
-  only ever see `ticket_id` + `ticket_text` from `/api/queue` — never
-  category, confidence, or `ai_response`; only the admin sees everything.
-  Covered by `tests/test_roles_auth.py`.
+  bcrypt-hashed passwords, JWT bearer tokens (`JWT_SECRET`). Covered by
+  `tests/test_roles_auth.py`.
+- **Ticket lifecycle + technician workspace** (reconcile sub-stage B;
+  `backend/staff_tickets.py`, `backend/ticket_lifecycle.py`,
+  `frontend/src/components/StaffTicketView.jsx`). Statuses
+  `db.TICKET_STATUSES`: Open (with the support team, owner optional), In
+  Progress, Pending Customer, Resolved, Closed. Every status/owner change
+  goes through `ticket_lifecycle.set_status` / `set_assignee` /
+  `record_assignment`, which write `ticket_status_history` /
+  `ticket_assignment_history` (actor = user id, or `system` for the AI
+  pipeline). **Claim** (`POST /api/staff/tickets/{id}/claim`):
+  `BEGIN IMMEDIATE` + `UPDATE ... WHERE assigned_technician_id IS NULL`,
+  so of two simultaneous claims one gets 409. Only the owner replies
+  publicly or changes status; any technician adds internal notes;
+  managers are read-only (their departments' categories only, plus
+  `/api/manager/overview` workload); admin reassign is logged.
+  **Message visibility** (`ticket_messages.visibility`): `public_reply`,
+  `internal_note`, `system_event` (+ `customer_visible`). Customer
+  endpoints filter with `db.CUSTOMER_VISIBLE_SQL` in the query, and the
+  AI transcript (`main._transcript_for`) only ever includes public
+  replies. Customer reply on Pending Customer / Resolved -> Open (owner
+  kept). AI-handled tickets (route ai/clarify) stay out of the workspace.
+  Covered by `tests/test_ticket_workspace.py`.
 - **Run locally**: `uvicorn backend.main:app --reload` (repo root, needs
   `.env`) + `npm run dev` in `frontend/` (proxies `/api` to `:8000`).
 - **Phase 2 (not yet done)**: swap SQLite → Azure SQL/Cosmos in

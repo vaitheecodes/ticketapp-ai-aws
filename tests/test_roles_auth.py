@@ -207,7 +207,7 @@ def test_staff_role_must_be_technician_or_manager(client):
 
 def test_deactivated_staff_cannot_log_in_and_live_token_stops_working(client):
     headers = _headers_for(client, "technician")
-    assert client.get("/api/queue", headers=headers).status_code == 200
+    assert client.get("/api/staff/tickets", headers=headers).status_code == 200
 
     tech = _demo("technician")
     staff = client.get("/api/admin/staff", headers=_admin_headers(client)).json()
@@ -215,7 +215,7 @@ def test_deactivated_staff_cannot_log_in_and_live_token_stops_working(client):
     res = client.post(f"/api/admin/staff/{row['staff_id']}/deactivate", headers=_admin_headers(client))
     assert res.status_code == 200
 
-    assert client.get("/api/queue", headers=headers).status_code == 403
+    assert client.get("/api/staff/tickets", headers=headers).status_code == 403
     assert _login(client, tech["email"], tech["password"]).status_code == 403
 
     client.post(f"/api/admin/staff/{row['staff_id']}/activate", headers=_admin_headers(client))
@@ -241,7 +241,7 @@ def test_reset_password_forces_change_on_next_login(client):
 # ---------------------------------------------------------------------------
 _DASHBOARD_ENDPOINT = {
     "customer": "/api/tickets/mine",
-    "technician": "/api/queue",
+    "technician": "/api/staff/tickets",
     "manager": "/api/manager/departments",
     "admin": "/api/admin/tickets",
 }

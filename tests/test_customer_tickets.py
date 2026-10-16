@@ -174,7 +174,7 @@ def test_technician_pickup_moves_ticket_to_in_progress(client):
     login = client.post("/api/auth/login",
                         json={"email": "technician@example.com", "password": "technician-demo-pass"})
     tech = {"Authorization": f"Bearer {login.json()['token']}"}
-    assert client.post(f"/api/queue/{ticket_id}/assign", headers=tech).json()["status"] == "in_progress"
+    assert client.post(f"/api/staff/tickets/{ticket_id}/claim", headers=tech).json()["ticket"]["status"] == "in_progress"
     assert _row(ticket_id)["status"] == "in_progress"
 
 
@@ -232,7 +232,7 @@ def test_pipeline_failure_still_creates_an_open_ticket(client):
     row = _row(created["ticket_id"])
     assert row["route"] == "human"
     queue_ids = [t["ticket_id"] for t in client.get(
-        "/api/queue",
+        "/api/staff/tickets",
         headers={"Authorization": "Bearer " + client.post(
             "/api/auth/login",
             json={"email": "technician@example.com", "password": "technician-demo-pass"},

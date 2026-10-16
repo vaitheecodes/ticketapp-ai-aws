@@ -300,14 +300,15 @@ def get_current_user(
     return _load_user(credentials)
 
 
-def require_role(*roles: Role):
+def require_user(*roles: Role):
     """Dependency factory: the authenticated user must have one of
     `roles` and must not have a pending forced password change. Returns
-    the user's id."""
+    the user dict (id, role, name, email) — for endpoints whose behaviour
+    depends on which role is calling."""
 
     def dependency(
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
-    ) -> str:
+    ) -> dict:
         user = _load_user(credentials)
         if user["role"] not in roles:
             raise HTTPException(
@@ -315,6 +316,16 @@ def require_role(*roles: Role):
             )
         if user["must_change_password"]:
             raise HTTPException(status_code=403, detail="Password change required")
+        return user
+
+    return dependency
+
+
+def require_role(*roles: Role):
+    """Like require_user, but returns only the user's id."""
+    check = require_user(*roles)
+
+    def dependency(user: dict = Depends(check)) -> str:
         return user["id"]
 
     return dependency

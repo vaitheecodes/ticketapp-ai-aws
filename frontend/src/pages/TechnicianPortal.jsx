@@ -1,150 +1,158 @@
-import { useEffect, useState } from "react";
+/* Technician workspace.
+ *
+ * Left: ticket lists (Unassigned, My tickets, Recently updated, Open &
+ * pending) with search and priority/status filters; each row shows
+ * priority, age, customer and the AI hand-off preview. Right: the selected
+ * ticket (StaffTicketView) — claim, reply, notes, status.
+ */
+
+import { useCallback, useEffect, useId, useState } from "react";
 import { api } from "../api";
 import ChatReviews from "../components/ChatReviews";
-import { ChevronRightIcon } from "../components/Icons";
 import PortalHeader from "../components/PortalHeader";
-import { StatusPill } from "../components/StatusPill";
-import TicketTextDetail from "../components/TicketTextDetail";
-import { parseTicketText } from "../utils/parseTicketText";
+import StaffTicketRow from "../components/StaffTicketRow";
+import StaffTicketView from "../components/StaffTicketView";
 
-// The case summary (when present) is what a technician scanning the queue
-// actually needs — not the start of the raw "original + summary" string.
-function previewFor(ticketText) {
-  const { original, summary } = parseTicketText(ticketText);
-  return summary || original;
-}
+const VIEWS = [
+  ["unassigned", "Unassigned"],
+  ["mine", "My tickets"],
+  ["recent", "Recently updated"],
+  ["open_pending", "Open & pending"],
+];
 
-function Queue({ onAssigned }) {
-  const [tickets, setTickets] = useState([]);
-  const [expandedId, setExpandedId] = useState(null);
+function Workspace() {
+  const [view, setView] = useState("unassigned");
+  const [q, setQ] = useState("");
+  const [priority, setPriority] = useState("");
+  const [status, setStatus] = useState("");
+  const [tickets, setTickets] = useState(null);
   const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
+  const searchId = useId();
+  const priorityId = useId();
+  const statusId = useId();
 
-  function refresh() {
-    api.queue().then(setTickets).catch((err) => setError(err.message));
-  }
+  const load = useCallback(() => {
+    api
+      .staffTickets({ view, q: q.trim(), priority, status })
+      .then((rows) => {
+        setTickets(rows);
+        setError("");
+      })
+      .catch((err) => setError(err.message));
+  }, [view, q, priority, status]);
 
-  useEffect(refresh, []);
-
-  async function assign(ticketId) {
-    try {
-      await api.queueAssign(ticketId);
-      refresh();
-      onAssigned();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  if (error) return <p className="error">{error}</p>;
-  if (tickets.length === 0) return <p className="empty-state">Queue is empty — nothing waiting on a human right now.</p>;
+  // Debounce typing in the search box; filter/view changes load at once too.
+  useEffect(() => {
+    const timer = setTimeout(load, 250);
+    return () => clearTimeout(timer);
+  }, [load]);
 
   return (
-    <ul className="ticket-list">
-      {tickets.map((t) => {
-        const expanded = expandedId === t.ticket_id;
-        return (
-          <li key={t.ticket_id} className="ticket-item">
-            <div className="ticket-item-row">
-              <button
-                className="ticket-summary"
-                style={{ flex: 1 }}
-                aria-expanded={expanded}
-                aria-controls={`ticket-detail-${t.ticket_id}`}
-                onClick={() => setExpandedId(expanded ? null : t.ticket_id)}
-              >
-                <ChevronRightIcon className={`disclosure-icon ${expanded ? "expanded" : ""}`} />
-                <span className="ticket-text-preview">{previewFor(t.ticket_text)}</span>
-              </button>
-              <button className="btn-primary" onClick={() => assign(t.ticket_id)}>
-                Assign to me
-              </button>
-            </div>
-            {expanded && <TicketTextDetail id={`ticket-detail-${t.ticket_id}`} ticketText={t.ticket_text} />}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function MyTickets() {
-  const [tickets, setTickets] = useState([]);
-  const [expandedId, setExpandedId] = useState(null);
-  const [error, setError] = useState("");
-
-  function refresh() {
-    api.queueMine().then(setTickets).catch((err) => setError(err.message));
-  }
-
-  useEffect(refresh, []);
-
-  async function resolve(ticketId) {
-    try {
-      await api.queueResolve(ticketId);
-      refresh();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  if (error) return <p className="error">{error}</p>;
-  if (tickets.length === 0) return <p className="empty-state">No tickets assigned to you yet.</p>;
-
-  return (
-    <ul className="ticket-list">
-      {tickets.map((t) => {
-        const expanded = expandedId === t.ticket_id;
-        return (
-          <li key={t.ticket_id} className="ticket-item">
-            <div className="ticket-item-row">
-              <button
-                className="ticket-summary"
-                style={{ flex: 1 }}
-                aria-expanded={expanded}
-                aria-controls={`ticket-detail-${t.ticket_id}`}
-                onClick={() => setExpandedId(expanded ? null : t.ticket_id)}
-              >
-                <ChevronRightIcon className={`disclosure-icon ${expanded ? "expanded" : ""}`} />
-                <StatusPill status={t.status} />
-                <span className="ticket-text-preview">{previewFor(t.ticket_text)}</span>
-              </button>
-              {t.status !== "resolved" && (
-                <button className="btn-primary" onClick={() => resolve(t.ticket_id)}>
-                  Mark Resolved
-                </button>
-              )}
-            </div>
-            {expanded && <TicketTextDetail id={`ticket-detail-${t.ticket_id}`} ticketText={t.ticket_text} />}
-          </li>
-        );
-      })}
-    </ul>
+    <div className="portal-layout staff-layout">
+      <aside className="my-tickets" aria-label="Ticket lists">
+        <div className="view-tabs" role="group" aria-label="Ticket list">
+          {VIEWS.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={view === key ? "active" : ""}
+              aria-pressed={view === key}
+              onClick={() => {
+                setTickets(null);
+                setView(key);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <label className="sr-only" htmlFor={searchId}>
+          Search tickets
+        </label>
+        <input
+          id={searchId}
+          type="search"
+          className="my-tickets-search"
+          placeholder="Search ticket #, subject, customer"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <div className="list-filters">
+          <label className="inline-select" htmlFor={priorityId}>
+            <span>Priority</span>
+            <select id={priorityId} value={priority} onChange={(e) => setPriority(e.target.value)}>
+              <option value="">Any</option>
+              {["urgent", "high", "medium", "low"].map((p) => (
+                <option key={p} value={p}>
+                  {p[0].toUpperCase() + p.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="inline-select" htmlFor={statusId}>
+            <span>Status</span>
+            <select id={statusId} value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="">Any</option>
+              <option value="open">Open</option>
+              <option value="in_progress">In Progress</option>
+              <option value="pending_customer">Pending Customer</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+            </select>
+          </label>
+        </div>
+        {error && <p className="error">{error}</p>}
+        {!error && !tickets && <p className="hint">Loading…</p>}
+        {tickets && tickets.length === 0 && (
+          <p className="empty-state">
+            {view === "unassigned" ? "Nothing waiting to be claimed." : "No tickets match."}
+          </p>
+        )}
+        {tickets && tickets.length > 0 && (
+          <ul className="my-tickets-list">
+            {tickets.map((t) => (
+              <li key={t.ticket_id}>
+                <StaffTicketRow t={t} selected={selectedId === t.ticket_id} onSelect={setSelectedId} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </aside>
+      <div className="portal-main">
+        {selectedId ? (
+          <div className="card">
+            <StaffTicketView key={selectedId} ticketId={selectedId} onChanged={load} />
+          </div>
+        ) : (
+          <div className="empty">
+            <p className="empty-title">Pick a ticket</p>
+            <p className="empty-body">
+              Claim one from Unassigned to become its owner, then reply to the customer or add internal
+              notes for the team.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
 export default function TechnicianPortal() {
-  const [tab, setTab] = useState("queue");
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [tab, setTab] = useState("workspace");
 
   return (
-    <div className="page">
-      <PortalHeader title="Technician Portal" role="technician" />
+    <div className="page page-portal">
+      <PortalHeader title="Technician Workspace" role="technician" />
       <nav className="tabs">
-        <button className={tab === "queue" ? "active" : ""} onClick={() => setTab("queue")}>
-          Queue
-        </button>
-        <button className={tab === "mine" ? "active" : ""} onClick={() => setTab("mine")}>
-          My Tickets
+        <button className={tab === "workspace" ? "active" : ""} onClick={() => setTab("workspace")}>
+          Tickets
         </button>
         <button className={tab === "reviews" ? "active" : ""} onClick={() => setTab("reviews")}>
           Chat Reviews
         </button>
       </nav>
-      <div className="tab-content">
-        {tab === "queue" && <Queue onAssigned={() => setRefreshKey((k) => k + 1)} />}
-        {tab === "mine" && <MyTickets key={refreshKey} />}
-        {tab === "reviews" && <ChatReviews />}
-      </div>
+      {tab === "workspace" ? <Workspace /> : <ChatReviews />}
     </div>
   );
 }

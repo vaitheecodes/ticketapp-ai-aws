@@ -18,13 +18,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
-from backend import auth, chats, db, email_utils, graph, handoff_signals, runtime
+from backend import auth, chats, db, email_utils, graph, handoff_signals, runtime, staff_tickets
+from backend import ticket_lifecycle as lifecycle
 from backend.conversation import ESCALATION_MARKER as _ESCALATION_MARKER
 from backend.conversation import Outbox as _Outbox
 from backend.conversation import customer_row as _customer_row
 from backend.conversation import followup_gate
 from backend.conversation import insert_ticket_message as _insert_message
 from backend.conversation import now as _now
+from backend.conversation import subject_for as _subject_for
 from backend.email_utils import clean_email
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,7 @@ app.add_middleware(
 )
 
 app.include_router(chats.router)
+app.include_router(staff_tickets.router)
 
 
 @app.on_event("startup")
@@ -184,9 +187,11 @@ def _last_ai_message(conn, ticket_id: str) -> str | None:
 
 
 def _transcript_for(conn, ticket_id: str) -> str:
+    """The public conversation, for AI prompts: internal notes and system
+    events never reach the model."""
     rows = conn.execute(
         "SELECT sender, message FROM ticket_messages WHERE ticket_id = ? "
-        "ORDER BY created_at ASC, rowid ASC",
+        "AND visibility = 'public_reply' ORDER BY created_at ASC, rowid ASC",
         (ticket_id,),
     ).fetchall()
     return _build_transcript([dict(row) for row in rows])
@@ -207,13 +212,6 @@ def _customer_ticket_or_error(conn, ticket_id: str, customer_id: str):
 
 def _display_name(conn, ticket) -> str:
     return ticket["contact_name"] or _customer_row(conn, ticket["customer_id"])["name"]
-
-
-def _subject_for(ticket) -> str:
-    if ticket["subject"]:
-        return ticket["subject"]
-    first_line = ticket["ticket_text"].split("\n", 1)[0].strip()
-    return first_line if len(first_line) <= 80 else first_line[:77].rstrip() + "..."
 
 
 def _record_ai_reply(conn, ticket, text: str, outbox: _Outbox) -> str:
@@ -246,9 +244,8 @@ def _escalate_to_human(conn, ticket, transcript: str, category, confidence,
         summary = "AI summary unavailable — read the ticket thread."
     original_text = ticket["ticket_text"].split(f"\n\n{_ESCALATION_MARKER}\n", 1)[0]
     conn.execute(
-        "UPDATE tickets SET route = 'human', status = 'open', "
-        "assigned_technician_id = NULL, category = ?, confidence = ?, "
-        "ticket_text = ? WHERE ticket_id = ?",
+        "UPDATE tickets SET route = 'human', category = ?, confidence = ?, ticket_text = ? "
+        "WHERE ticket_id = ?",
         (
             category,
             confidence,
@@ -256,6 +253,8 @@ def _escalate_to_human(conn, ticket, transcript: str, category, confidence,
             ticket["ticket_id"],
         ),
     )
+    lifecycle.set_assignee(conn, ticket["ticket_id"], None, lifecycle.SYSTEM)
+    lifecycle.set_status(conn, ticket["ticket_id"], "open", lifecycle.SYSTEM)
     _record_ai_reply(
         conn,
         ticket,
@@ -314,7 +313,7 @@ def _run_followup(conn, ticket, message_text: str, prior_ai_response, outbox: _O
 
     if gate == "close":
         _insert_message(conn, ticket_id, "system", _TICKET_CLOSED_MESSAGE)
-        conn.execute("UPDATE tickets SET status = 'closed' WHERE ticket_id = ?", (ticket_id,))
+        lifecycle.set_status(conn, ticket_id, "closed", ticket["customer_id"])
         return {"route": "closed", "message": _TICKET_CLOSED_MESSAGE}
 
     if gate == "continuation":
@@ -359,16 +358,16 @@ def _run_followup(conn, ticket, message_text: str, prior_ai_response, outbox: _O
             return {"route": "human", "message": result["ai_response"]}
         conn.execute(
             "UPDATE tickets SET category = ?, confidence = ?, route = ?, "
-            "status = ?, clarification_attempts = ? WHERE ticket_id = ?",
+            "clarification_attempts = ? WHERE ticket_id = ?",
             (
                 result.get("category"),
                 result.get("confidence"),
                 result["route"],
-                _STATUS_FOR_ROUTE[result["route"]],
                 result.get("clarification_attempts", 0),
                 ticket_id,
             ),
         )
+        lifecycle.set_status(conn, ticket_id, _STATUS_FOR_ROUTE[result["route"]], lifecycle.SYSTEM)
         return {"route": result["route"], "message": result["ai_response"]}
 
     # decide_route escalated mid-conversation.
@@ -432,9 +431,9 @@ def tickets_mine(customer_id: str = Depends(auth.get_current_customer)):
         rows = conn.execute(
             "SELECT t.*, "
             "  (SELECT MAX(m.created_at) FROM ticket_messages m "
-            "   WHERE m.ticket_id = t.ticket_id) AS last_message_at, "
+            f"   WHERE m.ticket_id = t.ticket_id AND {db.CUSTOMER_VISIBLE_SQL}) AS last_message_at, "
             "  EXISTS (SELECT 1 FROM ticket_messages m WHERE m.ticket_id = t.ticket_id "
-            "          AND m.sender IN ('ai', 'staff') "
+            "          AND m.sender IN ('ai', 'staff') AND m.visibility = 'public_reply' "
             "          AND m.created_at > COALESCE(t.customer_last_read_at, '')) AS unread "
             "FROM tickets t WHERE t.customer_id = ? "
             "ORDER BY t.created_at DESC",
@@ -477,6 +476,7 @@ def _thread_message(row, customer_name: str, staff_names: dict, attachments: lis
         "sender_name": name,
         "sender_role": role,
         "to": to,
+        "subject": row["subject"],
         "message": row["message"],
         "created_at": row["created_at"],
         "attachments": attachments,
@@ -510,9 +510,11 @@ def ticket_detail(ticket_id: str, customer_id: str = Depends(auth.get_current_cu
             )
         messages = [
             _thread_message(row, customer_name, staff_names, attachments.get(row["message_id"], []))
+            # Internal notes and staff-only events are filtered here, in the
+            # query: they never leave the database on a customer request.
             for row in conn.execute(
                 "SELECT * FROM ticket_messages WHERE ticket_id = ? "
-                "ORDER BY created_at ASC, rowid ASC",
+                f"AND {db.CUSTOMER_VISIBLE_SQL} ORDER BY created_at ASC, rowid ASC",
                 (ticket_id,),
             )
         ]
@@ -622,6 +624,7 @@ def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_ta
                 _now(), "ticket", subject, priority, requested_category, contact_name,
             ),
         )
+        lifecycle.record_created(conn, ticket_id, _STATUS_FOR_ROUTE[route], customer_id)
         ticket = _load_ticket(conn, ticket_id)
         message_id = _insert_message(conn, ticket_id, "customer", ticket_text)
         if ai_response:
@@ -666,9 +669,9 @@ def ticket_reply(
     """Email-style reply from the ticket thread. While the AI is handling
     the ticket it goes through the same follow-up gates as a chat
     message (and the AI answers in the thread). Once the ticket is with
-    the support team it is simply added to the thread for them — and a
-    reply to a ticket a technician marked resolved puts it back in their
-    hands. Attachments go to the returned message_id."""
+    the support team it is added to the thread for them, and a reply to a
+    Pending Customer or Resolved ticket returns it to Open (owner kept).
+    Attachments go to the returned message_id."""
     message_text = body.message.strip()
     if not message_text:
         raise HTTPException(status_code=400, detail="message cannot be empty")
@@ -681,11 +684,10 @@ def ticket_reply(
             raise HTTPException(status_code=400, detail="This ticket has been closed.")
         if ticket["route"] == "human":
             message_id = _insert_message(conn, ticket_id, "customer", message_text)
+            # The customer answered (pending_customer) or isn't satisfied
+            # (resolved): either way it's back with the support team.
             if ticket["status"] in ("resolved", "pending_customer"):
-                status = "in_progress" if ticket["assigned_technician_id"] else "open"
-                conn.execute(
-                    "UPDATE tickets SET status = ? WHERE ticket_id = ?", (status, ticket_id)
-                )
+                lifecycle.set_status(conn, ticket_id, "open", customer_id)
             response = {"route": "human"}
         else:
             response = _handle_followup(conn, ticket, message_text, outbox)
@@ -711,8 +713,8 @@ def ticket_reopen(
 ):
     """Reopen a resolved ticket. If the AI resolved it, the answer didn't
     hold, so it goes to the support team through the normal escalation
-    path (with a case summary). If a technician resolved it, it goes back
-    to them (or to the open queue if they've been unassigned)."""
+    path (with a case summary). If a technician resolved it, it returns to
+    Open with its owner kept."""
     outbox = _Outbox()
     conn = db.get_connection()
     try:
@@ -721,8 +723,7 @@ def ticket_reopen(
             raise HTTPException(status_code=400, detail="Only resolved tickets can be reopened")
         _insert_message(conn, ticket_id, "system", _REOPENED_MESSAGE)
         if ticket["route"] == "human":
-            status = "in_progress" if ticket["assigned_technician_id"] else "open"
-            conn.execute("UPDATE tickets SET status = ? WHERE ticket_id = ?", (status, ticket_id))
+            lifecycle.set_status(conn, ticket_id, "open", customer_id)
         else:
             _escalate_to_human(
                 conn, ticket, _transcript_for(conn, ticket_id),
@@ -846,16 +847,19 @@ def upload_attachments(
 def download_attachment(
     ticket_id: str, attachment_id: str, user: dict = Depends(auth.get_current_user)
 ):
-    """The ticket's customer, or any staff/admin, may download."""
+    """The ticket's customer (only from messages they can see), or any
+    staff/admin, may download."""
     if user["must_change_password"]:
         raise HTTPException(status_code=403, detail="Password change required")
     conn = db.get_connection()
     try:
         if user["role"] == "customer":
             _customer_ticket_or_error(conn, ticket_id, user["id"])
+        visible = f"AND {db.CUSTOMER_VISIBLE_SQL}" if user["role"] == "customer" else ""
         row = conn.execute(
-            "SELECT filename, stored_name, content_type FROM attachments "
-            "WHERE attachment_id = ? AND ticket_id = ?",
+            "SELECT a.filename, a.stored_name, a.content_type FROM attachments a "
+            "JOIN ticket_messages m ON m.message_id = a.message_id "
+            f"WHERE a.attachment_id = ? AND a.ticket_id = ? {visible}",
             (attachment_id, ticket_id),
         ).fetchone()
     finally:
@@ -871,80 +875,6 @@ def download_attachment(
         filename=row["filename"],
         headers={"X-Content-Type-Options": "nosniff"},
     )
-
-
-# ---------------------------------------------------------------------------
-# Technician endpoints
-# ---------------------------------------------------------------------------
-@app.get("/api/queue")
-def queue(technician_id: str = Depends(auth.get_current_technician)):
-    conn = db.get_connection()
-    try:
-        rows = conn.execute(
-            "SELECT ticket_id, ticket_text FROM tickets "
-            "WHERE status = 'open' AND route = 'human' ORDER BY created_at ASC"
-        ).fetchall()
-        return [dict(row) for row in rows]
-    finally:
-        conn.close()
-
-
-@app.get("/api/queue/mine")
-def queue_mine(technician_id: str = Depends(auth.get_current_technician)):
-    conn = db.get_connection()
-    try:
-        rows = conn.execute(
-            "SELECT ticket_id, ticket_text, status FROM tickets "
-            "WHERE assigned_technician_id = ? ORDER BY created_at ASC",
-            (technician_id,),
-        ).fetchall()
-        return [dict(row) for row in rows]
-    finally:
-        conn.close()
-
-
-@app.post("/api/queue/{ticket_id}/assign")
-def queue_assign(ticket_id: str, technician_id: str = Depends(auth.get_current_technician)):
-    conn = db.get_connection()
-    try:
-        row = conn.execute(
-            "SELECT status, route FROM tickets WHERE ticket_id = ?", (ticket_id,)
-        ).fetchone()
-        if row is None:
-            raise HTTPException(status_code=404, detail="Ticket not found")
-        if row["status"] != "open" or row["route"] != "human":
-            raise HTTPException(status_code=400, detail="Ticket is not available to assign")
-
-        conn.execute(
-            "UPDATE tickets SET status = 'in_progress', assigned_technician_id = ? "
-            "WHERE ticket_id = ?",
-            (technician_id, ticket_id),
-        )
-        conn.commit()
-        return {"ticket_id": ticket_id, "status": "in_progress"}
-    finally:
-        conn.close()
-
-
-@app.post("/api/queue/{ticket_id}/resolve")
-def queue_resolve(ticket_id: str, technician_id: str = Depends(auth.get_current_technician)):
-    conn = db.get_connection()
-    try:
-        row = conn.execute(
-            "SELECT assigned_technician_id FROM tickets WHERE ticket_id = ?", (ticket_id,)
-        ).fetchone()
-        if row is None:
-            raise HTTPException(status_code=404, detail="Ticket not found")
-        if row["assigned_technician_id"] != technician_id:
-            raise HTTPException(status_code=403, detail="Ticket not assigned to you")
-
-        conn.execute(
-            "UPDATE tickets SET status = 'resolved' WHERE ticket_id = ?", (ticket_id,)
-        )
-        conn.commit()
-        return {"ticket_id": ticket_id, "status": "resolved"}
-    finally:
-        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -970,7 +900,7 @@ def admin_technicians(admin_id: str = Depends(auth.get_current_admin)):
     try:
         rows = conn.execute(
             "SELECT s.staff_id, s.name, s.email, "
-            "SUM(CASE WHEN t.status IN ('in_progress', 'pending_customer') THEN 1 ELSE 0 END) "
+            "SUM(CASE WHEN t.status NOT IN ('resolved', 'closed') THEN 1 ELSE 0 END) "
             "AS active_count, "
             "SUM(CASE WHEN t.status = 'resolved' THEN 1 ELSE 0 END) AS resolved_count "
             "FROM staff s LEFT JOIN tickets t ON t.assigned_technician_id = s.staff_id "
@@ -991,9 +921,7 @@ def admin_reassign_ticket(
     technician, or unassign it back to the open queue (technician_id=null)."""
     conn = db.get_connection()
     try:
-        ticket = conn.execute(
-            "SELECT route FROM tickets WHERE ticket_id = ?", (ticket_id,)
-        ).fetchone()
+        ticket = _load_ticket(conn, ticket_id)
         if ticket is None:
             raise HTTPException(status_code=404, detail="Ticket not found")
         if ticket["route"] != "human":
@@ -1004,22 +932,21 @@ def admin_reassign_ticket(
 
         if body.technician_id:
             technician = conn.execute(
-                "SELECT 1 FROM staff WHERE staff_id = ? AND role = 'technician' AND active = 1",
+                "SELECT name FROM staff WHERE staff_id = ? AND role = 'technician' AND active = 1",
                 (body.technician_id,),
             ).fetchone()
             if technician is None:
                 raise HTTPException(status_code=404, detail="Technician not found")
-            conn.execute(
-                "UPDATE tickets SET assigned_technician_id = ?, status = 'in_progress' "
-                "WHERE ticket_id = ?",
-                (body.technician_id, ticket_id),
-            )
+            note = f"Reassigned to {technician['name']} by the administrator."
         else:
-            conn.execute(
-                "UPDATE tickets SET assigned_technician_id = NULL, status = 'open' "
-                "WHERE ticket_id = ?",
-                (ticket_id,),
-            )
+            note = "Returned to the unassigned queue by the administrator."
+
+        if lifecycle.set_assignee(conn, ticket_id, body.technician_id, admin_id):
+            _insert_message(conn, ticket_id, "system", note, customer_visible=False)
+            if body.technician_id and ticket["status"] == "open":
+                lifecycle.set_status(conn, ticket_id, "in_progress", admin_id)
+            elif not body.technician_id and ticket["status"] == "in_progress":
+                lifecycle.set_status(conn, ticket_id, "open", admin_id)
         conn.commit()
         return {"ticket_id": ticket_id, "assigned_technician_id": body.technician_id}
     finally:

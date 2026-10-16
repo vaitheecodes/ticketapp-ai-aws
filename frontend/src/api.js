@@ -176,12 +176,26 @@ export const api = {
   chatReviewUpdate: (reviewId, status) =>
     request(`/chat-reviews/${reviewId}`, { method: "POST", body: { status }, auth: true }),
 
-  queue: () => request("/queue", { auth: true }),
-  queueMine: () => request("/queue/mine", { auth: true }),
-  queueAssign: (ticketId) =>
-    request(`/queue/${ticketId}/assign`, { method: "POST", auth: true }),
-  queueResolve: (ticketId) =>
-    request(`/queue/${ticketId}/resolve`, { method: "POST", auth: true }),
+  // Technician workspace + manager oversight (backend/staff_tickets.py).
+  staffTickets: ({ view, q, priority, status } = {}) => {
+    const params = new URLSearchParams({ view: view || "unassigned" });
+    if (q) params.set("q", q);
+    if (priority) params.set("priority", priority);
+    if (status) params.set("status", status);
+    return request(`/staff/tickets?${params}`, { auth: true });
+  },
+  staffTicket: (ticketId) => request(`/staff/tickets/${ticketId}`, { auth: true }),
+  staffClaim: (ticketId) =>
+    request(`/staff/tickets/${ticketId}/claim`, { method: "POST", auth: true }),
+  staffSetStatus: (ticketId, status) =>
+    request(`/staff/tickets/${ticketId}/status`, { method: "POST", body: { status }, auth: true }),
+  staffMessage: (ticketId, { body, visibility, subject, set_status }) =>
+    request(`/staff/tickets/${ticketId}/messages`, {
+      method: "POST",
+      body: { body, visibility, subject: subject || null, set_status: set_status || null },
+      auth: true,
+    }),
+  managerOverview: () => request("/manager/overview", { auth: true }),
 
   adminTickets: () => request("/admin/tickets", { auth: true }),
   adminTechnicians: () => request("/admin/technicians", { auth: true }),
@@ -229,7 +243,6 @@ export const api = {
   adminDeleteDepartment: (departmentId) =>
     request(`/admin/departments/${departmentId}`, { method: "DELETE", auth: true }),
 
-  managerDepartments: () => request("/manager/departments", { auth: true }),
   adminSimulateTicket: (ticket_text, channel, customer_id) =>
     request("/admin/simulate-ticket", {
       method: "POST",

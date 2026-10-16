@@ -133,11 +133,12 @@ def test_escalated_chat_reaches_the_human_queue_with_a_summary(client):
     headers = _signup(client)
     chat, _ = _start_chat(client, headers, [_ai_result(_LIMITATION_ANSWER)])
 
-    queue = client.get("/api/queue", headers=_technician_headers(client)).json()
+    queue = client.get("/api/staff/tickets", headers=_technician_headers(client)).json()
     queued = [t for t in queue if t["ticket_id"] == chat["ticket_id"]]
     assert queued, f"ticket {chat['ticket_id']} missing from the human queue"
-    assert _BRIEF.issue in queued[0]["ticket_text"]
-    assert ESCALATION_MARKER in queued[0]["ticket_text"]
+    # The queue row previews the hand-off brief, not the raw opening line.
+    assert _BRIEF.issue in queued[0]["preview"]
+    assert ESCALATION_MARKER in _ticket_row(chat["ticket_id"])["ticket_text"]
 
 
 def test_normal_answer_keeps_chat_active(client):

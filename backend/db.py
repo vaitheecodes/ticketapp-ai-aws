@@ -32,6 +32,11 @@ DB_PATH = Path(os.environ.get("DB_PATH") or _DEFAULT_DB_PATH)
 #   closed            done; no further replies accepted
 TICKET_STATUSES = ("open", "in_progress", "pending_customer", "resolved", "closed")
 
+# The only ticket_messages a customer endpoint may ever return.
+CUSTOMER_VISIBLE_SQL = (
+    "(visibility = 'public_reply' OR (visibility = 'system_event' AND customer_visible = 1))"
+)
+
 # Pre-Stage-2 status names -> current ones (migrated in place on startup).
 _LEGACY_STATUSES = {"awaiting_reply": "pending_customer", "assigned": "in_progress"}
 
@@ -93,14 +98,43 @@ CREATE TABLE IF NOT EXISTS tickets (
 
 -- sender: customer | ai | staff | system. author_id is the staff_id for
 -- staff messages (null otherwise).
+-- visibility: public_reply (the conversation), internal_note (staff only,
+-- never returned by a customer endpoint), system_event (status/assignment
+-- changes; shown to the customer only when customer_visible = 1).
+-- Customer queries filter on these columns in SQL: CUSTOMER_VISIBLE_SQL.
 CREATE TABLE IF NOT EXISTS ticket_messages (
-    message_id  TEXT PRIMARY KEY,
-    ticket_id   TEXT NOT NULL REFERENCES tickets(ticket_id),
-    sender      TEXT NOT NULL,
-    message     TEXT NOT NULL,
-    created_at  TIMESTAMP NOT NULL,
-    author_id   TEXT
+    message_id       TEXT PRIMARY KEY,
+    ticket_id        TEXT NOT NULL REFERENCES tickets(ticket_id),
+    sender           TEXT NOT NULL,
+    message          TEXT NOT NULL,
+    created_at       TIMESTAMP NOT NULL,
+    author_id        TEXT,
+    visibility       TEXT NOT NULL DEFAULT 'public_reply',
+    customer_visible INTEGER NOT NULL DEFAULT 1,
+    subject          TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket ON ticket_messages(ticket_id, created_at);
+
+-- Every status / owner change, by whom ('system' for the AI pipeline).
+CREATE TABLE IF NOT EXISTS ticket_status_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id   TEXT NOT NULL REFERENCES tickets(ticket_id),
+    from_status TEXT,
+    to_status   TEXT NOT NULL,
+    changed_by  TEXT NOT NULL,
+    changed_at  TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_status_history_ticket ON ticket_status_history(ticket_id);
+
+CREATE TABLE IF NOT EXISTS ticket_assignment_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id   TEXT NOT NULL REFERENCES tickets(ticket_id),
+    from_user   TEXT,
+    to_user     TEXT,
+    changed_by  TEXT NOT NULL,
+    changed_at  TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_assignment_history_ticket ON ticket_assignment_history(ticket_id);
 
 -- Customer-facing AI chat, a lifecycle separate from tickets:
 --   active     the AI is handling it
@@ -246,7 +280,12 @@ _ADDED_COLUMNS = {
         ("ai_summary", "TEXT"),
         ("ai_suggestions", "TEXT"),
     ],
-    "ticket_messages": [("author_id", "TEXT")],
+    "ticket_messages": [
+        ("author_id", "TEXT"),
+        ("visibility", "TEXT NOT NULL DEFAULT 'public_reply'"),
+        ("customer_visible", "INTEGER NOT NULL DEFAULT 1"),
+        ("subject", "TEXT"),
+    ],
 }
 
 
@@ -258,6 +297,12 @@ def _add_missing_columns(conn) -> None:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
     for old, new in _LEGACY_STATUSES.items():
         conn.execute("UPDATE tickets SET status = ? WHERE status = ?", (new, old))
+    # Messages from before visibility types: system notes were always shown
+    # to the customer, so they become customer-visible system events.
+    conn.execute(
+        "UPDATE ticket_messages SET visibility = 'system_event' "
+        "WHERE sender = 'system' AND visibility = 'public_reply'"
+    )
 
 
 _LEGACY_ESCALATION_PREFIX = "This conversation has been escalated"

@@ -32,6 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from backend import auth, db, graph, handoff_signals, runtime
+from backend import ticket_lifecycle as lifecycle
 from backend.ai_service import AIError, summaries
 from backend.ai_service.schemas import EscalationSummary
 from backend.conversation import (
@@ -257,6 +258,12 @@ def _escalate(conn, session, reason_key: str, subject: str | None = None) -> str
             summary.model_dump_json(),
             json.dumps(summary.suggested_next_steps),
         ),
+    )
+    lifecycle.record_created(
+        conn,
+        ticket_id,
+        "open",
+        session["customer_id"] if reason_key.startswith("customer_") else lifecycle.SYSTEM,
     )
     insert_ticket_message(
         conn,
