@@ -1485,3 +1485,81 @@
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
+
+/* ===========================================================================
+   Admin: All Tickets
+   ========================================================================= */
+
+.admin-tickets .list-filters {
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+
+.admin-tickets .table-search {
+  margin: 0;
+  flex: 1 1 18rem;
+}
+
+.tickets-table th,
+.tickets-table td {
+  padding: 0.6rem 0.7rem;
+  vertical-align: middle;
+}
+
+.tickets-table td button {
+  font-size: var(--text-sm);
+  padding: 0.35rem 0.7rem;
+}
+
+.tickets-table tbody tr.is-selected,
+.tickets-table tbody tr.is-selected:hover {
+  background: var(--accent-soft);
+}
+
+.ticket-cell,
+.customer-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+/* <td> can't be a flex container in every browser's table layout; the
+   inner spans carry the layout instead. */
+td.ticket-cell,
+td.customer-cell {
+  display: table-cell;
+}
+
+.ticket-cell > span,
+.customer-cell > span {
+  display: block;
+}
+
+.ticket-cell-id {
+  display: flex !important;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.ticket-cell-subject {
+  max-width: 17rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+
+.customer-cell .hint {
+  font-size: var(--text-xs);
+}
+
+.route-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.admin-ticket-detail {
+  margin-top: var(--space-5);
+  scroll-margin-top: var(--space-4);
+}

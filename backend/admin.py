@@ -109,9 +109,17 @@ def _department_exists(conn, department_id: str) -> bool:
 # ---------------------------------------------------------------------------
 @router.get("/api/admin/tickets")
 def admin_tickets(admin_id: str = Depends(_admin)):
+    """Every ticket with customer and technician names (the full thread,
+    AI hand-off and history come from GET /api/staff/tickets/{id})."""
     conn = db.get_connection()
     try:
-        return [dict(row) for row in conn.execute("SELECT * FROM tickets ORDER BY created_at DESC")]
+        return [dict(row) for row in conn.execute(
+            "SELECT t.*, c.name AS customer_name, c.email AS customer_email, "
+            "s.name AS technician_name FROM tickets t "
+            "JOIN customers c ON c.customer_id = t.customer_id "
+            "LEFT JOIN staff s ON s.staff_id = t.assigned_technician_id "
+            "ORDER BY t.created_at DESC"
+        )]
     finally:
         conn.close()
 
