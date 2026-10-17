@@ -11,17 +11,15 @@ Two layers:
 1. **Data layer (done)** — a bronze → silver → gold pipeline that turns a
    public LLM instruction-tuning dataset into data shaped like a real
    support ticketing platform's operational tables.
-2. **Agent layer (in progress)** — a LangGraph agent that takes an
-   incoming ticket, classifies it, decides whether to auto-resolve or
-   escalate to a human, and generates a grounded response — the "L1
-   auto-resolution" capability these platforms sell (Thunai/Zendesk
-   AI/Intercom Fin). Two parallel tracks:
-   - `src/agent/` — the original stub/eval-oriented pipeline, meant to
-     run against the gold dataset's held-out split with deflection-rate
-     metrics (not yet wired to a real LLM).
-   - `backend/` + `frontend/` — a live, end-to-end **Ticket Resolution
-     Agent** app: real customers/agents, real Azure OpenAI calls, SQLite
-     persistence, two-portal React UI. See below.
+2. **AI help desk (built)** — `backend/` + `frontend/`: a Zoho-Desk-style
+   help desk with an AI support chat, email-style tickets, technician
+   workspace, AI incident correlation for managers, and an admin console
+   (four roles, Azure OpenAI, SQLite). Built to the user's master spec
+   (`HELPDESK_MASTER_SPEC.md`, kept outside the repo) via a staged plan; user-facing docs are in
+   `README.md`, the API in `docs/API.md`.
+   - `src/agent/` — the original stub/eval-oriented LangGraph skeleton,
+     meant for offline deflection-rate evaluation on the gold dataset's
+     held-out split (not wired to a real LLM; separate from the app).
 
 ## Data layer: pipeline architecture
 
@@ -115,9 +113,11 @@ filled with synthetic Site24x7-style monitor names
 
 ## Ticket Resolution Agent — live app (`backend/`, `frontend/`)
 
-A four-role app (customer / technician / manager / admin) on top of the same routing
-policy as `src/agent/`, but with real persistence, real auth, and real
-LLM calls instead of stub nodes and dummy tickets.
+A four-role app (customer / technician / manager / admin) on top of the
+same routing policy as `src/agent/`, with real persistence, auth and LLM
+calls. The bullets below are the detailed design notes per area; the
+end-to-end journey is pinned by `tests/test_e2e_helpdesk.py` (real
+pipeline, scripted model).
 
 ```
 Customer/Agent/Admin React portals (frontend/, Vite, :5173)
@@ -514,20 +514,15 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
 ## Status
 
 **Done:** full bronze/silver/gold pipeline, DuckDB warehouse + CX views,
-data-quality test suite, exploratory notebook. Ticket Resolution Agent
-live app (`backend/` + `frontend/`) — auth, SQLite persistence, LangGraph
-pipeline wired to Azure OpenAI, two-portal React UI — built and verified
-end-to-end locally (signup → raise ticket → route → agent queue → assign
-→ resolve). The live app's taxonomy/routing (`backend/graph.py`) has
-since been migrated from the original Bitext-era categories to the
-Site24x7 17-category taxonomy, with a KB-grounding retrieval step
-(`retrieve_kb_candidates` / `backend/kb_retrieval.py`) added after
-manual testing surfaced two bugs from that migration being incomplete:
-`ask_clarifying_question` asking ungrounded questions about categories
-that no longer exist instead of resolving straightforward requests, and
-the old order-lookup identity-verification prompt leaking into
-unrelated monitoring requests via a stale category list. Re-verified
-end-to-end against the live Azure OpenAI backend.
+data-quality test suite, exploratory notebook. The AI help desk
+(`backend/` + `frontend/`): roles and auth, AI chat sessions with
+resolution/escalation, email-style tickets with attachments, technician
+workspace (claim, public replies, internal notes, history), modular
+validated AI service, AI incident correlation with manager review, admin
+console (accounts, departments, settings, audit log). Covered by the
+pytest suite including an end-to-end journey test; each portal was also
+checked in a browser against the live Azure OpenAI deployment. Known
+limitations are listed in `README.md`.
 
 **Next — `src/agent/` eval track** (separate from the live app above,
 still open):

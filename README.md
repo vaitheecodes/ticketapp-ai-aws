@@ -1,164 +1,350 @@
 # ticketapp-ai
 
-A small-scale clone of an enterprise AI customer-experience platform
-(inspired by [Thunai.ai](https://thunai.ai)), demonstrating a full data
-engineering + AI agent pipeline for support-ticket automation: raw data →
-warehouse → a LangGraph agent that classifies, resolves, or escalates
-tickets.
+An AI-powered help desk for a monitoring product (Site24x7 support
+topics), inspired by Zoho Desk and AI customer-experience platforms such
+as Thunai.ai, Zendesk AI and Intercom Fin — plus the data pipeline that
+builds its knowledge base.
+
+- **Customers** chat with an AI assistant grounded in a 386-entry
+  knowledge base, or raise email-style tickets with attachments.
+- **The AI** answers what it can, asks one targeted question when unsure,
+  and hands everything else to people with a summary and suggested next
+  steps, so nobody has to repeat themselves.
+- **Technicians** claim tickets from an unassigned queue, reply to the
+  customer, and keep private internal notes.
+- **Managers** review AI-detected *incidents* (several customers reporting
+  what may be one problem) for their department, and oversee workload.
+- **The admin** manages accounts, departments, AI routing settings and
+  reads the audit log.
+
+The original data-engineering layer (bronze → silver → gold) is described
+[further down](#data-layer).
+
+## Contents
+
+- [Architecture](#architecture)
+- [Setup and startup](#setup-and-startup)
+- [Environment variables](#environment-variables)
+- [Database and migrations](#database-and-migrations)
+- [AI configuration](#ai-configuration)
+- [Roles and workflows](#roles-and-workflows)
+- [API](#api)
+- [Testing](#testing)
+- [Features: completed and tested](#features-completed-and-tested)
+- [Known limitations](#known-limitations)
+- [Data layer](#data-layer)
 
 ## Architecture
 
 ```
-data/raw/*.csv
-      |
-      v
-[bronze]  raw ingest + lineage metadata
-      |
-      v
-[silver]  entity filling + synthetic ticket/resolution metadata
-      |
-      v
-[gold]    DuckDB warehouse + CX aggregate views
-      |
-      v
-LangGraph agent   ingest -> classify -> retrieve -> decide_route
-      |                                                  |
-      |                                    +-------------+-------------+
-      |                                    |                           |
-      |                             generate_response              escalate
-      |                                    |                           |
-      |                                    +-------------+-------------+
-      |                                                  |
-      +--------------------------------------------  log_outcome
-                        |
-                        v
-                 FastAPI (planned)  ->  [Auto-resolve | Escalate]
+React (Vite) — frontend/            one login page; portals per role:
+  /customer  /technician  /manager  /admin
+        │  fetch /api/*  (JWT bearer)
+        ▼
+FastAPI — backend/
+  main.py            auth, customer tickets, attachments, /meta
+  chats.py           AI chat sessions (separate from tickets)
+  staff_tickets.py   technician workspace, manager overview
+  incidents.py       AI incident correlation + manager review
+  admin.py           accounts, departments, settings, audit log
+  ticket_lifecycle.py / audit.py / app_settings.py
+        │
+        ├── graph.py        LangGraph routing pipeline
+        │     retrieve KB → classify → decide route
+        │       → answer | ask a clarifying question | hand to a human
+        ├── ai_service/     every model call: one module per operation,
+        │                   pydantic-validated input/output (Azure OpenAI)
+        └── kb_retrieval.py TF-IDF retrieval over the 386 KB entries
+        ▼
+SQLite (DB_PATH) + uploads/ next to it
 ```
+
+Stack: Python 3.10, FastAPI, LangGraph, Azure OpenAI (`openai`
+package), SQLite, bcrypt + JWT · React 19, Vite, React Router · pytest.
+
+## Setup and startup
+
+Prerequisites: Python 3.10, Node 20+, an Azure OpenAI chat deployment.
+
+```bash
+pip install -r requirements.txt
+```
+
+```bash
+cp .env.example .env
+```
+
+Fill in at least the `AZURE_OPENAI_*` values and `JWT_SECRET` (see
+[Environment variables](#environment-variables)). Then run the backend
+from the repo root:
+
+```bash
+uvicorn backend.main:app --reload
+```
+
+and the frontend in a second terminal:
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Open http://localhost:5173. Vite proxies `/api` to `:8000`.
+
+On first start the backend creates the database, seeds the default
+departments (covering all 17 categories) and a small mock `orders` table,
+and creates the admin account:
+
+- **Admin**: from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. If they're unset in
+  development, a fallback admin is created and a warning with the details
+  is logged (`backend/auth.py`). In production (`APP_ENV=production`) the
+  server refuses to start without them.
+- **Demo staff** (development only, never in production): a manager
+  (Infrastructure department) and a technician; credentials in
+  `backend/seed_data.py`.
+- **Customers** sign up on the login page (or the admin creates them).
+
+The knowledge base reads `data/silver/{tickets,resolutions}.parquet`
+(committed). Regenerate them with the [data pipeline](#data-layer) if
+needed.
+
+**Deployment (Azure).** The backend runs on App Service (`Procfile`,
+`runtime.txt`); set the variables below as Application Settings, with
+`DB_PATH=/home/data/ticketapp.db` so the database and uploads persist,
+`APP_ENV=production`, `ADMIN_*`, and `ALLOWED_ORIGINS` set to the frontend
+origin. The frontend builds to Static Web Apps with
+`VITE_API_URL=https://<app>.azurewebsites.net/api` set at build time
+(`frontend/.env.example`).
+
+## Environment variables
+
+All are documented in `.env.example`. Never commit real values.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION`, `AZURE_OPENAI_DEPLOYMENT` | — | Chat model for every AI operation |
+| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | unset | Optional: embeddings for incident grouping; unset = group by department/category |
+| `JWT_SECRET` | dev value | Signs session tokens; use a long random value in production |
+| `APP_ENV` | `development` | `production` requires `ADMIN_*` and skips demo staff |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | — | The single admin, created once if no admin exists (never overwritten) |
+| `DB_PATH` | `backend/ticketapp.db` | SQLite file; attachments go to `uploads/` beside it |
+| `ALLOWED_ORIGINS` | localhost dev ports | CORS origins, comma-separated |
+| `INCIDENT_WINDOW_HOURS` | 12 | Reports considered together |
+| `INCIDENT_MIN_TICKETS` | 3 | Group size before asking the AI (from 2+ customers) |
+| `INCIDENT_SIMILARITY` | 0.80 | Embedding similarity split (with embeddings only) |
+| `INCIDENT_ROUTING_CONFIDENCE` | 0.6 | Below this, an incident is "Needs routing" |
+| `EMAIL_ENABLED` | `false` | Real email is off by default; the email-style thread is in-app |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS` | — | Used only when `EMAIL_ENABLED=true` |
+| `VITE_API_URL` (frontend) | `/api` | API base for production builds |
+
+The `INCIDENT_*` values are starting points: the admin can override them
+(and the AI routing policy, and status labels) in **Admin → Settings**;
+saved values win.
+
+## Database and migrations
+
+SQLite, created and migrated by `db.init_db()` on every startup — no
+separate migration step. Migrations are in place and non-destructive
+(columns added, data moved, never dropped), and safe to run repeatedly:
+
+- legacy `agents` → `staff` (technicians), `assigned_agent_id` →
+  `assigned_technician_id`
+- legacy statuses `awaiting_reply` → `pending_customer`, `assigned` →
+  `in_progress`
+- pre-session chat tickets → `chat_sessions` / `chat_messages` (escalated
+  ones stay tickets, linked to the chat)
+- legacy system messages → customer-visible system events
+- manager → department many-to-many → one department per manager (first
+  mapping kept)
+
+Main tables: `customers`, `staff`, `admins`, `departments`, `tickets`,
+`ticket_messages` (with `visibility`), `attachments`,
+`ticket_status_history`, `ticket_assignment_history`, `chat_sessions`,
+`chat_messages`, `chat_reviews`, `incident_clusters`, `incident_tickets`,
+`incident_departments`, `incident_reviews`, `audit_events`,
+`app_settings`. Schema and comments: `backend/db.py`.
+
+## AI configuration
+
+Every model call goes through `backend/ai_service/` (one module per
+operation: categorize, chat answer / clarify / follow-up check,
+conversation and ticket summaries, suggested steps, incident correlation
+and incident summary):
+
+- **Validated output**: each operation has a pydantic schema; output is
+  checked (plus semantic checks, e.g. correlated ticket ids must be from
+  the input) and retried once, then the caller treats the AI as
+  unavailable.
+- **AI failures never change state**: a chat or ticket is never resolved,
+  closed or escalated because a call failed; the customer's message is
+  kept, and raising a ticket always works.
+- **Prompt-injection defence**: instructions in the system message,
+  customer text in delimited data blocks the customer can't close, and the
+  model is told to treat them as data. Internal notes never reach a
+  prompt; incident analysis sees customers only as anonymous labels.
+- **Grounding**: answers and suggested steps use the closest KB entries;
+  prompts forbid inventing results or claiming to have checked systems
+  the app isn't connected to.
+- **Routing policy** (`graph.decide_route`, editable in Admin →
+  Settings): escalation language (abuse, negation, long compound
+  messages) → human; high-risk categories (ACCOUNT, DATA) below 90%
+  confidence → human; other categories below 75% → up to 3 clarifying
+  questions, then human; otherwise the AI answers.
+
+## Roles and workflows
+
+| Role | Signs in at | Can |
+|---|---|---|
+| Customer | `/login` → `/customer` | chat with the AI, raise tickets with attachments, follow up, reopen, see chat history |
+| Technician | → `/technician` | unassigned / mine / recent / open queues, claim, reply, internal notes, status, AI hand-off panel, chat reviews |
+| Manager (one department) | → `/manager` | incidents for their department (confirm / investigate / dismiss, correct departments), department tickets and workload (read-only) |
+| Admin (single account) | → `/admin` | all tickets and reassignment, team and customer accounts, departments, settings, incidents, activity/audit log, pipeline simulator |
+
+**Chat.** A chat is not a ticket. If the customer confirms it's solved, it
+closes with an AI summary and an internal review record (no ticket). If it
+needs a person — the customer asks, the AI can't do it, the routing
+policy says so, or the customer clicks *Raise a ticket* — an unassigned
+Open ticket is created with the transcript linked, an AI summary and
+suggested next steps; the customer gets the ticket number.
+
+**Tickets.** Statuses: Open, In Progress, Pending Customer, Resolved,
+Closed (labels configurable). Claiming is atomic (two simultaneous claims:
+one wins, one gets 409). Every status and owner change is recorded in
+history and the audit log. Customer replies return Pending Customer and
+Resolved tickets to Open.
+
+**Incidents.** After each new ticket or escalation, recent tickets from
+the same component area and at least two customers are sent to the AI,
+which decides whether they share an incident, separating observed facts
+from hypotheses. Clusters are reused for an ongoing event, routed to the
+owning department only when the AI is confident enough, and never close
+or merge tickets. Once a manager confirms one, affected customers see a
+neutral "we're aware of this issue" notice.
+
+## API
+
+58 endpoints, grouped by role, with request and response formats:
+**[docs/API.md](docs/API.md)**. A running server also serves Swagger at
+`/docs`.
+
+## Testing
+
+```bash
+pytest tests/
+```
+
+```bash
+cd frontend && npm run build && npm run lint
+```
+
+The pytest suite covers the data pipeline and the help desk; tests never
+call the real AI provider (`tests/conftest.py` disables it; individual
+tests script the model's replies). Highlights:
+
+| File | Covers |
+|---|---|
+| `test_e2e_helpdesk.py` | the full journey: chat → escalation → technician claim, reply + private note → customer view → correlated incident → manager confirms (real pipeline, scripted model) |
+| `test_roles_auth.py` | admin bootstrap, roles, login routing, forced password change, departments |
+| `test_chat_sessions.py`, `test_chat_followup_gates.py`, `test_handoff_escalation.py` | chat resolution vs escalation, AI-failure handling, review records, migration |
+| `test_ticket_workspace.py` | claim race, public vs internal visibility, history, manager scope |
+| `test_ai_service.py` | schema validation and retry, provider failure, injection containment, no secrets in logs |
+| `test_incidents.py` | clustering, time window, pre-filters, dedupe, routing, review, banner |
+| `test_admin_console.py` | account administration, settings, audit log, email gate, attachment access |
+| `test_customer_tickets.py` | ticket model, email-style replies, attachments |
+| `test_data_quality.py` | 33 checks over the pipeline output |
+
+The frontend has no automated tests; it was verified by building, linting
+and clicking through each portal in a browser at desktop and phone widths.
+
+## Features: completed and tested
+
+- Single login with role routing; customer signup; one env-configured
+  admin; admin-created staff and customers with forced password change;
+  deactivation that blocks live sessions.
+- AI chat with KB grounding, clarifying questions, follow-up handling,
+  resolution summaries + internal review, escalation to an unassigned
+  ticket with summary, suggested steps and linked transcript.
+- Email-style tickets with attachments (validated, private storage,
+  authorised download), replies, reopen, unread markers.
+- Technician workspace: queues, search/filters, atomic claim, public
+  replies vs private notes (filtered in SQL for customers), status
+  changes, history, AI hand-off panel.
+- Manager department oversight and workload; AI incident correlation
+  with confidence, facts vs hypotheses, department routing, Needs
+  routing, review with notes, customer notice on confirmed incidents.
+- Admin console: tickets, team, customers, departments, settings (routing
+  policy, incident settings, status labels), incidents, audit log.
+- Modular, validated AI service; graceful AI failure everywhere.
+
+## Known limitations
+
+- **SQLite, one process.** Settings are cached per process, and incident
+  correlation runs as an in-process background task. Fine for the
+  single-process App Service setup, but needs work for several workers or
+  heavy load.
+- **The negation rule is broad.** Any "no"/"not" sends a message to a
+  person, so most long ticket descriptions skip the AI. Admins can turn
+  it off in Settings.
+- **Chats are never marked abandoned automatically;** an idle chat stays
+  active and can be resumed.
+- **Incident correlation looks at tickets only** (not AI-resolved chats).
+  Without an embeddings deployment, grouping is by department/category,
+  and the AI does the fine-grained judgement.
+- **The ticket form has no separate contact email/phone or product
+  fields;** the account's name and email and the category are used.
+- **Composer formatting** is a Markdown subset (bold, code, lists), not a
+  WYSIWYG editor. Only customers can attach files.
+- **No manager reassignment and no "reply to all linked tickets"** (the
+  spec makes both optional; neither existed before).
+- **Real email is send-only and off by default;** there's no inbound
+  email.
+- **Session tokens** live in `localStorage` with no refresh tokens. Failed
+  logins are audited but not rate-limited.
+- **Legacy data:** admin accounts created by the old public admin signup
+  are kept (a warning is logged); remove extras manually.
+- **The `src/agent/` evaluation track** (below) is still a stub and
+  separate from the live app.
 
 ## Data layer
 
 **Source:** `data/raw/Site24x7_Customer_Support_Training_Dataset_27K.csv`
 — 26,872 rows, 27 intents under 17 categories, all genuine Site24x7
-monitoring-product support topics (monitor setup/troubleshooting,
-alerting, integrations, agent installation, licensing, data retention).
-It's an instruction-tuning dataset (`flags, instruction, category,
-intent, response`), not ticket data, so the silver stage layers
-realistic synthetic operational metadata on top of the genuine support
-language. **The real knowledge-base size is 386 unique instructions** —
-each is duplicated ~5x under different `flags` values (a
-dataset-generation artifact, not independent tickets), so the 26,872 row
-count overstates the raw content; the silver stage tags every ticket
-with the canonical `kb_entry_id` (one of the 386) it was drawn from so
-downstream consumers (the eval track's held-out split, repeat-contact
-analysis) never mistake flag-variant duplication for real ticket volume
-or repeat customer contact.
+monitoring-product support topics. It's an instruction-tuning dataset
+(`flags, instruction, category, intent, response`), so the silver stage
+layers realistic synthetic operational metadata on top of the genuine
+support language. **The real knowledge-base size is 386 unique
+instructions** — each is duplicated ~5x under different `flags` values (a
+dataset-generation artifact), so every ticket is tagged with its
+canonical `kb_entry_id`.
+
+```
+data/raw/*.csv → [bronze] lineage → [silver] entity fill + synthetic
+metadata → [gold] DuckDB warehouse + CX views + Hive-partitioned Parquet
+```
 
 | Stage | Script | What it does |
 |---|---|---|
-| Bronze | `01_bronze_ingest.py` | Lands the raw CSV as-is (all-string, no coercion), adds lineage columns (`row_id`, `source_file`, `ingested_at`) and a `_manifest.json` (row/column counts, sha256 checksum). Partitioned by ingest date. |
-| Silver | `02_silver_transform.py` | Decodes `flags` into readable `language_tags`; fills the dataset's one entity placeholder (`{{monitor name}}` / `{{Monitor Name}}`, case varies) with a realistic Site24x7-style monitor name (`placeholder_fill.py`, consistent per entity within a ticket); generates synthetic ticket metadata (timestamps, channel, customer_id, priority) and resolution metadata (resolved_by, status, handle time, CSAT); tags each ticket with its canonical `kb_entry_id`. Seeded (42) for reproducibility. |
-| Gold | `03_gold_load.py` | Loads silver tables into a local DuckDB warehouse, builds 3 CX aggregate views, and re-emits both tables as Hive-partitioned Parquet (ready for an `aws s3 sync` + Athena external table, no reshaping needed). |
-
-**`tickets`** — `ticket_id`, `created_at`, `channel` (email/chat/voice),
-`customer_id`, `category`, `intent`, `instruction_text`,
-`instruction_entities`, `priority` (low/medium/high/urgent),
-`language_tags`, `kb_entry_id`.
-
-**`resolutions`** (FK `ticket_id`) — `response_text`, `response_entities`,
-`resolved_by` (ai/human), `resolution_status` (resolved/escalated/pending),
-`handle_time_seconds`, `csat_score` (1–5, null while pending).
-
-Full design rationale for the synthetic fields (why priority/resolved_by/
-handle_time are shaped the way they are, the S3+Athena extension path)
-is documented inline in `src/pipeline/`.
-
-## Agent layer
-
-A [LangGraph](https://github.com/langchain-ai/langgraph) state machine
-(`src/agent/`) that takes an incoming ticket through classification,
-retrieval, and routing:
-
-| Node | Role |
-|---|---|
-| `ingest_ticket` | Normalizes the incoming ticket fields, starts the trace. |
-| `classify_intent` | Assigns intent + category + confidence. |
-| `retrieve_knowledge` | Looks up the canonical resolution + entity slots for the classified intent. |
-| `decide_route` | Conditional edge: `auto_resolve` vs `escalate`. |
-| `generate_response` | Auto-resolve path — drafts a customer-facing reply grounded in the retrieved KB entry. |
-| `escalate` | Escalation path — produces a structured handoff summary (ticket text, intent, confidence, reason) for a human agent. |
-| `log_outcome` | Terminal node; will persist the outcome to a `resolutions_ai` table. |
-
-**Routing logic** (`decide_route`), checked in order:
-1. **Category risk** — ACCOUNT/DATA require a higher confidence bar
-   (≥0.90) than other categories before auto-resolving, since a wrong
-   auto-response on licensing/billing changes or data retention/deletion
-   is costlier.
-2. **Language tags** — offensive language, coordinated/compound phrasing,
-   or negation in the ticket forces escalation regardless of confidence.
-3. **Confidence threshold** — anything below 0.75 escalates.
-
-**Current status: stub nodes, no model calls yet.** `classify_intent` is
-a keyword lookup, `retrieve_knowledge` returns a canned entry, and
-`generate_response` formats a template string — this is deliberate,
-checkpoint-driven scaffolding to validate the graph shape and routing
-logic on dummy data (`src/agent/run_demo.py`) before wiring in real
-Amazon Bedrock (Claude) calls for classification and generation.
-
-## Tech stack
-
-pandas, DuckDB, PyArrow (Parquet), Faker · LangGraph · Amazon Bedrock
-(Claude, planned) · FastAPI (planned) · pytest · Docker (planned,
-target: ECS Fargate) · optional PySpark/Databricks port for the silver
-transform.
-
-## How to run
+| Bronze | `src/pipeline/01_bronze_ingest.py` | Lands the raw CSV as-is, adds lineage columns and a `_manifest.json` (counts, sha256). |
+| Silver | `src/pipeline/02_silver_transform.py` | Decodes `flags` into `language_tags`, fills the `{{monitor name}}` placeholder, generates ticket and resolution metadata, tags `kb_entry_id`. Seeded (42). |
+| Gold | `src/pipeline/03_gold_load.py` | DuckDB warehouse, 3 CX views (volume by channel, deflection by intent, handle time / CSAT by category), Hive-partitioned Parquet ready for S3 + Athena. |
 
 ```bash
-pip install -r requirements.txt
-
-# data pipeline
 python src/pipeline/01_bronze_ingest.py
-python src/pipeline/02_silver_transform.py
-python src/pipeline/03_gold_load.py
-
-# agent skeleton (stub nodes, dummy tickets)
-python src/agent/run_demo.py
-
-# tests
-pytest tests/ -v
 ```
-
-Query the warehouse directly:
 
 ```bash
-python -c "import duckdb; duckdb.connect('data/gold/warehouse.duckdb').sql('SELECT * FROM v_deflection_rate_by_intent').show()"
+python src/pipeline/02_silver_transform.py
 ```
 
-FastAPI server and eval notebook: not built yet (see roadmap).
+```bash
+python src/pipeline/03_gold_load.py
+```
 
-## Status / roadmap
+The live help desk uses the silver tables as its knowledge base
+(`backend/kb_retrieval.py`).
 
-- [x] Bronze → silver → gold data pipeline, DuckDB warehouse + 3 CX views
-- [x] Data-quality test suite (33 checks), exploratory notebook
-- [x] LangGraph skeleton with stub nodes, routing logic validated on dummy data
-- [ ] KB / held-out test split — split the 386 unique `kb_entry_id`
-      values 80/20 first, then map tickets back to an auditable `split`
-      column (never split on raw rows, which would leak near-duplicate
-      flag-variants of the same question across the split)
-- [ ] Real Bedrock Claude calls for `classify_intent` and `generate_response`
-- [ ] FastAPI layer (`POST /tickets`, `GET /metrics/deflection`, `GET /tickets/{id}`)
-- [ ] `notebooks/eval.ipynb` — deflection rate, simulated handle time, LLM-judge quality score on the held-out set
-
-## Why this mirrors an enterprise CX platform
-
-This project demonstrates the two things AI CX platforms like Thunai.ai,
-Zendesk AI, and Intercom Fin are actually sold on: **deflection** (the
-`v_deflection_rate_by_intent` gold view, and eventually the agent's own
-auto-resolve rate on held-out tickets) and **agent-assist** (routing
-simple, low-risk contacts to instant AI resolution while sensitive or
-low-confidence ones reach a human faster, with a full handoff summary
-instead of a cold transfer). The `decide_route` policy — confidence
-threshold, risk-weighted categories, language-tag overrides — is a
-simplified version of the same triage logic these platforms position as
-their core value proposition: automate the 70–80% of contacts that are
-repetitive, and get the rest to a human with context attached.
+**Evaluation track (`src/agent/`, not started beyond a skeleton):** a
+LangGraph skeleton with stub nodes for offline evaluation (`python
+src/agent/run_demo.py`). Still open: an 80/20 split on the 386
+`kb_entry_id` values (never on raw rows, which would leak flag-variant
+duplicates across the split) and a deflection / handle-time / quality
+evaluation notebook.
