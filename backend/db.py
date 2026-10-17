@@ -310,9 +310,22 @@ CREATE TABLE IF NOT EXISTS manager_departments (
 """
 
 
+# WAL is the fast default for a local disk, but it relies on shared memory
+# that network file systems don't support reliably — and on App Service the
+# only persistent storage (/home) is a network share. Set
+# SQLITE_JOURNAL_MODE=DELETE there.
+_JOURNAL_MODES = {"WAL", "DELETE", "TRUNCATE"}
+
+
+def _journal_mode() -> str:
+    mode = os.environ.get("SQLITE_JOURNAL_MODE", "WAL").strip().upper()
+    return mode if mode in _JOURNAL_MODES else "WAL"
+
+
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA journal_mode=WAL")
+    # timeout: wait for another request's write instead of failing at once.
+    conn = sqlite3.connect(DB_PATH, timeout=15)
+    conn.execute(f"PRAGMA journal_mode={_journal_mode()}")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
     return conn
