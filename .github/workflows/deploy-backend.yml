@@ -1,0 +1,44 @@
+# Deploys the FastAPI backend to the existing App Service (ticketapp-ai-api)
+# on every push to main that touches the backend or its runtime data.
+#
+# Packages only committed files, exactly like the manual deploy notes
+# (`git archive`), so .env, local databases and uploads can never be
+# included. App Service builds it on arrival (SCM_DO_BUILD_DURING_DEPLOYMENT
+# is set on the app), installing requirements.txt.
+#
+# Secret: AZURE_WEBAPP_PUBLISH_PROFILE — the App Service's publish profile.
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "data/silver/**"
+      - "requirements.txt"
+      - "runtime.txt"
+  workflow_dispatch: {}
+
+# One deployment at a time; a newer push waits for the running one.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package committed backend files
+        run: git archive --format=zip -o backend.zip HEAD -- backend data/silver requirements.txt runtime.txt Procfile
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ticketapp-ai-api
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: backend.zip

@@ -115,6 +115,18 @@ origin. The frontend builds to Static Web Apps with
 `VITE_API_URL=https://<app>.azurewebsites.net/api` set at build time
 (`frontend/.env.example`).
 
+**Continuous deployment.** Two GitHub Actions workflows deploy on push to
+`main`: `.github/workflows/deploy-backend.yml` (changes under `backend/`,
+`data/silver/`, `requirements.txt`, `runtime.txt`; packages committed files
+with `git archive` and deploys to the `ticketapp-ai-api` App Service) and
+`.github/workflows/deploy-frontend.yml` (changes under `frontend/`; builds
+with Node 22 and deploys `frontend/dist` to the Static Web App). Both can
+also be run manually (Actions → workflow → Run workflow). They need two
+repository secrets: `AZURE_WEBAPP_PUBLISH_PROFILE` (App Service → Download
+publish profile; requires SCM Basic Auth Publishing Credentials to be on)
+and `AZURE_STATIC_WEB_APPS_API_TOKEN` (Static Web App → Manage deployment
+token).
+
 ## Environment variables
 
 All are documented in `.env.example`. Never commit real values.
