@@ -31,7 +31,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from backend import audit, auth, db, graph, handoff_signals, incidents, runtime
+from backend import audit, auth, db, graph, handoff_signals, incident_memory, incidents, runtime
 from backend import ticket_lifecycle as lifecycle
 from backend.ai_service import AIError, summarize_conversation
 from backend.conversation import (
@@ -288,6 +288,13 @@ def _run_turn(conn, session, message_text: str) -> str | None:
 
 def _respond(conn, session, message_text: str, prior_ai: str | None) -> None:
     session_id = session["session_id"]
+    # "Was there an outage yesterday?" — answered from incident memory only.
+    incident_answer = incident_memory.answer_incident_question(conn, session["customer_id"], message_text)
+    if incident_answer is not None:
+        _insert_chat_message(conn, session_id, "ai", incident_answer)
+        conn.execute("UPDATE chat_sessions SET last_route = 'ai' WHERE session_id = ?", (session_id,))
+        return
+
     gate = followup_gate(message_text, prior_ai, answered=session["last_route"] == "ai")
 
     if gate == "handoff":

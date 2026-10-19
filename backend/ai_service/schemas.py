@@ -9,6 +9,7 @@ code.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -211,3 +212,56 @@ class IncidentSummary(BaseModel):
     common_symptoms: list[str] = _items()
     affected_services: list[str] = _items()
     suggested_next_steps: list[str] = _items()
+
+
+# ---------------------------------------------------------------------------
+# draft_post_incident
+# ---------------------------------------------------------------------------
+class PostIncidentFacts(BaseModel):
+    """Everything the model may use: the confirmed incident's own analysis
+    and what staff entered when resolving it. No customer identities, no
+    ticket text, and the times are only shown for context — code writes
+    the "When" and "Cause" lines itself."""
+
+    title: str
+    category: str | None = None
+    started_at_ist: str
+    resolved_at_ist: str
+    common_symptoms: list[str] = []
+    affected_services: list[str] = []
+    observed_facts: list[str] = []
+    resolution_note: str
+    root_cause: str | None = None
+    affected_customer_count: int
+    affected_ticket_count: int
+
+
+class PostIncidentDraft(BaseModel):
+    """Model output. The customer summary is assembled from these by code
+    (with the times and cause added verbatim), so the model never writes a
+    time, a date or a cause."""
+
+    what_happened: str = _text(1200)
+    what_was_fixed: str = _text(1200)
+    what_customers_should_do: str = _text(800)
+    internal_summary: str = _text(1500)
+
+
+# ---------------------------------------------------------------------------
+# incident_question
+# ---------------------------------------------------------------------------
+class IncidentQuestionInput(BaseModel):
+    message: str
+    now_ist: str          # ISO 8601 with +05:30
+    memory_days: int
+
+
+class IncidentQuestion(BaseModel):
+    """Is the customer asking whether there was/is a known problem, and if
+    so for which time window (absolute, with offset) and topic?"""
+
+    is_incident_question: bool
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    category: Category | None = None
+    topic: str | None = Field(default=None, max_length=200)

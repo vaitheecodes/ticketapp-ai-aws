@@ -373,8 +373,12 @@ def test_only_managers_and_admin_use_incident_endpoints(client, pipeline, judge)
     _three_customers_report(client, pipeline)
     (cluster,) = _clusters()
     (tech,) = [p for p in seed_data.DEMO_STAFF if p["role"] == "technician"]
-    for headers in (_customer(client), _login(client, tech["email"], tech["password"])):
-        assert client.get("/api/incidents", headers=headers).status_code == 403
+    tech_headers = _login(client, tech["email"], tech["password"])
+    assert client.get("/api/incidents", headers=_customer(client)).status_code == 403
+    # Technicians only see incidents assigned to them — none here.
+    assert client.get("/api/incidents", headers=tech_headers).json() == []
+    assert client.get(f"/api/incidents/{cluster['incident_id']}", headers=tech_headers).status_code == 403
+    for headers in (_customer(client), tech_headers):
         assert client.post(f"/api/incidents/{cluster['incident_id']}/review",
                            json={"action": "confirm", "note": "x"}, headers=headers).status_code == 403
         assert client.post("/api/incidents/run", headers=headers).status_code == 403

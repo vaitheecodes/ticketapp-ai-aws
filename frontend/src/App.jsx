@@ -7,6 +7,7 @@ import TechnicianPortal from "./pages/TechnicianPortal";
 import ManagerPortal from "./pages/ManagerPortal";
 import AdminPortal from "./pages/AdminPortal";
 import DebugPanel from "./pages/DebugPanel";
+import IncidentHistory from "./pages/IncidentHistory";
 import UiGallery from "./pages/UiGallery";
 
 // Client-side gate only, for navigation. Every endpoint enforces the
@@ -61,6 +62,8 @@ export default function App() {
         <Route path="/agent/login" element={<Navigate to="/login" replace />} />
         <Route path="/admin/login" element={<Navigate to="/login" replace />} />
         <Route path="/agent" element={<Navigate to="/technician" replace />} />
+        {/* Public, no login: visibility=public incidents only. */}
+        <Route path="/incidents" element={<IncidentHistory />} />
         <Route path="/debug" element={<DebugPanel />} />
         <Route path="/ui" element={<UiGallery />} />
       </Routes>

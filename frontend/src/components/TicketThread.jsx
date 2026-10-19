@@ -69,7 +69,7 @@ function ThreadMessage({ ticketId, message }) {
 
   const isAi = message.sender === "ai";
   return (
-    <li className={`email-card email-card-${message.sender}`}>
+    <li className={`email-card email-card-${message.sender}${message.incident_update ? " email-card-incident" : ""}`}>
       <article aria-label={`${message.sender_name}, ${relativeTime(message.created_at)}`}>
         <header className="email-head">
           <span className="email-avatar" aria-hidden="true">
@@ -92,6 +92,11 @@ function ThreadMessage({ ticketId, message }) {
             {relativeTime(message.created_at)}
           </time>
         </header>
+        {message.incident_update && message.subject && (
+          <p className="email-subject">
+            <span className="chip chip-info">Service update</span> {message.subject}
+          </p>
+        )}
         <div className="email-body">
           {message.sender === "customer" ? (
             <p className="email-plain">{message.message}</p>

@@ -194,6 +194,8 @@ CREATE TABLE IF NOT EXISTS chat_reviews (
 --   confirmed            a manager confirmed it (customers on linked
 --                        tickets see a neutral "we're aware" banner)
 --   dismissed            not an incident; its tickets aren't re-clustered
+--   resolved             fixed, and the post-incident summary was sent
+--                        (backend/incident_resolution.py)
 -- summary: JSON of the AI judgement (facts, hypotheses, reasoning,
 -- confidence reasons, next steps) + narrative. needs_routing = no
 -- department was assigned (AI below the routing confidence bar).
@@ -206,7 +208,19 @@ CREATE TABLE IF NOT EXISTS incident_clusters (
     confidence    REAL NOT NULL,
     needs_routing INTEGER NOT NULL DEFAULT 0,
     created_at    TIMESTAMP NOT NULL,
-    updated_at    TIMESTAMP NOT NULL
+    updated_at    TIMESTAMP NOT NULL,
+    -- Post-incident fields (UTC). started_at = first linked report;
+    -- resolved_at = when staff say the fix was applied.
+    started_at             TIMESTAMP,
+    resolved_at            TIMESTAMP,
+    resolution_note        TEXT,
+    root_cause             TEXT,
+    customer_summary       TEXT,
+    internal_summary       TEXT,
+    summary_status         TEXT NOT NULL DEFAULT 'none',          -- none|draft|approved|sent
+    visibility             TEXT NOT NULL DEFAULT 'affected_only', -- affected_only|public
+    assigned_technician_id TEXT REFERENCES staff(staff_id),
+    resolved_by            TEXT
 );
 
 CREATE TABLE IF NOT EXISTS incident_tickets (
@@ -234,6 +248,39 @@ CREATE TABLE IF NOT EXISTS incident_reviews (
     action      TEXT NOT NULL,
     note        TEXT,
     at          TIMESTAMP NOT NULL
+);
+
+-- One row per linked ticket per incident summary send: what makes "Approve
+-- & send" idempotent (sent rows are never re-posted) and records failures
+-- for retry.
+CREATE TABLE IF NOT EXISTS incident_deliveries (
+    incident_id  TEXT NOT NULL REFERENCES incident_clusters(incident_id),
+    ticket_id    TEXT NOT NULL REFERENCES tickets(ticket_id),
+    status       TEXT NOT NULL,              -- sent|failed
+    message_id   TEXT,
+    error        TEXT,
+    attempted_at TIMESTAMP NOT NULL,
+    PRIMARY KEY (incident_id, ticket_id)
+);
+
+-- What the help desk remembers about confirmed/resolved incidents, to
+-- answer "did I have an issue?" (backend/incident_memory.py). Kept for
+-- INCIDENT_MEMORY_DAYS after resolution. affected_customer_ids decides
+-- who may hear about an affected_only incident; customer_summary is the
+-- only text ever shown to customers.
+CREATE TABLE IF NOT EXISTS incident_memory (
+    incident_id           TEXT PRIMARY KEY REFERENCES incident_clusters(incident_id),
+    status                TEXT NOT NULL,     -- confirmed|resolved
+    category              TEXT,
+    department_ids        TEXT NOT NULL DEFAULT '[]',
+    started_at            TIMESTAMP,
+    resolved_at           TIMESTAMP,
+    customer_summary      TEXT,
+    affected_customer_ids TEXT NOT NULL DEFAULT '[]',
+    visibility            TEXT NOT NULL DEFAULT 'affected_only',
+    embedding             TEXT,
+    embedding_model       TEXT,
+    updated_at            TIMESTAMP NOT NULL
 );
 
 -- Cached embedding per ticket text (only used when an embeddings
@@ -385,6 +432,18 @@ _ADDED_COLUMNS = {
         ("must_change_password", "INTEGER NOT NULL DEFAULT 0"),
     ],
     "staff": [("department_id", "TEXT REFERENCES departments(department_id) ON DELETE SET NULL")],
+    "incident_clusters": [
+        ("started_at", "TIMESTAMP"),
+        ("resolved_at", "TIMESTAMP"),
+        ("resolution_note", "TEXT"),
+        ("root_cause", "TEXT"),
+        ("customer_summary", "TEXT"),
+        ("internal_summary", "TEXT"),
+        ("summary_status", "TEXT NOT NULL DEFAULT 'none'"),
+        ("visibility", "TEXT NOT NULL DEFAULT 'affected_only'"),
+        ("assigned_technician_id", "TEXT REFERENCES staff(staff_id)"),
+        ("resolved_by", "TEXT"),
+    ],
     "ticket_messages": [
         ("author_id", "TEXT"),
         ("visibility", "TEXT NOT NULL DEFAULT 'public_reply'"),
@@ -408,6 +467,13 @@ def _add_missing_columns(conn) -> None:
         "  SELECT md.department_id FROM manager_departments md "
         "  WHERE md.manager_id = staff.staff_id ORDER BY md.rowid LIMIT 1) "
         "WHERE role = 'manager' AND department_id IS NULL"
+    )
+    # Incidents from before post-incident fields: started_at = first report.
+    conn.execute(
+        "UPDATE incident_clusters SET started_at = ("
+        "  SELECT MIN(t.created_at) FROM incident_tickets it JOIN tickets t "
+        "  ON t.ticket_id = it.ticket_id WHERE it.incident_id = incident_clusters.incident_id) "
+        "WHERE started_at IS NULL"
     )
     # Messages from before visibility types: system notes were always shown
     # to the customer, so they become customer-visible system events.

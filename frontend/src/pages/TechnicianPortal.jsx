@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { api } from "../api";
 import ChatReviews from "../components/ChatReviews";
+import IncidentsPanel from "../components/IncidentsPanel";
 import PortalHeader from "../components/PortalHeader";
 import StaffTicketRow from "../components/StaffTicketRow";
 import StaffTicketView from "../components/StaffTicketView";
@@ -152,8 +153,14 @@ export default function TechnicianPortal() {
         <button className={tab === "reviews" ? "active" : ""} onClick={() => setTab("reviews")}>
           Chat Reviews
         </button>
+        <button className={tab === "incidents" ? "active" : ""} onClick={() => setTab("incidents")}>
+          Incidents
+        </button>
       </nav>
-      {tab === "workspace" ? <Workspace /> : <ChatReviews />}
+      {tab === "workspace" && <Workspace />}
+      {tab === "reviews" && <ChatReviews />}
+      {/* Only incidents a manager assigned to this technician. */}
+      {tab === "incidents" && <IncidentsPanel canRun={false} />}
     </div>
   );
 }

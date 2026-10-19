@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from backend import admin, app_settings, auth, chats, db, email_utils, graph, handoff_signals, incidents
-from backend import runtime, staff_tickets
+from backend import incident_memory, incident_resolution, runtime, staff_tickets
 from backend import ticket_lifecycle as lifecycle
 from backend.conversation import ESCALATION_MARKER as _ESCALATION_MARKER
 from backend.conversation import Outbox as _Outbox
@@ -59,6 +59,7 @@ app.include_router(chats.router)
 app.include_router(staff_tickets.router)
 app.include_router(incidents.router)
 app.include_router(admin.router)
+app.include_router(incident_resolution.router)
 
 
 @app.on_event("startup")
@@ -280,6 +281,14 @@ def _handle_followup(conn, ticket, message_text: str, outbox: _Outbox) -> dict:
 
 def _run_followup(conn, ticket, message_text: str, prior_ai_response, outbox: _Outbox) -> dict:
     ticket_id = ticket["ticket_id"]
+    # "Was there an outage yesterday?" — answered from incident memory only.
+    incident_answer = incident_memory.answer_incident_question(
+        conn, ticket["customer_id"], message_text, on_ticket=True
+    )
+    if incident_answer is not None:
+        _record_ai_reply(conn, ticket, incident_answer, outbox)
+        return {"route": ticket["route"], "message": incident_answer}
+
     gate = followup_gate(message_text, prior_ai_response, answered=ticket["status"] == "resolved")
 
     if gate == "handoff":
@@ -448,6 +457,9 @@ def _thread_message(row, customer_name: str, staff_names: dict, attachments: lis
         name, role, to = customer_name, "Customer", SUPPORT_TEAM_NAME
     elif sender == "ai":
         name, role, to = AI_SENDER_NAME, "AI Assistant", customer_name
+    elif sender == "staff" and row["author_id"] is None:
+        # Posted on behalf of the team (incident updates), not one technician.
+        name, role, to = SUPPORT_TEAM_NAME + " Team", "Support Team", customer_name
     elif sender == "staff":
         name, role, to = staff_names.get(row["author_id"], "Support Agent"), "Support Agent", customer_name
     else:
@@ -459,6 +471,8 @@ def _thread_message(row, customer_name: str, staff_names: dict, attachments: lis
         "sender_role": role,
         "to": to,
         "subject": row["subject"],
+        "incident_update": sender == "staff" and row["author_id"] is None
+        and row["subject"] == incident_resolution.UPDATE_SUBJECT,
         "message": row["message"],
         "created_at": row["created_at"],
         "attachments": attachments,

@@ -86,13 +86,19 @@ message is kept and nothing else changed.
 | `GET /manager/departments` | M | `[{department_id, name, categories, manager_ids}]` (zero or one) |
 | `GET /manager/overview` | M | `{categories, tickets:[...], workload:[{staff_id, name, open, in_progress, pending_customer, resolved}], unassigned}` for the manager's department. Read-only. |
 
-## Incidents (manager, admin)
+## Incidents (manager, admin; technician for incidents assigned to them)
 
 | Method & path | Request | Response / notes |
 |---|---|---|
-| `GET /incidents?include_dismissed=` | — | `[{incident_id, title, status, category, confidence, needs_routing, ticket_count, customer_count, first_report, latest_report, departments}]` — managers see their department's clusters and unrouted ones; open first, then confidence, then recency |
-| `GET /incidents/{id}` | — | list fields + `summary` (narrative, why_related, common_symptoms, affected_services, observed_facts, hypotheses, possible_shared_cause, confidence_reasons, suggested_next_steps), `tickets`, `affected_customers`, `reviews`, `all_departments` |
-| `POST /incidents/{id}/review` | `{action:"confirm"\|"investigate"\|"dismiss", note}` | detail. Never changes the linked tickets. |
+| `GET /incidents?include_dismissed=` | — | `[{incident_id, title, status, category, confidence, started_at, resolved_at, summary_status, visibility, needs_routing, ticket_count, customer_count, first_report, latest_report, departments}]` — managers see their department's clusters and unrouted ones, technicians only those assigned to them; open first, then resolved, then dismissed |
+| `GET /incidents/{id}` | — | list fields + `summary` (narrative, why_related, common_symptoms, affected_services, observed_facts, hypotheses, possible_shared_cause, confidence_reasons, suggested_next_steps), `tickets` (each with `delivery: {status:"sent"\|"failed", error, attempted_at}` once a summary was sent), `affected_customers`, `reviews`, `all_departments`, `assignee`, `technicians`, `resolution` {resolution_note, root_cause, customer_summary, internal_summary, resolved_by}, `can` {review, departments, assign, resolve, visibility} |
+| `POST /incidents/{id}/review` | `{action:"confirm"\|"investigate"\|"dismiss", note}` | M/A. detail. Never changes the linked tickets; not on a resolved incident. |
+| `PUT /incidents/{id}/assignee` | `{technician_id \| null}` | M/A. The technician who may resolve it. |
+| `POST /incidents/{id}/resolution/draft` | `{resolution_note, fixed_at, root_cause?}` | Manager, admin or the assigned technician; **confirmed incidents only**. `fixed_at` is ISO; no offset = IST. Saves the inputs and asks the AI for a draft (customer + internal summary) from the incident facts and the note only. Returns detail + `ai_error` (null, or a message: inputs kept, write the summary by hand). |
+| `PUT /incidents/{id}/resolution/summary` | `{customer_summary, internal_summary?, visibility?}` | Edit the draft before it's sent. |
+| `POST /incidents/{id}/resolution/send` | `{customer_summary, mark_tickets_resolved=false}` | Approve & send. `customer_summary` must equal the saved text (409 otherwise). Posts it as a public reply from the Support Team on every linked ticket (email too if `EMAIL_ENABLED=true`), one delivery record per ticket; already-sent tickets are skipped, failures are recorded and don't stop the rest; calling again retries failures only. Incident → `resolved`, summary → `sent`. Optional: mark linked tickets Resolved. Never closes or merges tickets. |
+| `PUT /incidents/{id}/visibility` | `{visibility:"affected_only"\|"public"}` | M/A. |
+| `GET /public/incidents` | — | **No login.** Public incidents still in memory: `[{reference, status, category, started_at, resolved_at, summary}]` — nothing about customers or tickets. |
 | `PUT /incidents/{id}/departments` | `{department_ids:[...]}` | detail. Managers must keep their own department; empty = Needs routing (admin). |
 | `POST /incidents/run` | — | `{touched:[incident_id,...]}` — one correlation pass now |
 

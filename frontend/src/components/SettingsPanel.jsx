@@ -174,6 +174,8 @@ export default function SettingsPanel() {
           <NumberField label="AI confidence needed to route to a department"
             value={incidents.routing_confidence}
             onChange={(v) => setIncidents({ ...incidents, routing_confidence: v })} />
+          <NumberField label="Remember incidents for (days)" step={1} min={1} max={3650}
+            value={incidents.memory_days} onChange={(v) => setIncidents({ ...incidents, memory_days: v })} />
         </div>
       </Section>
 

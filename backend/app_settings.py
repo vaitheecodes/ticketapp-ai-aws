@@ -6,7 +6,8 @@ app_settings (one row per section):
   routing    decide_route's escalation conditions: confidence bars,
              high-risk categories, which language tags force a human,
              max clarifying rounds
-  incidents  correlation window, pre-filter size, similarity, routing bar
+  incidents  correlation window, pre-filter size, similarity, routing bar,
+             how long resolved incidents are remembered
   statuses   display labels for the five ticket statuses (the statuses
              themselves are fixed: the workflow depends on each one)
 
@@ -69,6 +70,8 @@ class IncidentSettings(BaseModel):
     min_tickets: int = Field(default=3, ge=2, le=40)
     similarity: float = Field(default=0.80, ge=0.0, le=1.0)
     routing_confidence: float = Field(default=0.6, ge=0.0, le=1.0)
+    # How long a resolved incident is remembered for "did I have an issue?"
+    memory_days: int = Field(default=90, ge=1, le=3650)
 
 
 class StatusLabels(BaseModel):
@@ -91,6 +94,7 @@ _ENV = {
         "min_tickets": "INCIDENT_MIN_TICKETS",
         "similarity": "INCIDENT_SIMILARITY",
         "routing_confidence": "INCIDENT_ROUTING_CONFIDENCE",
+        "memory_days": "INCIDENT_MEMORY_DAYS",
     },
 }
 

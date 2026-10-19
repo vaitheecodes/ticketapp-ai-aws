@@ -211,6 +211,34 @@ export const api = {
       auth: true,
     }),
   incidentsRun: () => request("/incidents/run", { method: "POST", auth: true }),
+  incidentAssignee: (incidentId, technician_id) =>
+    request(`/incidents/${incidentId}/assignee`, {
+      method: "PUT",
+      body: { technician_id: technician_id || null },
+      auth: true,
+    }),
+  // Post-incident summary (backend/incident_resolution.py).
+  incidentDraft: (incidentId, { resolution_note, fixed_at, root_cause }) =>
+    request(`/incidents/${incidentId}/resolution/draft`, {
+      method: "POST",
+      body: { resolution_note, fixed_at, root_cause: root_cause || null },
+      auth: true,
+    }),
+  incidentSaveSummary: (incidentId, { customer_summary, internal_summary, visibility }) =>
+    request(`/incidents/${incidentId}/resolution/summary`, {
+      method: "PUT",
+      body: { customer_summary, internal_summary, visibility },
+      auth: true,
+    }),
+  incidentSend: (incidentId, customer_summary, mark_tickets_resolved) =>
+    request(`/incidents/${incidentId}/resolution/send`, {
+      method: "POST",
+      body: { customer_summary, mark_tickets_resolved },
+      auth: true,
+    }),
+  incidentVisibility: (incidentId, visibility) =>
+    request(`/incidents/${incidentId}/visibility`, { method: "PUT", body: { visibility }, auth: true }),
+  publicIncidents: () => request("/public/incidents"),
 
   adminTickets: () => request("/admin/tickets", { auth: true }),
   adminTechnicians: () => request("/admin/technicians", { auth: true }),

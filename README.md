@@ -144,6 +144,7 @@ All are documented in `.env.example`. Never commit real values.
 | `INCIDENT_MIN_TICKETS` | 3 | Group size before asking the AI (from 2+ customers) |
 | `INCIDENT_SIMILARITY` | 0.80 | Embedding similarity split (with embeddings only) |
 | `INCIDENT_ROUTING_CONFIDENCE` | 0.6 | Below this, an incident is "Needs routing" |
+| `INCIDENT_MEMORY_DAYS` | 90 | How long resolved incidents are used to answer "was there an outage?" |
 | `EMAIL_ENABLED` | `false` | Real email is off by default; the email-style thread is in-app |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS` | — | Used only when `EMAIL_ENABLED=true` |
 | `VITE_API_URL` (frontend) | `/api` | API base for production builds |
@@ -172,7 +173,8 @@ Main tables: `customers`, `staff`, `admins`, `departments`, `tickets`,
 `ticket_messages` (with `visibility`), `attachments`,
 `ticket_status_history`, `ticket_assignment_history`, `chat_sessions`,
 `chat_messages`, `chat_reviews`, `incident_clusters`, `incident_tickets`,
-`incident_departments`, `incident_reviews`, `audit_events`,
+`incident_departments`, `incident_reviews`, `incident_deliveries`,
+`incident_memory`, `audit_events`,
 `app_settings`. Schema and comments: `backend/db.py`.
 
 ## AI configuration
@@ -180,7 +182,7 @@ Main tables: `customers`, `staff`, `admins`, `departments`, `tickets`,
 Every model call goes through `backend/ai_service/` (one module per
 operation: categorize, chat answer / clarify / follow-up check,
 conversation and ticket summaries, suggested steps, incident correlation
-and incident summary):
+incident summary, post-incident summary draft, incident-question parsing):
 
 - **Validated output**: each operation has a pydantic schema; output is
   checked (plus semantic checks, e.g. correlated ticket ids must be from
@@ -207,8 +209,9 @@ and incident summary):
 | Role | Signs in at | Can |
 |---|---|---|
 | Customer | `/login` → `/customer` | chat with the AI, raise tickets with attachments, follow up, reopen, see chat history |
-| Technician | → `/technician` | unassigned / mine / recent / open queues, claim, reply, internal notes, status, AI hand-off panel, chat reviews |
-| Manager (one department) | → `/manager` | incidents for their department (confirm / investigate / dismiss, correct departments), department tickets and workload (read-only) |
+| Technician | → `/technician` | unassigned / mine / recent / open queues, claim, reply, internal notes, status, AI hand-off panel, chat reviews, incidents assigned to them (resolve & send summary) |
+| Manager (one department) | → `/manager` | incidents for their department (confirm / investigate / dismiss, correct departments, assign a technician, resolve & send the post-incident summary), department tickets and workload (read-only) |
+| Anyone | `/incidents` | public incident history (no login) |
 | Admin (single account) | → `/admin` | all tickets and reassignment, team and customer accounts, departments, settings, incidents, activity/audit log, pipeline simulator |
 
 **Chat.** A chat is not a ticket. If the customer confirms it's solved, it
@@ -232,9 +235,36 @@ owning department only when the AI is confident enough, and never close
 or merge tickets. Once a manager confirms one, affected customers see a
 neutral "we're aware of this issue" notice.
 
+**Resolving an incident.** Only a confirmed incident can be resolved, by
+a manager or the technician it's assigned to: they enter what was done,
+when the fix was applied (IST) and, optionally, the root cause. The AI
+drafts a customer summary (what happened, what was fixed, what to do) and
+an internal one from the incident's facts and that note only; code adds
+the start–resolution times and the cause line (the staff-entered cause,
+or "still being reviewed"), and a check rejects any model text with a
+time, date or cause claim. Staff edit, preview and *Approve & send* —
+never automatic. The summary is posted on every linked ticket as a public
+reply from the Support Team (and emailed when `EMAIL_ENABLED=true`), with
+a delivery record per ticket: sending twice never duplicates, a failing
+ticket doesn't block the others and can be retried. Linked tickets are
+marked Resolved only if staff tick the box.
+
+**"Was there an outage?"** Confirmed and resolved incidents are kept in
+`incident_memory` (category, times, approved summary, affected customer
+ids, visibility, optional embedding) for `INCIDENT_MEMORY_DAYS`. In a
+chat or an AI-handled ticket, a message that looks like a question about
+an outage (keyword gate, then the AI turns it into an absolute IST time
+window and topic) is answered from that memory with fixed templates: an
+affected customer hears "Yes — you reported this on … (ticket …)" and the
+approved summary; anyone else hears about it only if staff made it
+public; otherwise "no known incident matched" and an offer to raise a
+ticket. Unresolved incidents are described as being investigated, with no
+cause. The model never writes the answer, so it can't invent an incident
+or reveal another customer's details.
+
 ## API
 
-58 endpoints, grouped by role, with request and response formats:
+64 endpoints, grouped by role, with request and response formats:
 **[docs/API.md](docs/API.md)**. A running server also serves Swagger at
 `/docs`.
 
@@ -260,6 +290,7 @@ tests script the model's replies). Highlights:
 | `test_ticket_workspace.py` | claim race, public vs internal visibility, history, manager scope |
 | `test_ai_service.py` | schema validation and retry, provider failure, injection containment, no secrets in logs |
 | `test_incidents.py` | clustering, time window, pre-filters, dedupe, routing, review, banner |
+| `test_incident_resolution.py` | resolve only when confirmed, facts-only draft (invented times/causes rejected), idempotent fan-out, per-ticket failure isolation, email gate, "was there an outage?" answers (linked / unlinked / public / expired, no cross-customer leakage), AI failure sends nothing |
 | `test_admin_console.py` | account administration, settings, audit log, email gate, attachment access |
 | `test_customer_tickets.py` | ticket model, email-style replies, attachments |
 | `test_data_quality.py` | 33 checks over the pipeline output |
@@ -283,6 +314,9 @@ and clicking through each portal in a browser at desktop and phone widths.
 - Manager department oversight and workload; AI incident correlation
   with confidence, facts vs hypotheses, department routing, Needs
   routing, review with notes, customer notice on confirmed incidents.
+- Post-incident summaries (AI draft, staff edit, approve & send to every
+  linked ticket, idempotent with per-ticket delivery status), incident
+  memory answering "was there an outage?", public incident history page.
 - Admin console: tickets, team, customers, departments, settings (routing
   policy, incident settings, status labels), incidents, audit log.
 - Modular, validated AI service; graceful AI failure everywhere.

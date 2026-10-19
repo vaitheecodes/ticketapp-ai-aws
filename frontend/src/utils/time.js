@@ -38,3 +38,24 @@ export function absoluteTime(iso) {
   const date = parseUtc(iso);
   return date ? date.toLocaleString() : "";
 }
+
+/* Incident times are always shown in IST, whatever the viewer's zone. */
+export function istTime(iso) {
+  const date = parseUtc(iso);
+  if (!date) return "";
+  return `${date.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })} IST`;
+}
+
+/* Value for <input type="datetime-local">, as IST wall-clock time. */
+export function istInputNow() {
+  const ist = new Date(Date.now() + 330 * 60 * 1000);
+  return ist.toISOString().slice(0, 16);
+}

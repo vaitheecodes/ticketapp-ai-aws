@@ -4,14 +4,17 @@
  * The AI proposes; people decide. Each cluster shows why the AI linked the
  * tickets, how confident it is and why, and keeps observed facts apart
  * from hypotheses. Managers confirm, investigate or dismiss with a note,
- * correct the departments, and open every linked ticket. Nothing here
- * changes the tickets themselves.
+ * correct the departments, and open every linked ticket. Reviewing never
+ * changes the tickets themselves; resolving a confirmed incident posts the
+ * approved post-incident summary on them (IncidentResolution.jsx).
+ * Technicians see only incidents assigned to them.
  */
 
 import { useCallback, useEffect, useId, useState } from "react";
 import { api } from "../api";
 import { categoryLabel } from "../utils/categories";
-import { absoluteTime, relativeTime } from "../utils/time";
+import { absoluteTime, istTime, relativeTime } from "../utils/time";
+import IncidentResolution, { DeliveryStatus } from "./IncidentResolution";
 import StaffTicketView from "./StaffTicketView";
 import { IncidentStatusChip, StatusChip } from "./ui/StatusChip";
 
@@ -156,6 +159,37 @@ function ReviewForm({ incident, onSaved }) {
   );
 }
 
+function AssigneePicker({ incident, onSaved }) {
+  const [error, setError] = useState("");
+  const pickerId = useId();
+
+  async function change(value) {
+    setError("");
+    try {
+      onSaved(await api.incidentAssignee(incident.incident_id, value));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  return (
+    <div className="field-group assignee-picker">
+      <label className="field-label" htmlFor={pickerId}>
+        Assigned technician
+      </label>
+      <select id={pickerId} value={incident.assignee?.id || ""} onChange={(e) => change(e.target.value)}>
+        <option value="">Unassigned</option>
+        {incident.technicians.map((t) => (
+          <option key={t.staff_id} value={t.staff_id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
 function IncidentDetail({ incidentId, onChanged }) {
   const [incident, setIncident] = useState(null);
   const [error, setError] = useState("");
@@ -194,6 +228,16 @@ function IncidentDetail({ incidentId, onChanged }) {
             <dt>Customers</dt>
             <dd>{incident.customer_count}</dd>
           </div>
+          <div>
+            <dt>Started</dt>
+            <dd>{istTime(incident.started_at) || "—"}</dd>
+          </div>
+          {incident.resolved_at && incident.status === "resolved" && (
+            <div>
+              <dt>Resolved</dt>
+              <dd>{istTime(incident.resolved_at)}</dd>
+            </div>
+          )}
           <div>
             <dt>Reports</dt>
             <dd>
@@ -252,6 +296,7 @@ function IncidentDetail({ incidentId, onChanged }) {
                 <th>Category</th>
                 <th>Status</th>
                 <th>Reported</th>
+                {incident.summary_status === "sent" && <th>Update</th>}
                 <th>
                   <span className="sr-only">Open</span>
                 </th>
@@ -275,6 +320,11 @@ function IncidentDetail({ incidentId, onChanged }) {
                       {relativeTime(t.created_at)}
                     </time>
                   </td>
+                  {incident.summary_status === "sent" && (
+                    <td>
+                      <DeliveryStatus delivery={t.delivery} />
+                    </td>
+                  )}
                   <td>
                     <button type="button" onClick={() => setOpenTicket(t.ticket_id)}>
                       Open
@@ -299,9 +349,18 @@ function IncidentDetail({ incidentId, onChanged }) {
         </div>
       )}
 
+      <IncidentResolution incident={incident} aiError={incident.ai_error} onSaved={saved} />
+
       <section className="incident-actions" aria-label="Review">
-        <DepartmentsEditor key={incident.departments.map((d) => d.department_id).join()} incident={incident} onSaved={saved} />
-        <ReviewForm incident={incident} onSaved={saved} />
+        {incident.can.assign && <AssigneePicker incident={incident} onSaved={saved} />}
+        {incident.can.departments && (
+          <DepartmentsEditor
+            key={incident.departments.map((d) => d.department_id).join()}
+            incident={incident}
+            onSaved={saved}
+          />
+        )}
+        {incident.can.review && <ReviewForm incident={incident} onSaved={saved} />}
         {incident.reviews.length > 0 && (
           <ol className="incident-reviews">
             {incident.reviews.map((r, i) => (
@@ -320,7 +379,7 @@ function IncidentDetail({ incidentId, onChanged }) {
   );
 }
 
-export default function IncidentsPanel() {
+export default function IncidentsPanel({ canRun = true }) {
   const [incidents, setIncidents] = useState(null);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState(null);
@@ -361,9 +420,11 @@ export default function IncidentsPanel() {
           <h2 className="my-tickets-title" id="incidents-heading">
             Incidents
           </h2>
-          <button type="button" onClick={runNow} disabled={running}>
-            {running ? "Checking…" : "Check now"}
-          </button>
+          {canRun && (
+            <button type="button" onClick={runNow} disabled={running}>
+              {running ? "Checking…" : "Check now"}
+            </button>
+          )}
         </div>
         <label className="checkbox-label">
           <input type="checkbox" checked={showDismissed} onChange={(e) => setShowDismissed(e.target.checked)} />

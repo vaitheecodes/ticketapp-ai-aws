@@ -133,7 +133,9 @@ FastAPI backend (backend/main.py, :8000)
   /api/staff/tickets[?view=unassigned|mine|recent|open_pending]
   /api/staff/tickets/{id}, /{id}/{claim,status,messages}   technician workspace
   /api/manager/overview, /api/manager/departments          manager (read-only)
-  /api/incidents[/{id}[/review|/departments]], /run        manager + admin
+  /api/incidents[/{id}[/review|/departments|/assignee|/visibility]], /run
+  /api/incidents/{id}/resolution/{draft,summary,send}      manager/admin/assigned tech
+  /api/public/incidents                       public: visibility=public history
   /api/admin/{tickets,technicians,simulate-ticket,staff,customers,
               departments,settings,audit}            admin (backend/admin.py)
   /api/meta                                   public: status labels, categories
@@ -151,6 +153,7 @@ LangGraph pipeline (backend/graph.py)
 SQLite (backend/ticketapp.db, auto-created, gitignored)
   customers / staff / admins / tickets / ticket_messages / attachments /
   orders / departments / audit_events / app_settings / chat_* / incident_*
+  (incl. incident_deliveries, incident_memory)
 ```
 
 - **KB grounding — `retrieve_kb_candidates`** (`backend/graph.py`,
@@ -251,7 +254,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   **AI failure** never changes chat state: the customer's message is
   kept, everything after it is rolled back (SAVEPOINT), the response
   carries `ai_error`, and "Raise a ticket" still works. Summaries come
-  from `backend/ai_service/summaries.py` (validated pydantic output,
+  from `backend/ai_service/summarize_conversation.py` (validated pydantic output,
   retry once, deterministic fallback marked `source: "fallback"` — set by
   code, never the model). Pre-session chat-type ticket rows are migrated
   in place by `db._migrate_chat_tickets`. Covered by
@@ -398,7 +401,8 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   model call goes through it — one module per operation
   (`categorize_ticket`, `chat_response` [answer / clarify /
   is_continuation], `summarize_conversation`, `summarize_ticket`,
-  `suggest_steps`, `correlate_incidents`, `summarize_incident`), each
+  `suggest_steps`, `correlate_incidents`, `summarize_incident`,
+  `draft_post_incident`, `incident_question`), each
   with pydantic input/output schemas in `schemas.py`. `provider.py` is
   the only place that talks to Azure OpenAI (lazy `AzureOpenAI` client;
   config from env: `AZURE_OPENAI_ENDPOINT` / `_API_KEY` / `_API_VERSION`
@@ -437,6 +441,38 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   and may open any linked ticket. Customers on a confirmed cluster's
   tickets get a neutral `incident_notice`. No reply-to-all fan-out.
   Covered by `tests/test_incidents.py`.
+- **Post-incident summary + incident memory** (`backend/incident_resolution.py`,
+  `backend/incident_memory.py`, `backend/timeutil.py`,
+  `ai_service/draft_post_incident.py`, `ai_service/incident_question.py`,
+  `frontend/src/components/IncidentResolution.jsx`,
+  `pages/IncidentHistory.jsx`). Incident statuses gain `resolved`;
+  new cluster fields `started_at` (earliest linked ticket), `resolved_at`
+  (UTC, shown in IST), `resolution_note`, `root_cause`,
+  `customer_summary`, `internal_summary`, `summary_status`
+  (none/draft/approved/sent), `visibility` (affected_only/public),
+  `assigned_technician_id`, `resolved_by`. Only a **confirmed** incident
+  can be resolved, by a manager who can see it, the admin, or the
+  technician it's assigned to (`PUT /api/incidents/{id}/assignee`;
+  technicians see only assigned incidents). The draft op gets the
+  incident's facts + the staff note only; code composes the When line
+  and the Cause line (staff root cause verbatim or "still being
+  reviewed"), and `_check` rejects model text with times/dates/relative
+  days or cause claims. Approve & send never runs automatically and must
+  echo the saved text; each linked ticket is delivered in its own
+  transaction with an `incident_deliveries` row (sent tickets skipped,
+  failures recorded, re-send retries failures only), posted as a public
+  `staff` message with no author (shown as "Site24x7 Support Team",
+  `incident_update` flag in the customer thread); real email only via
+  `Outbox` when `EMAIL_ENABLED`. Optional mark-Resolved via
+  `ticket_lifecycle`; never close/merge. `incident_memory.remember()`
+  snapshots confirmed/resolved incidents (forgets dismissed) for
+  `INCIDENT_MEMORY_DAYS` (`app_settings` incidents.memory_days).
+  `answer_incident_question` runs first in `chats._respond` and
+  `main._run_followup` (keyword gate -> AI parses an IST time window ->
+  `find_matches` only over memories the customer is linked to or that are
+  public -> fixed templates + stored summary; the model never writes the
+  answer). `GET /api/public/incidents` (no auth) lists public ones.
+  Covered by `tests/test_incident_resolution.py`.
 - **Admin console, settings, audit** (reconcile sub-stage E;
   `backend/admin.py`, `backend/app_settings.py`, `backend/audit.py`).
   All admin endpoints live in `admin.py` (admin role on every one):

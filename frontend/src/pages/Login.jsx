@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, HOME_FOR_ROLE, saveSession } from "../api";
 import { TicketIcon } from "../components/Icons";
 
@@ -113,6 +113,9 @@ export default function Login() {
             Staff accounts are created by your administrator.
           </p>
         )}
+        <p className="hint" style={{ marginBottom: 0 }}>
+          <Link to="/incidents">Incident history</Link>
+        </p>
       </div>
     </div>
   );

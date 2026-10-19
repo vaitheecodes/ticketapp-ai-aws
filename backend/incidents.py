@@ -40,7 +40,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from backend import app_settings, audit, auth, db
+from backend import app_settings, audit, auth, db, incident_memory
 from backend.ai_service import AIError, correlate_incidents, provider, summarize_incident
 from backend.ai_service.schemas import (
     CorrelateInput,
@@ -82,7 +82,8 @@ def _eligible_tickets(conn, window_hours: int) -> list:
         "SELECT t.*, COALESCE(t.category, t.requested_category) AS group_category FROM tickets t "
         "WHERE t.created_at >= ? AND COALESCE(t.category, t.requested_category) IS NOT NULL "
         "AND t.ticket_id NOT IN (SELECT it.ticket_id FROM incident_tickets it "
-        "  JOIN incident_clusters c ON c.incident_id = it.incident_id WHERE c.status = 'dismissed') "
+        "  JOIN incident_clusters c ON c.incident_id = it.incident_id "
+        "  WHERE c.status IN ('dismissed', 'resolved')) "
         "ORDER BY t.created_at",
         (cutoff,),
     ).fetchall()
@@ -292,11 +293,22 @@ def _process_group(conn, tickets, cfg) -> str | None:
             [(incident_id, tid, stamp) for tid in sorted(related)],
         )
         _route(conn, incident_id, judgement, tickets, by_name, owner_of, cfg)
+        refresh_started_at(conn, incident_id)
+        incident_memory.remember(conn, incident_id)  # a confirmed incident gained tickets
         conn.commit()
     except Exception:
         conn.rollback()
         raise
     return incident_id
+
+
+def refresh_started_at(conn, incident_id: str) -> None:
+    """started_at = the first linked report (a fact, never AI-written)."""
+    conn.execute(
+        "UPDATE incident_clusters SET started_at = (SELECT MIN(t.created_at) FROM incident_tickets it "
+        "JOIN tickets t ON t.ticket_id = it.ticket_id WHERE it.incident_id = ?) WHERE incident_id = ?",
+        (incident_id, incident_id),
+    )
 
 
 def run_correlation(trigger_ticket_id: str | None = None) -> list[str]:
@@ -340,6 +352,8 @@ def confirmed_incident_for(conn, ticket_id: str) -> bool:
 # Access
 # ---------------------------------------------------------------------------
 _reviewer = auth.require_user("manager", "admin")
+# Technicians see (and can resolve) only incidents assigned to them.
+_viewer = auth.require_user("technician", "manager", "admin")
 
 
 def manager_department_ids(conn, manager_id: str) -> set[str]:
@@ -360,9 +374,12 @@ def _cluster_departments(conn, incident_id: str) -> list[dict]:
 def _can_see(conn, cluster, user: dict) -> bool:
     """Admin sees every cluster. A manager sees clusters linked to one of
     their departments, plus unrouted ("Needs routing") ones so they can
-    claim them for the right department."""
+    claim them for the right department. A technician sees the clusters
+    assigned to them."""
     if user["role"] == "admin":
         return True
+    if user["role"] == "technician":
+        return cluster["assigned_technician_id"] == user["id"]
     if cluster["needs_routing"]:
         return True
     mine = manager_department_ids(conn, user["id"])
@@ -381,6 +398,18 @@ def manager_can_see_ticket(conn, manager_id: str, ticket_id: str) -> bool:
         ):
             return True
     return False
+
+
+def can_resolve(cluster, user: dict, conn) -> bool:
+    """Resolving needs a manager who can see it, the admin, or the
+    technician it's assigned to."""
+    return _can_see(conn, cluster, user) and (
+        user["role"] in ("manager", "admin") or cluster["assigned_technician_id"] == user["id"]
+    )
+
+
+def cluster_or_404(conn, incident_id: str, user: dict):
+    return _cluster_or_404(conn, incident_id, user)
 
 
 def _cluster_or_404(conn, incident_id: str, user: dict):
@@ -406,6 +435,10 @@ def _cluster_row(conn, cluster) -> dict:
         "status": cluster["status"],
         "category": cluster["category"],
         "confidence": cluster["confidence"],
+        "started_at": cluster["started_at"],
+        "resolved_at": cluster["resolved_at"],
+        "summary_status": cluster["summary_status"],
+        "visibility": cluster["visibility"],
         "needs_routing": bool(cluster["needs_routing"]),
         "created_at": cluster["created_at"],
         "updated_at": cluster["updated_at"],
@@ -429,14 +462,18 @@ class IncidentDepartmentsRequest(BaseModel):
     department_ids: list[str]
 
 
+class IncidentAssigneeRequest(BaseModel):
+    technician_id: str | None = None
+
+
 _STATUS_FOR_ACTION = {"confirm": "confirmed", "dismiss": "dismissed", "investigate": "under_investigation"}
-_STATUS_ORDER = {"detected": 0, "under_investigation": 1, "confirmed": 2, "dismissed": 3}
+_STATUS_ORDER = {"detected": 0, "under_investigation": 1, "confirmed": 2, "resolved": 3, "dismissed": 4}
 
 
 @router.get("/api/incidents")
-def list_incidents(include_dismissed: bool = False, user: dict = Depends(_reviewer)):
-    """Prioritised: open before dismissed, then most confident, then most
-    recent."""
+def list_incidents(include_dismissed: bool = False, user: dict = Depends(_viewer)):
+    """Prioritised: open first, then resolved, then dismissed; within each,
+    most confident, then most recent. Technicians get only their own."""
     conn = db.get_connection()
     try:
         rows = [
@@ -445,14 +482,14 @@ def list_incidents(include_dismissed: bool = False, user: dict = Depends(_review
             if (include_dismissed or c["status"] != "dismissed") and _can_see(conn, c, user)
         ]
         rows.sort(key=lambda r: r["updated_at"], reverse=True)
-        rows.sort(key=lambda r: (_STATUS_ORDER[r["status"]] == 3, -r["confidence"]))
+        rows.sort(key=lambda r: (max(_STATUS_ORDER[r["status"]], 2), -r["confidence"]))
         return rows
     finally:
         conn.close()
 
 
 @router.get("/api/incidents/{incident_id}")
-def incident_detail(incident_id: str, user: dict = Depends(_reviewer)):
+def incident_detail(incident_id: str, user: dict = Depends(_viewer)):
     conn = db.get_connection()
     try:
         cluster = _cluster_or_404(conn, incident_id, user)
@@ -473,6 +510,12 @@ def incident_detail(incident_id: str, user: dict = Depends(_reviewer)):
                 "SELECT reviewer, action, note, at FROM incident_reviews WHERE incident_id = ? ORDER BY id",
                 (incident_id,))
         ]
+        deliveries = {r["ticket_id"]: dict(r) for r in conn.execute(
+            "SELECT ticket_id, status, error, attempted_at FROM incident_deliveries WHERE incident_id = ?",
+            (incident_id,))}
+        for t in tickets:
+            t["delivery"] = deliveries.get(t["ticket_id"])
+        staff_view = user["role"] in ("manager", "admin")
         return {
             **_cluster_row(conn, cluster),
             "summary": json.loads(cluster["summary"]),
@@ -481,6 +524,27 @@ def incident_detail(incident_id: str, user: dict = Depends(_reviewer)):
             "reviews": reviews,
             "all_departments": [dict(r) for r in conn.execute(
                 "SELECT department_id, name FROM departments ORDER BY name")],
+            "assignee": (
+                {"id": cluster["assigned_technician_id"], "name": names.get(cluster["assigned_technician_id"])}
+                if cluster["assigned_technician_id"] else None
+            ),
+            "technicians": [dict(r) for r in conn.execute(
+                "SELECT staff_id, name FROM staff WHERE role = 'technician' AND active = 1 "
+                "ORDER BY name COLLATE NOCASE")] if staff_view else [],
+            "resolution": {
+                "resolution_note": cluster["resolution_note"],
+                "root_cause": cluster["root_cause"],
+                "customer_summary": cluster["customer_summary"],
+                "internal_summary": cluster["internal_summary"],
+                "resolved_by": names.get(cluster["resolved_by"], cluster["resolved_by"]),
+            },
+            "can": {
+                "review": staff_view and cluster["status"] != "resolved",
+                "departments": staff_view,
+                "assign": staff_view and cluster["status"] != "resolved",
+                "resolve": can_resolve(cluster, user, conn),
+                "visibility": staff_view,
+            },
         }
     finally:
         conn.close()
@@ -492,7 +556,9 @@ def review_incident(incident_id: str, body: ReviewRequest, user: dict = Depends(
     only the cluster: linked tickets are never closed or merged."""
     conn = db.get_connection()
     try:
-        _cluster_or_404(conn, incident_id, user)
+        cluster = _cluster_or_404(conn, incident_id, user)
+        if cluster["status"] == "resolved":
+            raise HTTPException(status_code=400, detail="This incident is already resolved")
         conn.execute(
             "UPDATE incident_clusters SET status = ?, updated_at = ? WHERE incident_id = ?",
             (_STATUS_FOR_ACTION[body.action], now(), incident_id),
@@ -503,6 +569,8 @@ def review_incident(incident_id: str, body: ReviewRequest, user: dict = Depends(
         )
         audit.record(conn, user["id"], f"incident.{body.action}", "incident", incident_id,
                      status=_STATUS_FOR_ACTION[body.action])
+        # Confirmed incidents are remembered; dismissed ones forgotten.
+        incident_memory.remember(conn, incident_id)
         conn.commit()
     finally:
         conn.close()
@@ -542,6 +610,33 @@ def set_incident_departments(
         )
         audit.record(conn, user["id"], "incident.departments_changed", "incident", incident_id,
                      departments=names)
+        conn.commit()
+    finally:
+        conn.close()
+    return incident_detail(incident_id, user)
+
+
+@router.put("/api/incidents/{incident_id}/assignee")
+def set_incident_assignee(
+    incident_id: str, body: IncidentAssigneeRequest, user: dict = Depends(_reviewer)
+):
+    """Assign the incident to a technician (who can then see and resolve
+    it), or clear the assignment."""
+    conn = db.get_connection()
+    try:
+        cluster = _cluster_or_404(conn, incident_id, user)
+        if cluster["status"] == "resolved":
+            raise HTTPException(status_code=400, detail="This incident is already resolved")
+        if body.technician_id and not conn.execute(
+            "SELECT 1 FROM staff WHERE staff_id = ? AND role = 'technician' AND active = 1",
+            (body.technician_id,)).fetchone():
+            raise HTTPException(status_code=404, detail="Technician not found")
+        conn.execute(
+            "UPDATE incident_clusters SET assigned_technician_id = ?, updated_at = ? WHERE incident_id = ?",
+            (body.technician_id, now(), incident_id),
+        )
+        audit.record(conn, user["id"], "incident.assigned", "incident", incident_id,
+                     from_user=cluster["assigned_technician_id"], to_user=body.technician_id)
         conn.commit()
     finally:
         conn.close()
