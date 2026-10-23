@@ -158,10 +158,14 @@ def test_pending_tickets_have_no_csat(resolutions):
 
 
 def test_created_at_within_trailing_12_months(tickets):
-    now = pd.Timestamp.now()
-    one_year_ago = now - pd.Timedelta(days=370)  # small buffer
-    assert (tickets["created_at"] >= one_year_ago).all()
-    assert (tickets["created_at"] <= now + pd.Timedelta(days=1)).all()
+    # The transform spreads tickets over the 12 months before the day it
+    # ran, so anchor the window to the newest ticket, not to today (the
+    # data doesn't age out of the test as time passes).
+    newest = tickets["created_at"].max()
+    one_year_before = newest - pd.Timedelta(days=366)  # small buffer
+    assert (tickets["created_at"] >= one_year_before).all()
+    # ...and never in the future.
+    assert newest <= pd.Timestamp.now() + pd.Timedelta(days=1)
 
 
 def test_language_tags_are_decoded_not_raw_letters(tickets):
