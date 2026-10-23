@@ -64,6 +64,9 @@ def _tokenize(text: str) -> list[str]:
     return [t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS]
 
 
+tokenize = _tokenize  # public: also used for incident lexical similarity
+
+
 @dataclass(frozen=True)
 class KBEntry:
     kb_entry_id: str

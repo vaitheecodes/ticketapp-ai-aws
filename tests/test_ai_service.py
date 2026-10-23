@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 
 from backend import db, graph, main, runtime
 from backend.ai_service import (
+    backends,
     AIError,
     categorize_ticket,
     chat_response,
@@ -256,7 +257,7 @@ def test_provider_failure_logs_no_credentials(monkeypatch, caplog):
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=_boom)))
     monkeypatch.setattr(provider, "complete", _REAL_COMPLETE)
-    monkeypatch.setattr(provider, "_get_client", lambda: fake_client)
+    provider.set_backend(backends.AzureOpenAIBackend(client=fake_client))
 
     with caplog.at_level(logging.DEBUG):
         with pytest.raises(AIError) as raised:
@@ -274,7 +275,7 @@ def test_failed_chat_turn_logs_no_credentials(client, monkeypatch, caplog):
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=_boom)))
     monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "test-deployment")
     monkeypatch.setattr(provider, "complete", _REAL_COMPLETE)
-    monkeypatch.setattr(provider, "_get_client", lambda: fake_client)
+    provider.set_backend(backends.AzureOpenAIBackend(client=fake_client))
 
     with caplog.at_level(logging.DEBUG):
         chat = client.post("/api/chats", json={"issue": "agent offline"}, headers=_customer(client)).json()

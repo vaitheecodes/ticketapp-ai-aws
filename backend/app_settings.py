@@ -68,7 +68,10 @@ class RoutingSettings(BaseModel):
 class IncidentSettings(BaseModel):
     window_hours: int = Field(default=12, ge=1, le=24 * 14)
     min_tickets: int = Field(default=3, ge=2, le=40)
-    similarity: float = Field(default=0.80, ge=0.0, le=1.0)
+    # Cosine bar for splitting a component area's tickets into incident
+    # candidates: lexical TF-IDF by default (same outage ~0.2-0.35,
+    # unrelated <0.12); with an embeddings model, ~0.80 is typical.
+    similarity: float = Field(default=0.15, ge=0.0, le=1.0)
     routing_confidence: float = Field(default=0.6, ge=0.0, le=1.0)
     # How long a resolved incident is remembered for "did I have an issue?"
     memory_days: int = Field(default=90, ge=1, le=3650)

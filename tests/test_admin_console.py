@@ -276,7 +276,7 @@ def test_audit_records_admin_changes_without_secrets(client):
     client.post("/api/admin/customers", json={"name": "C", "email": "c-audit@example.com",
                                               "temporary_password": TEMP_PASSWORD}, headers=admin)
     client.put("/api/admin/settings/incidents", json={"window_hours": 6, "min_tickets": 3,
-                                                       "similarity": 0.8, "routing_confidence": 0.6},
+                                                       "similarity": 0.15, "routing_confidence": 0.6},
                headers=admin)
 
     events = _audit(client, limit=200)

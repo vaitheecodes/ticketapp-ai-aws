@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend import admin, app_settings, auth, chats, db, email_utils, graph, handoff_signals, incidents
 from backend import incident_memory, incident_resolution, runtime, staff_tickets
+from backend.ai_service import backends as ai_backends
 from backend import ticket_lifecycle as lifecycle
 from backend.conversation import ESCALATION_MARKER as _ESCALATION_MARKER
 from backend.conversation import Outbox as _Outbox
@@ -54,6 +55,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class _CatalystRequestContext:
+    """AI_PROVIDER=quickml_sdk: the Catalyst SDK is initialised from the
+    incoming AppSail request's X-ZC-* headers, so keep them in a context
+    variable for the whole request (background tasks included). Only the
+    X-ZC-* headers are kept; nothing is logged."""
+
+    def __init__(self, asgi_app):
+        self.app = asgi_app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or ai_backends.env("AI_PROVIDER") != "quickml_sdk":
+            return await self.app(scope, receive, send)
+        headers = {k.decode("latin-1"): v.decode("latin-1") for k, v in scope.get("headers", [])
+                   if k.lower().startswith(b"x-zc-")}
+        token = ai_backends.catalyst_request_headers.set(headers)
+        try:
+            return await self.app(scope, receive, send)
+        finally:
+            ai_backends.catalyst_request_headers.reset(token)
+
+
+app.add_middleware(_CatalystRequestContext)
 
 app.include_router(chats.router)
 app.include_router(staff_tickets.router)

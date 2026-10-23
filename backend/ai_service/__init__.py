@@ -1,5 +1,6 @@
 """Modular AI service: one module per operation, each with pydantic input
-and output schemas (schemas.py), all model calls through provider.py.
+and output schemas (schemas.py), all model calls through provider.py,
+which sends them to the backend chosen by AI_PROVIDER (backends.py).
 
     categorize_ticket        category + confidence for a ticket
     chat_response            answer / clarify / is_continuation
@@ -8,6 +9,8 @@ and output schemas (schemas.py), all model calls through provider.py.
     suggest_steps            technician next steps
     correlate_incidents      do these tickets share an incident?
     summarize_incident       refresh an incident's summary
+    draft_post_incident      customer + internal post-incident summary
+    incident_question        "was there an outage?" -> time window + topic
 
 Routes and the LangGraph agent (backend/graph.py) call these; nothing
 else talks to the model. Untrusted text is always passed as delimited

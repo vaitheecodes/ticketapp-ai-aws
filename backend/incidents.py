@@ -4,9 +4,9 @@
    dismissed cluster), grouped by component area — the department that
    owns the ticket's category (so e.g. AGENT and SERVER_MONITORING reports
    of one outage land together; the classifier often splits them), or the
-   category itself if no department owns it — and, when an embeddings
-   deployment is configured, split by embedding similarity
-   (INCIDENT_SIMILARITY). A group only goes to the AI if it has at least
+   category itself if no department owns it — then split by text
+   similarity (INCIDENT_SIMILARITY): lexical TF-IDF by default, or
+   embeddings when an embeddings model is configured. A group only goes to the AI if it has at least
    INCIDENT_MIN_TICKETS tickets from at least two customers: a cheap
    pre-filter to limit model calls, not a decision.
 2. Judgement: ai_service.correlate_incidents decides whether (and which)
@@ -34,13 +34,14 @@ import json
 import logging
 import math
 import uuid
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from backend import app_settings, audit, auth, db, incident_memory
+from backend import app_settings, audit, auth, db, incident_memory, kb_retrieval
 from backend.ai_service import AIError, correlate_incidents, provider, summarize_incident
 from backend.ai_service.schemas import (
     CorrelateInput,
@@ -89,15 +90,34 @@ def _eligible_tickets(conn, window_hours: int) -> list:
     ).fetchall()
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+def _cosine(a, b) -> float:
+    """Dense (embedding lists) or sparse (lexical {term: weight}) vectors."""
+    if isinstance(a, dict):
+        dot = sum(w * b.get(t, 0.0) for t, w in a.items())
+        norm = math.sqrt(sum(w * w for w in a.values())) * math.sqrt(sum(w * w for w in b.values()))
+    else:
+        dot = sum(x * y for x, y in zip(a, b))
+        norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
     return dot / norm if norm else 0.0
 
 
+def _lexical_vectors(tickets) -> dict[str, dict[str, float]]:
+    """TF-IDF over the group's own subject + opening text (the KB
+    tokenizer and stopwords; smoothed IDF so terms every ticket shares
+    still count). The default when no embeddings model is configured —
+    QuickML has none."""
+    tokens = {t["ticket_id"]: kb_retrieval.tokenize(f"{subject_for(t)}\n{_public_details(t)}")
+              for t in tickets}
+    n = len(tokens)
+    df = Counter(term for terms in tokens.values() for term in set(terms))
+    idf = {term: math.log((1 + n) / (1 + d)) + 1 for term, d in df.items()}
+    return {tid: {term: count * idf[term] for term, count in Counter(terms).items()}
+            for tid, terms in tokens.items()}
+
+
 def _embeddings(conn, tickets) -> dict[str, list[float]] | None:
-    """Cached per ticket; None when no embeddings deployment is configured
-    or the call fails (callers fall back to category-only grouping)."""
+    """Cached per ticket; None when no embeddings model is configured or
+    the call fails (callers fall back to lexical similarity)."""
     model = provider.embeddings_deployment()
     if not model:
         return None
@@ -155,8 +175,8 @@ def candidate_groups(conn, cfg: dict, trigger_ticket_id: str | None = None) -> l
             continue
         if len(tickets) < cfg["min_tickets"]:
             continue
-        vectors = _embeddings(conn, tickets)
-        subgroups = _split_by_similarity(tickets, vectors, cfg["similarity"]) if vectors else [tickets]
+        vectors = _embeddings(conn, tickets) or _lexical_vectors(tickets)
+        subgroups = _split_by_similarity(tickets, vectors, cfg["similarity"])
         for group in subgroups:
             if trigger_ticket_id and trigger_ticket_id not in {t["ticket_id"] for t in group}:
                 continue

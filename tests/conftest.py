@@ -27,6 +27,14 @@ from backend.ai_service import provider  # noqa: E402
 @pytest.fixture(autouse=True)
 def _isolated_app_env(monkeypatch):
     monkeypatch.setenv("APP_ENV", "development")
+    # Never reach a real model: the mock backend, and no provider credentials.
+    monkeypatch.setenv("AI_PROVIDER", "mock")
+    for name in ("QUICKML_ENDPOINT_KEY", "QUICKML_ENDPOINT_URL", "QUICKML_ACCESS_TOKEN", "CATALYST_ORG_ID",
+                 "ZOHO_CLIENT_ID", "ZOHO_CLIENT_SECRET", "ZOHO_REFRESH_TOKEN", "AI_BASE_URL", "AI_API_KEY",
+                 "AI_MODEL", "AI_EMBEDDING_MODEL", "AI_MAX_TOKENS", "AZURE_OPENAI_ENDPOINT",
+                 "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT"):
+        monkeypatch.delenv(name, raising=False)
+    provider.set_backend(None)
     monkeypatch.delenv("ADMIN_EMAIL", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
     for name in ("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "INCIDENT_WINDOW_HOURS", "INCIDENT_MIN_TICKETS",
@@ -38,6 +46,7 @@ def _isolated_app_env(monkeypatch):
     app_settings.clear_cache()
     yield
     app_settings.clear_cache()
+    provider.set_backend(None)
 
 
 @pytest.fixture(autouse=True)

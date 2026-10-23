@@ -404,12 +404,24 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `suggest_steps`, `correlate_incidents`, `summarize_incident`,
   `draft_post_incident`, `incident_question`), each
   with pydantic input/output schemas in `schemas.py`. `provider.py` is
-  the only place that talks to Azure OpenAI (lazy `AzureOpenAI` client;
-  config from env: `AZURE_OPENAI_ENDPOINT` / `_API_KEY` / `_API_VERSION`
-  / `_DEPLOYMENT`): instructions in the system message, untrusted text in
-  delimited data blocks (closing tags escaped), structured output
-  validated (+ semantic `check`, e.g. correlation ids must be from the
-  input) with one retry, then `AIError`. Provider errors log the
+  the only entry point (`complete_json` / `complete_text` -> `complete`
+  -> the backend chosen by `AI_PROVIDER`, `backends.py`: `quickml_rest`
+  [Catalyst QuickML LLM Serving, one stateless prompt string, Zoho OAuth
+  self-client refresh token], `quickml_sdk` [`zcatalyst_sdk` `ask_llm`,
+  initialised from the AppSail request's X-ZC-* headers kept in a
+  contextvar by `main._CatalystRequestContext`; note zcatalyst-sdk 1.4.0
+  on PyPI has no `ask_llm`], `openai_compatible`, `azure` [until Phase 4
+  C6], `mock` [default when unset; minimal schema-valid JSON]).
+  Instructions in the system prompt, untrusted text in delimited data
+  blocks (closing tags escaped); single-prompt backends flatten to
+  Instructions / Data / Correction / Response sections. Replies are
+  cleaned (`<think>` reasoning and code fences stripped, the JSON object
+  extracted), validated (+ semantic `check`, e.g. correlation ids must be
+  from the input), retried once with a note giving the validation error
+  paths (never the rejected values), then `AIError`. No embeddings with
+  QuickML: incident grouping uses lexical TF-IDF (`incidents._lexical_vectors`,
+  `INCIDENT_SIMILARITY` default 0.15). `scripts/ai_smoke_test.py` runs the
+  key prompts against the real provider. Provider errors log the
   exception type only and are re-raised without the chained cause.
   `graph.py` keeps routing policy + KB grounding and calls the service;
   callers treat `AIError` as "AI unavailable" without changing state.

@@ -82,7 +82,7 @@ def model(monkeypatch):
     """provider.complete for the draft: returns queued outputs, records prompts."""
     state = {"outputs": [], "prompts": []}
 
-    def _complete(messages, temperature=0.0, json_mode=False):
+    def _complete(messages, **kwargs):
         if "post-incident summary" not in messages[0]["content"]:
             raise provider.AIError("only the post-incident draft is mocked")
         state["prompts"].append(messages)

@@ -133,8 +133,13 @@ All are documented in `.env.example`. Never commit real values.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION`, `AZURE_OPENAI_DEPLOYMENT` | — | Chat model for every AI operation |
-| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | unset | Optional: embeddings for incident grouping; unset = group by department/category |
+| `AI_PROVIDER` | `azure` if `AZURE_OPENAI_ENDPOINT` is set, else `mock` | `quickml_rest`, `quickml_sdk`, `openai_compatible`, `azure`, `mock` (see `backend/ai_service/backends.py`) |
+| `AI_MAX_TOKENS`, `AI_TIMEOUT_SECONDS` | 2048, 90 | Per-call limits |
+| `QUICKML_ENDPOINT_URL`, `QUICKML_ENDPOINT_KEY`, `QUICKML_ENVIRONMENT`, `CATALYST_ORG_ID` | — | Catalyst QuickML LLM Serving endpoint |
+| `ZOHO_ACCOUNTS_URL`, `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_REFRESH_TOKEN` | `https://accounts.zoho.in` | Self-client OAuth for `quickml_rest` (scope `QuickML.deployment.READ`); `QUICKML_ACCESS_TOKEN` for a one-hour local test instead |
+| `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_EMBEDDING_MODEL` | — | `openai_compatible` provider |
+| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION`, `AZURE_OPENAI_DEPLOYMENT` | — | `azure` provider (removed in Phase 4 C6) |
+| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | unset | Optional embeddings with `azure`; otherwise incident grouping uses lexical TF-IDF similarity |
 | `JWT_SECRET` | dev value | Signs session tokens; use a long random value in production |
 | `APP_ENV` | `development` | `production` requires `ADMIN_*` and skips demo staff |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | — | The single admin, created once if no admin exists (never overwritten) |
@@ -142,7 +147,7 @@ All are documented in `.env.example`. Never commit real values.
 | `ALLOWED_ORIGINS` | localhost dev ports | CORS origins, comma-separated |
 | `INCIDENT_WINDOW_HOURS` | 12 | Reports considered together |
 | `INCIDENT_MIN_TICKETS` | 3 | Group size before asking the AI (from 2+ customers) |
-| `INCIDENT_SIMILARITY` | 0.80 | Embedding similarity split (with embeddings only) |
+| `INCIDENT_SIMILARITY` | 0.15 | Similarity bar for splitting candidate groups (lexical TF-IDF; ~0.80 with embeddings) |
 | `INCIDENT_ROUTING_CONFIDENCE` | 0.6 | Below this, an incident is "Needs routing" |
 | `INCIDENT_MEMORY_DAYS` | 90 | How long resolved incidents are used to answer "was there an outage?" |
 | `EMAIL_ENABLED` | `false` | Real email is off by default; the email-style thread is in-app |

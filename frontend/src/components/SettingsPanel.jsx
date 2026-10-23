@@ -169,7 +169,7 @@ export default function SettingsPanel() {
             onChange={(v) => setIncidents({ ...incidents, window_hours: v })} />
           <NumberField label="Minimum reports before asking the AI" step={1} min={2} max={40}
             value={incidents.min_tickets} onChange={(v) => setIncidents({ ...incidents, min_tickets: v })} />
-          <NumberField label="Text similarity (with embeddings)" value={incidents.similarity}
+          <NumberField label="Text similarity bar (lexical; ~0.8 with embeddings)" value={incidents.similarity}
             onChange={(v) => setIncidents({ ...incidents, similarity: v })} />
           <NumberField label="AI confidence needed to route to a department"
             value={incidents.routing_confidence}
