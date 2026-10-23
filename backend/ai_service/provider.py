@@ -2,11 +2,12 @@
 
 Every AI operation calls complete_json (structured) or complete_text
 (prose replies); both go through complete(), which sends the request to
-the backend chosen by AI_PROVIDER (backends.py: quickml_rest,
-quickml_sdk, openai_compatible, azure, mock). Trusted instructions go in
+the backend chosen by AI_PROVIDER (backends.py: quickml_appsail,
+openai_compatible, azure, mock). Trusted instructions go in
 the system prompt; untrusted customer/ticket text goes in delimited data
 blocks the customer can't close. Replies are cleaned (reasoning text and
-code fences stripped, the JSON object extracted), validated against the
+code fences stripped, the JSON object extracted; a plain-text reply the
+model wrapped as {"response": "..."} unwrapped), validated against the
 operation's pydantic schema plus an optional semantic `check`, and
 retried once with a note saying what was wrong; then AIError, so the
 caller can degrade gracefully without changing any state.
@@ -24,7 +25,7 @@ from collections.abc import Callable
 from pydantic import BaseModel, ValidationError
 
 from backend.ai_service import backends
-from backend.ai_service.backends import BackendError, env
+from backend.ai_service.backends import BackendError, ConfigError, env
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,8 @@ def complete(messages: list[dict], *, temperature: float = 0.2, json_mode: bool 
         # AIError tracebacks with logger.exception. BackendError messages
         # are written by us and safe to log.
         detail = f" ({exc})" if isinstance(exc, BackendError) else ""
-        logger.warning("AI provider call failed: %s%s", type(exc).__name__, detail)
+        level = logging.ERROR if isinstance(exc, ConfigError) else logging.WARNING
+        logger.log(level, "AI provider call failed: %s%s", type(exc).__name__, detail)
         raise AIError("AI provider unavailable") from None
     if not content or not content.strip():
         raise AIError("AI provider returned an empty response")
@@ -180,6 +182,24 @@ def extract_json(text: str) -> str:
     return text[start:]
 
 
+def unwrap_text(text: str) -> str:
+    """GLM on QuickML sometimes answers a plain-text request as
+    {"response": "..."} (or inside a code fence): return the inner string.
+    Anything else is returned unchanged."""
+    candidate = text.strip()
+    fenced = _FENCE.fullmatch(candidate)
+    if fenced:
+        candidate = fenced.group(1).strip()
+    if candidate.startswith("{") and candidate.endswith("}"):
+        try:
+            value = json.loads(candidate)
+        except ValueError:
+            return text
+        if isinstance(value, dict) and len(value) == 1 and isinstance(value.get("response"), str):
+            return value["response"].strip()
+    return text
+
+
 def _describe(exc: Exception) -> str:
     """What was wrong, for the retry note: field paths and messages only
     (never the rejected values, which can echo customer text)."""
@@ -227,10 +247,12 @@ def complete_json(instructions: str, data: dict[str, str], schema: type[BaseMode
 def complete_text(instructions: str, data: dict[str, str], *, temperature: float = 0.3,
                   max_length: int = 8000) -> str:
     """Free-text reply (chat answers, clarifying questions). Reasoning is
-    stripped; validated as non-empty and bounded; retried once."""
+    stripped and a {"response": ...} wrapper unwrapped; validated as
+    non-empty and bounded; retried once (only for an empty/oversized reply —
+    a provider error is never retried here)."""
     messages = _messages(instructions, data)
     for _ in range(2):
-        text = strip_reasoning(complete(messages, temperature=temperature))
+        text = unwrap_text(strip_reasoning(complete(messages, temperature=temperature)))
         if text and len(text) <= max_length:
             return text
         logger.warning("AI text reply empty or too long (%d chars)", len(text))

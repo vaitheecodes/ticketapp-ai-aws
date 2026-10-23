@@ -2,7 +2,11 @@
 and report invalid JSON / weak answers. Not a unit test: it calls the
 real model (AI_PROVIDER and its credentials from .env).
 
-    AI_PROVIDER=quickml_rest .ven/bin/python scripts/ai_smoke_test.py
+    AI_PROVIDER=openai_compatible .ven/bin/python scripts/ai_smoke_test.py
+
+quickml_appsail only works while serving a request on AppSail (it uses
+the credential AppSail injects), so it can't be run from a laptop; run
+these prompts there instead (Phase 4 stage 2).
 
 Prints, per prompt: OK/FAIL, seconds, attempts (a retry means the first
 reply was rejected), and the parsed output. Never prints credentials.

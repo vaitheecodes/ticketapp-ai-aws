@@ -58,24 +58,25 @@ app.add_middleware(
 
 
 class _CatalystRequestContext:
-    """AI_PROVIDER=quickml_sdk: the Catalyst SDK is initialised from the
-    incoming AppSail request's X-ZC-* headers, so keep them in a context
-    variable for the whole request (background tasks included). Only the
-    X-ZC-* headers are kept; nothing is logged."""
+    """AI_PROVIDER=quickml_appsail: capture the credential AppSail injects
+    into this request (X-ZC-* headers) for the QuickML call, scoped to the
+    request and its background tasks through a context variable. Never
+    stored globally or logged. Note: these headers are trusted only because
+    AppSail sets them; this middleware is a no-op for any other provider."""
 
     def __init__(self, asgi_app):
         self.app = asgi_app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or ai_backends.env("AI_PROVIDER") != "quickml_sdk":
+        if scope["type"] != "http" or ai_backends.env("AI_PROVIDER") != "quickml_appsail":
             return await self.app(scope, receive, send)
-        headers = {k.decode("latin-1"): v.decode("latin-1") for k, v in scope.get("headers", [])
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])
                    if k.lower().startswith(b"x-zc-")}
-        token = ai_backends.catalyst_request_headers.set(headers)
+        token = ai_backends.appsail_credentials.set(ai_backends.AppSailCredentials.from_headers(headers))
         try:
             return await self.app(scope, receive, send)
         finally:
-            ai_backends.catalyst_request_headers.reset(token)
+            ai_backends.appsail_credentials.reset(token)
 
 
 app.add_middleware(_CatalystRequestContext)
