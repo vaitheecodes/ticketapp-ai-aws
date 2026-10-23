@@ -732,3 +732,23 @@ def appsail_header_probe(
         "captured_project_id_is_probe": bool(creds and creds.project_id == probe),
         "captured_token_is_probe": bool(creds and creds.admin_token == probe),
     }
+
+
+_REQUIRED_ENV = ("APP_ENV", "JWT_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD", "AI_PROVIDER",
+                 "QUICKML_ENDPOINT_KEY", "QUICKML_ENDPOINT_NAME", "QUICKML_ORG_ID", "EMAIL_ENABLED")
+
+
+@router.get("/api/admin/diag/config")
+def config_presence(admin_id: str = Depends(_admin)):
+    """Temporary (Phase 4): which required environment variables are set
+    after a deploy. Booleans only — never values; AI_PROVIDER/APP_ENV are
+    compared against their expected values, not returned."""
+    import os
+
+    present = {name: bool((os.environ.get(name) or "").strip()) for name in _REQUIRED_ENV}
+    return {
+        "set": present,
+        "app_env_is_production": os.environ.get("APP_ENV", "").strip().lower() == "production",
+        "ai_provider_is_quickml_appsail": os.environ.get("AI_PROVIDER", "").strip() == "quickml_appsail",
+        "jwt_secret_ok": auth.JWT_SECRET != auth._DEV_JWT_SECRET and len(auth.JWT_SECRET) >= 32,
+    }

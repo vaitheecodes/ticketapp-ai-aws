@@ -126,7 +126,7 @@ appsail_credentials: contextvars.ContextVar[AppSailCredentials | None] = context
 QUICKML_ERRORS = {
     "INVALID_ENDPOINT_KEY": "QuickML rejected the endpoint key (INVALID_ENDPOINT_KEY): check "
                             "QUICKML_ENDPOINT_KEY matches QUICKML_ENDPOINT_NAME and this environment",
-    "ORGID_HEADER_UNAVAILABLE": "QuickML needs the CATALYST-ORG header: set CATALYST_ORG_ID",
+    "ORGID_HEADER_UNAVAILABLE": "QuickML needs the CATALYST-ORG header: set QUICKML_ORG_ID",
 }
 
 
@@ -180,7 +180,7 @@ class QuickMLAppSailBackend:
     with {"prompt": ...}. Headers reproduce the request verified on AppSail
     (sent by the Catalyst SDK's client): Authorization from the injected
     admin credential, PROJECT_ID, Environment / X-Catalyst-Environment,
-    X-CATALYST-USER, CATALYST-ORG, the project secret key if injected, and
+    X-CATALYST-USER, CATALYST-ORG (QUICKML_ORG_ID), the project secret key if injected, and
     X-QUICKML-ENDPOINT-KEY."""
 
     name = "quickml_appsail"
@@ -200,7 +200,11 @@ class QuickMLAppSailBackend:
 
     @staticmethod
     def headers(creds: AppSailCredentials) -> dict[str, str]:
-        key, org = env("QUICKML_ENDPOINT_KEY"), env("CATALYST_ORG_ID") or env("X_ZOHO_CATALYST_ORG_ID")
+        # QUICKML_ORG_ID: Catalyst rejects env var names containing CATALYST
+        # ("reserved keywords"), so CATALYST_ORG_ID is a local-only fallback;
+        # X_ZOHO_CATALYST_ORG_ID is read in case the platform sets it.
+        key = env("QUICKML_ENDPOINT_KEY")
+        org = env("QUICKML_ORG_ID") or env("CATALYST_ORG_ID") or env("X_ZOHO_CATALYST_ORG_ID")
         if not key:
             raise ConfigError("QUICKML_ENDPOINT_KEY is not set")
         if not org:

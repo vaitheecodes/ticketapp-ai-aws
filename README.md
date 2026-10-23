@@ -135,7 +135,7 @@ All are documented in `.env.example`. Never commit real values.
 |---|---|---|
 | `AI_PROVIDER` | `azure` if `AZURE_OPENAI_ENDPOINT` is set, else `mock` | `quickml_appsail`, `openai_compatible`, `azure`, `mock` (see `backend/ai_service/backends.py`) |
 | `AI_MAX_TOKENS`, `AI_TIMEOUT_SECONDS` | 2048, 90 | Per-call limits |
-| `QUICKML_ENDPOINT_KEY`, `QUICKML_ENDPOINT_NAME`, `CATALYST_ORG_ID` | — | Catalyst QuickML LLM Serving endpoint, called from AppSail with the credential AppSail injects per request ([docs/quickml-appsail-call.md](docs/quickml-appsail-call.md)) |
+| `QUICKML_ENDPOINT_KEY`, `QUICKML_ENDPOINT_NAME`, `QUICKML_ORG_ID` | — | Catalyst QuickML LLM Serving endpoint, called from AppSail with the credential AppSail injects per request ([docs/quickml-appsail-call.md](docs/quickml-appsail-call.md)) |
 | `QUICKML_ENVIRONMENT`, `QUICKML_API_BASE` | `Development`, `https://api.catalyst.zoho.in` | Fallbacks when AppSail doesn't inject `X-ZC-Environment` / `X_ZOHO_CATALYST_CONSOLE_URL` |
 | `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_EMBEDDING_MODEL` | — | `openai_compatible` provider |
 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION`, `AZURE_OPENAI_DEPLOYMENT` | — | `azure` provider (removed in Phase 4 C6) |

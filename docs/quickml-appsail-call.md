@@ -33,7 +33,7 @@ AppSail the SDK used `api.catalyst.zoho.in`, which worked.)
 | `project_id` | numeric project id | request header `X-ZC-ProjectId` (injected by AppSail) |
 | `endpoint_name` | e.g. `glm-flash-47` | the endpoint's URL in QuickML > LLM Serving; config (env `QUICKML_ENDPOINT_NAME`), not secret |
 | `Authorization` | `Zoho-oauthtoken <token>` | request header `X-ZC-Admin-Cred-Token` (with `X-ZC-Admin-Cred-Type` = access token), injected by AppSail per request |
-| `CATALYST-ORG` | org id | env `CATALYST_ORG_ID` (not secret; also in `.catalystrc`). **Required.** |
+| `CATALYST-ORG` | org id | env `QUICKML_ORG_ID` (not secret; also in `.catalystrc`). **Required.** Catalyst rejects env var names containing `CATALYST` ("reserved keywords"), so `CATALYST_ORG_ID` cannot be set in the console. |
 | `Environment` | `Development` or `Production` | env `QUICKML_ENVIRONMENT`; match the AppSail environment |
 | `X-QUICKML-ENDPOINT-KEY` | endpoint key | env `QUICKML_ENDPOINT_KEY` (secret; set in the console only) |
 | `Content-Type` | `application/json` | — |

@@ -79,7 +79,7 @@ def quickml_env(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER", "quickml_appsail")
     monkeypatch.setenv("QUICKML_ENDPOINT_KEY", ENDPOINT_KEY)
     monkeypatch.setenv("QUICKML_ENDPOINT_NAME", "glm-flash-47")
-    monkeypatch.setenv("CATALYST_ORG_ID", "600")
+    monkeypatch.setenv("QUICKML_ORG_ID", "600")
     monkeypatch.setenv("X_ZOHO_CATALYST_CONSOLE_URL", "https://api.catalyst.zoho.in")
 
 
@@ -246,7 +246,7 @@ def test_two_invalid_replies_raise(quickml_env, real_complete, in_request):
     ((500, {"code": "INVALID_ENDPOINT_KEY", "message": "ziahub.error.INVALID_ENDPOINT_KEY"}),
      "rejected the endpoint key (INVALID_ENDPOINT_KEY)", logging.ERROR),
     ((400, {"code": "ORGID_HEADER_UNAVAILABLE", "message": "ziahub.error.ORGID_HEADER_UNAVAILABLE"}),
-     "set CATALYST_ORG_ID", logging.ERROR),
+     "set QUICKML_ORG_ID", logging.ERROR),
     ((400, {"code": "Required header 'x-quickml-endpoint-key' is not present."}),
      "did not receive the endpoint key header", logging.ERROR),
     ((401, {}), "refused the AppSail credential (HTTP 401)", logging.WARNING),
@@ -267,7 +267,7 @@ def test_errors_are_mapped_not_retried_and_never_leak_secrets(quickml_env, real_
 
 @pytest.mark.parametrize("missing, message", [("QUICKML_ENDPOINT_KEY", "QUICKML_ENDPOINT_KEY is not set"),
                                               ("QUICKML_ENDPOINT_NAME", "QUICKML_ENDPOINT_NAME is not set"),
-                                              ("CATALYST_ORG_ID", "set CATALYST_ORG_ID")])
+                                              ("QUICKML_ORG_ID", "set QUICKML_ORG_ID")])
 def test_missing_configuration_fails_before_calling(quickml_env, real_complete, in_request, monkeypatch,
                                                     caplog, missing, message):
     monkeypatch.delenv(missing)
@@ -487,3 +487,11 @@ def test_duplicated_appsail_headers_capture_nothing(quickml_env, tmp_path, monke
         main.app.router.routes = [r for r in main.app.router.routes if getattr(r, "path", "") != "/api/_test_dup"]
     assert seen[0] is not None and seen[0].admin_token == ADMIN_TOKEN
     assert seen[1] is None
+
+
+def test_org_id_prefers_quickml_org_id_and_falls_back_for_local_use(quickml_env, monkeypatch):
+    creds = AppSailCredentials.from_headers({"x-zc-admin-cred-token": "t", "x-zc-projectid": "1"})
+    monkeypatch.setenv("CATALYST_ORG_ID", "111")
+    assert QuickMLAppSailBackend.headers(creds)["CATALYST-ORG"] == "600"  # QUICKML_ORG_ID wins
+    monkeypatch.delenv("QUICKML_ORG_ID")
+    assert QuickMLAppSailBackend.headers(creds)["CATALYST-ORG"] == "111"
