@@ -453,6 +453,7 @@ def test_header_probe_is_admin_only_and_returns_no_values(quickml_env, tmp_path,
         res = c.get(f"/api/admin/diag/appsail-headers?probe={probe}",
                     headers={"Authorization": f"Bearer {admin}", **forged}).json()
     assert res["headers"]["x-zc-projectid"] == {"count": 1, "probe_value_seen": True}
+    # Locally only the client sends these, so nothing is duplicated.
     assert res["captured_project_id_is_probe"] and res["captured_token_is_probe"]
     assert probe not in json.dumps(res["headers"]).replace('"probe_value_seen"', "")
 
@@ -464,3 +465,25 @@ def test_appsail_headers_never_authorize(quickml_env, tmp_path, monkeypatch):
     with TestClient(main.app) as c:
         for path in ("/api/admin/tickets", "/api/staff/tickets", "/api/tickets/mine", "/api/incidents"):
             assert c.get(path, headers=APPSAIL_HEADERS).status_code in (401, 403)
+
+
+def test_duplicated_appsail_headers_capture_nothing(quickml_env, tmp_path, monkeypatch):
+    """AppSail appends its own X-ZC-* values to client-sent ones instead of
+    stripping them; a duplicate may be forged, so no credential is used."""
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "t.db")
+    seen = []
+
+    @main.app.get("/api/_test_dup")
+    def _dup():
+        seen.append(backends.appsail_credentials.get())
+        return {}
+
+    try:
+        with TestClient(main.app) as c:
+            c.get("/api/_test_dup", headers=APPSAIL_HEADERS)
+            # httpx sends a list of tuples as repeated headers
+            c.get("/api/_test_dup", headers=[*APPSAIL_HEADERS.items(), ("X-Zc-Admin-Cred-Token", "forged")])
+    finally:
+        main.app.router.routes = [r for r in main.app.router.routes if getattr(r, "path", "") != "/api/_test_dup"]
+    assert seen[0] is not None and seen[0].admin_token == ADMIN_TOKEN
+    assert seen[1] is None

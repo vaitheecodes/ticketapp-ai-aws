@@ -70,9 +70,19 @@ class _CatalystRequestContext:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or ai_backends.env("AI_PROVIDER") != "quickml_appsail":
             return await self.app(scope, receive, send)
-        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])
-                   if k.lower().startswith(b"x-zc-")}
-        token = ai_backends.appsail_credentials.set(ai_backends.AppSailCredentials.from_headers(headers))
+        headers: dict[str, str] = {}
+        duplicated = False
+        for k, v in scope.get("headers", []):
+            name = k.decode("latin-1").lower()
+            if name.startswith("x-zc-"):
+                duplicated |= name in headers
+                headers[name] = v.decode("latin-1")
+        # AppSail does NOT strip client-sent X-ZC-* headers: it adds its own
+        # value next to the client's (verified 24 Oct 2026), and which comes
+        # first isn't reliable. A duplicated header may be forged, so capture
+        # nothing: the AI call then fails safely for this request.
+        creds = None if duplicated else ai_backends.AppSailCredentials.from_headers(headers)
+        token = ai_backends.appsail_credentials.set(creds)
         try:
             return await self.app(scope, receive, send)
         finally:
