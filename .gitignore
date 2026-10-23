@@ -47,3 +47,4 @@ frontend/dist/
 
 .agents/
 .claude/
+.catalystrc
