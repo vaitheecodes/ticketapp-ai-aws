@@ -109,7 +109,7 @@ STRONG_SECRET = "x" * 40
 
 def test_production_without_admin_env_refuses_to_start(db_path, monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setattr(auth, "JWT_SECRET", STRONG_SECRET)
+    _strong_jwt(monkeypatch)
     with pytest.raises(RuntimeError, match="ADMIN_EMAIL"):
         with TestClient(main.app):
             pass
@@ -124,15 +124,60 @@ def test_dev_without_admin_env_uses_fallback_with_loud_warning(db_path, caplog):
     assert "DEV-ONLY admin" in caplog.text
 
 
-@pytest.mark.parametrize("secret", ["dev-secret-change-me", "short-secret"])
-def test_production_refuses_a_weak_jwt_secret(db_path, monkeypatch, secret):
+def _strong_jwt(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", STRONG_SECRET)
+    monkeypatch.setattr(auth, "JWT_SECRET", STRONG_SECRET)
+
+
+@pytest.mark.parametrize("env_value, secret, problem", [
+    (None, "dev-secret-change-me", "JWT_SECRET is missing"),
+    ("dev-secret-change-me", "dev-secret-change-me", "JWT_SECRET is the public development default"),
+    ("short-secret", "short-secret", "JWT_SECRET is too short"),
+])
+def test_production_refuses_a_weak_jwt_secret(db_path, monkeypatch, capsys, env_value, secret, problem):
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL)
     monkeypatch.setenv("ADMIN_PASSWORD", ADMIN_PASSWORD)
+    if env_value is None:
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+    else:
+        monkeypatch.setenv("JWT_SECRET", env_value)
     monkeypatch.setattr(auth, "JWT_SECRET", secret)
-    with pytest.raises(RuntimeError, match="JWT_SECRET"):
+    with pytest.raises(RuntimeError, match=problem):
         with TestClient(main.app):
             pass
+    err = capsys.readouterr().err
+    assert f"STARTUP CONFIG ERROR: {problem}" in err
+    if env_value:
+        assert env_value not in err.replace("JWT_SECRET", "").replace("development default", "")
+
+
+def test_startup_error_names_missing_admin_variables(db_path, monkeypatch, capsys):
+    monkeypatch.setenv("APP_ENV", "production")
+    _strong_jwt(monkeypatch)
+    monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL)
+    with pytest.raises(RuntimeError):
+        with TestClient(main.app):
+            pass
+    err = capsys.readouterr().err
+    assert "STARTUP CONFIG ERROR: ADMIN_PASSWORD is missing" in err and ADMIN_EMAIL not in err
+
+
+def test_appsail_without_app_env_refuses_to_start(db_path, monkeypatch, capsys):
+    """Unset APP_ENV means development (dev admin with a known password):
+    never on AppSail, whose public URL needs no login."""
+    monkeypatch.setenv("X_ZOHO_CATALYST_LISTEN_PORT", "9000")
+    monkeypatch.delenv("APP_ENV", raising=False)
+    with pytest.raises(RuntimeError, match="APP_ENV"):
+        with TestClient(main.app):
+            pass
+    assert "STARTUP CONFIG ERROR: APP_ENV is missing" in capsys.readouterr().err
+
+
+def test_build_puts_no_env_variables_in_app_config():
+    script = (Path(__file__).resolve().parent.parent / "scripts" / "build_appsail.sh").read_text()
+    config = script.split("app-config.json\" <<'JSON'", 1)[1].split("\nJSON", 1)[0]
+    assert "env_variables" not in config and "APP_ENV" not in config
 
 
 def test_health_is_public(db_path):
@@ -142,7 +187,7 @@ def test_health_is_public(db_path):
 
 def test_demo_staff_not_seeded_in_production(db_path, monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setattr(auth, "JWT_SECRET", STRONG_SECRET)
+    _strong_jwt(monkeypatch)
     monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL)
     monkeypatch.setenv("ADMIN_PASSWORD", ADMIN_PASSWORD)
     with TestClient(main.app) as c:

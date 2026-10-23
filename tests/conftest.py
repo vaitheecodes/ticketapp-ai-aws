@@ -30,7 +30,7 @@ def _isolated_app_env(monkeypatch):
     # Never reach a real model: the mock backend, and no provider credentials.
     monkeypatch.setenv("AI_PROVIDER", "mock")
     for name in ("QUICKML_ENDPOINT_KEY", "QUICKML_ENDPOINT_NAME", "QUICKML_ENVIRONMENT", "QUICKML_API_BASE",
-                 "QUICKML_ORG_ID", "CATALYST_ORG_ID", "X_ZOHO_CATALYST_ORG_ID", "X_ZOHO_CATALYST_CONSOLE_URL", "AI_BASE_URL", "AI_API_KEY",
+                 "QUICKML_ORG_ID", "CATALYST_ORG_ID", "X_ZOHO_CATALYST_ORG_ID", "X_ZOHO_CATALYST_LISTEN_PORT", "X_ZOHO_CATALYST_CONSOLE_URL", "AI_BASE_URL", "AI_API_KEY",
                  "AI_MODEL", "AI_EMBEDDING_MODEL", "AI_MAX_TOKENS", "AZURE_OPENAI_ENDPOINT",
                  "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT"):
         monkeypatch.delenv(name, raising=False)

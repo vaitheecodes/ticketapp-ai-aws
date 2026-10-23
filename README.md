@@ -131,6 +131,9 @@ token).
 
 All are documented in `.env.example`. Never commit real values.
 
+For Catalyst AppSail (Phase 4), the required console variables, build and
+deploy steps are in [docs/appsail-deploy.md](docs/appsail-deploy.md).
+
 | Variable | Default | Purpose |
 |---|---|---|
 | `AI_PROVIDER` | `azure` if `AZURE_OPENAI_ENDPOINT` is set, else `mock` | `quickml_appsail`, `openai_compatible`, `azure`, `mock` (see `backend/ai_service/backends.py`) |

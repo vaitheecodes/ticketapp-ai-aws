@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -100,14 +101,37 @@ def email_in_use(conn, email: str) -> bool:
 # ---------------------------------------------------------------------------
 # Admin bootstrap
 # ---------------------------------------------------------------------------
+def config_error(variable: str, problem: str) -> RuntimeError:
+    """One plain line on stderr naming the variable (never its value), so
+    the AppSail log shows exactly what to fix, then the exception that
+    stops startup."""
+    message = f"STARTUP CONFIG ERROR: {variable} {problem}; refusing to start."
+    print(message, file=sys.stderr, flush=True)
+    return RuntimeError(message)
+
+
+def on_appsail() -> bool:
+    """AppSail sets X_ZOHO_CATALYST_LISTEN_PORT for every service."""
+    return bool(os.environ.get("X_ZOHO_CATALYST_LISTEN_PORT"))
+
+
 def check_production_config() -> None:
-    """In production, refuse to start with the public dev JWT secret (or a
-    short one): anyone could forge a token for any role."""
-    if is_production() and (JWT_SECRET == _DEV_JWT_SECRET or len(JWT_SECRET) < 32):
-        raise RuntimeError(
-            "APP_ENV=production but JWT_SECRET is unset, the dev default, or shorter "
-            "than 32 characters; refusing to start."
-        )
+    """Fail closed before anything else starts:
+    - on AppSail, APP_ENV must be set explicitly (unset would mean
+      development: the dev admin, with a password in the source, on a
+      public URL);
+    - in production, JWT_SECRET must be set, not the public dev default,
+      and at least 32 characters (else anyone could forge a token)."""
+    if on_appsail() and not os.environ.get("APP_ENV", "").strip():
+        raise config_error("APP_ENV", "is missing (set APP_ENV=production in the AppSail console)")
+    if not is_production():
+        return
+    if not os.environ.get("JWT_SECRET", "").strip():
+        raise config_error("JWT_SECRET", "is missing")
+    if JWT_SECRET == _DEV_JWT_SECRET:
+        raise config_error("JWT_SECRET", "is the public development default")
+    if len(JWT_SECRET) < 32:
+        raise config_error("JWT_SECRET", "is too short (needs at least 32 characters)")
 
 
 def ensure_admin() -> None:
@@ -133,10 +157,8 @@ def ensure_admin() -> None:
 
         if not email or not password:
             if is_production():
-                raise RuntimeError(
-                    "APP_ENV=production but ADMIN_EMAIL/ADMIN_PASSWORD are not set; "
-                    "refusing to start without an admin account."
-                )
+                missing = " and ".join(n for n, v in (("ADMIN_EMAIL", email), ("ADMIN_PASSWORD", password)) if not v)
+                raise config_error(missing, "is missing (needed to create the first admin)")
             email, password = _DEV_ADMIN_EMAIL, _DEV_ADMIN_PASSWORD
             logger.warning(
                 "\n%s\nADMIN_EMAIL/ADMIN_PASSWORD not set: created a DEV-ONLY admin "

@@ -8,10 +8,12 @@
 # folder is uploaded as-is, so Linux x86-64 / CPython 3.13 wheels are
 # vendored next to the code. Only runtime files go in: backend/ (no local DB,
 # uploads or caches), the KB JSON, requirements-runtime.txt's packages and
-# app-config.json. No .env, no secrets — set environment variables in the
-# AppSail console. Only APP_ENV=production is baked in, so a deploy without
-# the console secrets fails closed (startup refuses) instead of starting
-# with the dev admin on a public URL.
+# app-config.json. No .env, no secrets, and NO env_variables in
+# app-config.json: every variable (APP_ENV included) is set in the AppSail
+# console, because it's undocumented whether `catalyst deploy` replaces the
+# console list with the file's. The app fails closed instead: on AppSail it
+# refuses to start without APP_ENV, and in production without JWT_SECRET /
+# the admin variables (backend/auth.py check_production_config).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -37,7 +39,6 @@ cat > "$OUT/app-config.json" <<'JSON'
   "command": "sh -c 'python3 -m uvicorn backend.main:app --host 0.0.0.0 --port ${X_ZOHO_CATALYST_LISTEN_PORT:-9000}'",
   "build_path": ".",
   "stack": "python_3_13",
-  "env_variables": {"APP_ENV": "production"},
   "memory": 512,
   "scripts": {}
 }
