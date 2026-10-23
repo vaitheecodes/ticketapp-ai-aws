@@ -9,7 +9,9 @@
 # vendored next to the code. Only runtime files go in: backend/ (no local DB,
 # uploads or caches), the KB JSON, requirements-runtime.txt's packages and
 # app-config.json. No .env, no secrets — set environment variables in the
-# AppSail console.
+# AppSail console. Only APP_ENV=production is baked in, so a deploy without
+# the console secrets fails closed (startup refuses) instead of starting
+# with the dev admin on a public URL.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -35,7 +37,7 @@ cat > "$OUT/app-config.json" <<'JSON'
   "command": "sh -c 'python3 -m uvicorn backend.main:app --host 0.0.0.0 --port ${X_ZOHO_CATALYST_LISTEN_PORT:-9000}'",
   "build_path": ".",
   "stack": "python_3_13",
-  "env_variables": {},
+  "env_variables": {"APP_ENV": "production"},
   "memory": 512,
   "scripts": {}
 }
