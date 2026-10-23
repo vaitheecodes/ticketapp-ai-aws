@@ -1,0 +1,2708 @@
+{
+ "source": "data/silver (tickets + resolutions), first row per kb_entry_id",
+ "count": 386,
+ "entries": [
+  {
+   "kb_entry_id": "KB-0206",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "Site24x7 says Azure-VM-WebApp-01 is down but the service is working please",
+   "response": "I understand you're looking for help with Site24x7. I can help troubleshoot why Azure-VM-WebApp-01 is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0081",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "I cannot see API-Gateway-EU after discovery",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0297",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "how do I install the Site24x7 agent",
+   "response": "For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0188",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "Site24x7 agent is not communicating with the server",
+   "response": "If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0285",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "how do I configure an alert profile in Site24x7",
+   "response": "To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0381",
+   "category": "ALERTS",
+   "intent": "alert_not_triggered",
+   "instruction": "why was no alert generated for Prod-WebServer-01",
+   "response": "If an expected Site24x7 alert was not triggered, compare the monitor's actual metric or state with the configured threshold and alert condition. Also verify the alert profile, notification settings, suppression or maintenance settings, and the time of the event."
+  },
+  {
+   "kb_entry_id": "KB-0365",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "why is Site24x7 alerting when the monitor is available",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0251",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "how can I change the CPU threshold in Site24x7",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0345",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "what do the monitor statuses in Site24x7 mean",
+   "response": "Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0267",
+   "category": "WEB_MONITORING",
+   "intent": "website_monitoring",
+   "instruction": "how can I monitor website availability and response time",
+   "response": "For website monitoring, configure the URL, monitoring locations, request or validation settings, and alert profile. If the monitor reports downtime, review the response code, response time, DNS/connectivity details, and the timestamp of the failure."
+  },
+  {
+   "kb_entry_id": "KB-0089",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "I need help configuring API monitoring",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0228",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "Why is cpu or memory data not appearing for my server monitor",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0265",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "how can I monitor my application in Site24x7",
+   "response": "For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0289",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "how do I configure log monitoring in Site24x7",
+   "response": "I understand you're looking for help with Site24x7. For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0001",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "APM traces are missing in Site24x7",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0321",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "my SNMP device is not showing metrics",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0367",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "why is Site24x7 not receiving flow data",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0316",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "my Docker monitor is not reporting container data please",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0317",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "my Kubernetes monitoring is not collecting data",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0091",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "I need help configuring Azure monitoring",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0333",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "my third-party integration is not receiving alerts",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0192",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "Site24x7 alerts are not reaching ServiceNow",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0076",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "I am getting a pagerduty rate limit error",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0275",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "how do I check my Site24x7 license usage",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0347",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "what is the data retention period in Site24x7",
+   "response": "Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0130",
+   "category": "REPORTING",
+   "intent": "report_dashboard",
+   "instruction": "I need help with dashboard widgets and reports",
+   "response": "For Site24x7 dashboards and reports, select the required monitors or metrics and configure the relevant widgets, time ranges, filters, and permissions. If a metric is unavailable, first verify that the underlying monitor is collecting the data."
+  },
+  {
+   "kb_entry_id": "KB-0085",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "I need assistance troubleshooting a Site24x7 issue",
+   "response": "I understand you're looking for help with Site24x7. If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0203",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "Site24x7 says Log-Ingest-Pipeline-01 is down but the service is working",
+   "response": "I can help troubleshoot why Log-Ingest-Pipeline-01 is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0331",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "my server is not appearing in Site24x7 discovery",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0108",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "I need help installing the Site24x7 Linux agent",
+   "response": "For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0341",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "the server agent stopped sending data to Site24x7",
+   "response": "If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0136",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "I need to change the alert configuration for DB-Replica-02",
+   "response": "To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0210",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "Unexpected alerts are being generated in site24x7",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0141",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "I need to update a Site24x7 monitor threshold please",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0263",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "how can I monitor an API using Site24x7",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0363",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "why is CPU or memory data not appearing for my server monitor",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0355",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "why are application metrics missing in Site24x7",
+   "response": "I understand you're looking for help with Site24x7. For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0327",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "my application logs are not appearing in Site24x7",
+   "response": "For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0323",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "my Site24x7 APM monitor is showing down",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0369",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "why is memory utilization incorrect for my SNMP monitor",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0319",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "my NetFlow interface is not showing traffic",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0048",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "How do i configure docker monitoring",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0007",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "Azure metrics are missing from Site24x7",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0287",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "how do I configure an integration in Site24x7",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0291",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "how do I configure the ServiceNow integration",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0281",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "how do I configure PagerDuty with Site24x7",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0377",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "why was my Site24x7 monitor suspended due to license limits",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0308",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "how long are my monitoring records available please",
+   "response": "Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0134",
+   "category": "REPORTING",
+   "intent": "report_dashboard",
+   "instruction": "I need to add monitor metrics to a dashboard",
+   "response": "I understand you're looking for help with Site24x7. For Site24x7 dashboards and reports, select the required monitors or metrics and configure the relevant widgets, time ranges, filters, and permissions. If a metric is unavailable, first verify that the underlying monitor is collecting the data."
+  },
+  {
+   "kb_entry_id": "KB-0143",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "I received a down alert for DB-Primary-EU-West",
+   "response": "I can help troubleshoot why DB-Primary-EU-West is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0240",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "Why was my device not discovered in site24x7",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0339",
+   "category": "ALERTS",
+   "intent": "alert_not_triggered",
+   "instruction": "the monitor changed state but I did not receive an alert",
+   "response": "If an expected Site24x7 alert was not triggered, compare the monitor's actual metric or state with the configured threshold and alert condition. Also verify the alert profile, notification settings, suppression or maintenance settings, and the time of the event."
+  },
+  {
+   "kb_entry_id": "KB-0253",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "how can I check the current status of Log-Ingest-Pipeline-01",
+   "response": "Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0305",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "how do I validate an API response in Site24x7",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0301",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "how do I monitor a Linux server with Site24x7",
+   "response": "I understand you're looking for help with Site24x7. For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0159",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "My application monitor is not collecting metrics",
+   "response": "For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0121",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "I need help troubleshooting APM instrumentation please",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0128",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "I need help with SNMP OIDs in Site24x7",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0093",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "I need help configuring a NetFlow device",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0261",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "how can I monitor Docker containers in Site24x7",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0151",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "Kubernetes metrics are missing in Site24x7",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0271",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "how can I troubleshoot a Site24x7 integration",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0182",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "ServiceNow is missing fields from Site24x7 alerts",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0074",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "I am getting a PagerDuty rate limit error",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0017",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "How can i activate a monitor after increasing the license",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0247",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "can I extend trace retention in Site24x7",
+   "response": "I understand you're looking for help with Site24x7. Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0293",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "how do I contact Site24x7 support",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0383",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "API-Gateway-EU is down in Site24x7, how can I troubleshoot it",
+   "response": "I can help troubleshoot why API-Gateway-EU is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0351",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "what permissions are required for the Site24x7 agent installation",
+   "response": "For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0245",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "agent metrics are missing from Site24x7",
+   "response": "If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0256",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "how can I configure alerts in Site24x7 please",
+   "response": "To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0078",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "I am receiving false alerts for Log-Ingest-Pipeline-01",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0041",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "How do i change the threshold for App-Server-04",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0357",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "why are new log entries not being collected",
+   "response": "For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0120",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "I need help troubleshooting APM instrumentation",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0065",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "How do i monitor kubernetes with site24x7",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0313",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "my Azure monitor is not collecting data",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0193",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "Site24x7 alerts are not reaching ServiceNow please",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0359",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "why did the PagerDuty integration fail",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0307",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "how long are my monitoring records available",
+   "response": "Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0257",
+   "category": "REPORTING",
+   "intent": "report_dashboard",
+   "instruction": "how can I generate a Site24x7 report",
+   "response": "For Site24x7 dashboards and reports, select the required monitors or metrics and configure the relevant widgets, time ranges, filters, and permissions. If a metric is unavailable, first verify that the underlying monitor is collecting the data."
+  },
+  {
+   "kb_entry_id": "KB-0198",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "Site24x7 is not discovering Redis-Cache-01",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0110",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "I need help installing the site24x7 linux agent",
+   "response": "For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0273",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "how do I change the threshold for DB-Primary-US-East",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0349",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "what is the difference between down and suspended in Site24x7",
+   "response": "Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0302",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "how do I monitor a Linux server with Site24x7 please",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0100",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "I need help configuring application performance monitoring",
+   "response": "For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0223",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "Why are new log entries not being collected",
+   "response": "For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0279",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "how do I configure NetFlow in Site24x7",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0277",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "how do I configure Docker monitoring",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0122",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "I need help troubleshooting Kubernetes monitoring",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0259",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "how can I monitor Azure resources in Site24x7",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0118",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "I need help setting up an integration",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0072",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "I added monitors over the license limit",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0213",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "What is the data retention period in site24x7",
+   "response": "Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0332",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "my server is not appearing in Site24x7 discovery please",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0147",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "I want alerts for Docker-Host-03 to go to my team",
+   "response": "To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0190",
+   "category": "ALERTS",
+   "intent": "alert_not_triggered",
+   "instruction": "Site24x7 alert notification was not triggered",
+   "response": "If an expected Site24x7 alert was not triggered, compare the monitor's actual metric or state with the configured threshold and alert condition. Also verify the alert profile, notification settings, suppression or maintenance settings, and the time of the event."
+  },
+  {
+   "kb_entry_id": "KB-0343",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "unexpected alerts are being generated in Site24x7",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0140",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "I need to update a Site24x7 monitor threshold",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0021",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "How can i check the current status of NetFlow-Router-EU",
+   "response": "I understand you're looking for help with Site24x7. Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0335",
+   "category": "WEB_MONITORING",
+   "intent": "website_monitoring",
+   "instruction": "my website monitor is showing downtime",
+   "response": "For website monitoring, configure the URL, monitoring locations, request or validation settings, and alert profile. If the monitor reports downtime, review the response code, response time, DNS/connectivity details, and the timestamp of the failure."
+  },
+  {
+   "kb_entry_id": "KB-0112",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "I need help monitoring my Windows server",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0300",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "how do I monitor Kubernetes with Site24x7 please",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0102",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "I need help configuring azure monitoring",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0177",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "PagerDuty is not receiving Site24x7 alerts",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0295",
+   "category": "REPORTING",
+   "intent": "report_dashboard",
+   "instruction": "how do I create a dashboard in Site24x7",
+   "response": "For Site24x7 dashboards and reports, select the required monitors or metrics and configure the relevant widgets, time ranges, filters, and permissions. If a metric is unavailable, first verify that the underlying monitor is collecting the data."
+  },
+  {
+   "kb_entry_id": "KB-0379",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "why was my device not discovered in Site24x7",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0186",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "Site24x7 agent installation is failing",
+   "response": "For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0209",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "The server agent stopped sending data to site24x7",
+   "response": "If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0362",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "why does my monitor show suspended in Site24x7 please",
+   "response": "Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0124",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "I need help troubleshooting apm instrumentation",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0315",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "my Docker monitor is not reporting container data",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0375",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "why is the ServiceNow API rejecting Site24x7 alert data",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0131",
+   "category": "REPORTING",
+   "intent": "report_dashboard",
+   "instruction": "I need help with dashboard widgets and reports please",
+   "response": "For Site24x7 dashboards and reports, select the required monitors or metrics and configure the relevant widgets, time ranges, filters, and permissions. If a metric is unavailable, first verify that the underlying monitor is collecting the data."
+  },
+  {
+   "kb_entry_id": "KB-0325",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "my Site24x7 agent is installed but not reporting",
+   "response": "If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0067",
+   "category": "WEB_MONITORING",
+   "intent": "website_monitoring",
+   "instruction": "How do i monitor my website in site24x7",
+   "response": "For website monitoring, configure the URL, monitoring locations, request or validation settings, and alert profile. If the monitor reports downtime, review the response code, response time, DNS/connectivity details, and the timestamp of the failure."
+  },
+  {
+   "kb_entry_id": "KB-0337",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "server metrics are missing in Site24x7",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0371",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "why is my APM instance not reporting data",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0284",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "how do I configure SNMP monitoring in Site24x7 please",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0046",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "How do i configure an integration in site24x7",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0309",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "how long does Site24x7 retain APM traces",
+   "response": "Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0104",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "I need help from Site24x7 technical support",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0373",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "why is my Site24x7 monitor showing down for DB-Primary-EU-West",
+   "response": "I can help troubleshoot why DB-Primary-EU-West is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0023",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "How can i configure alerts in site24x7",
+   "response": "To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0340",
+   "category": "ALERTS",
+   "intent": "alert_not_triggered",
+   "instruction": "the monitor changed state but I did not receive an alert please",
+   "response": "I understand you're looking for help with Site24x7. If an expected Site24x7 alert was not triggered, compare the monitor's actual metric or state with the configured threshold and alert condition. Also verify the alert profile, notification settings, suppression or maintenance settings, and the time of the event."
+  },
+  {
+   "kb_entry_id": "KB-0353",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "where can I configure warning and critical thresholds",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0055",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "How do i configure snmp monitoring in site24x7",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0178",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "PagerDuty is not receiving Site24x7 alerts please",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0249",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "how can I activate a monitor after increasing the license",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0106",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "I need help from site24x7 technical support",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0201",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "Site24x7 is sending an alert even though the service is healthy",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0361",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "why does my monitor show suspended in Site24x7",
+   "response": "Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0303",
+   "category": "WEB_MONITORING",
+   "intent": "website_monitoring",
+   "instruction": "how do I monitor my website in Site24x7",
+   "response": "For website monitoring, configure the URL, monitoring locations, request or validation settings, and alert profile. If the monitor reports downtime, review the response code, response time, DNS/connectivity details, and the timestamp of the failure."
+  },
+  {
+   "kb_entry_id": "KB-0155",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "My api monitor is failing in site24x7",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0266",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "how can I monitor my application in Site24x7 please",
+   "response": "For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0116",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "I need help monitoring server logs",
+   "response": "For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0238",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "Why is the servicenow api rejecting site24x7 alert data",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0109",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "I need help installing the Site24x7 Linux agent please",
+   "response": "For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0255",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "how can I configure alerts in Site24x7",
+   "response": "To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0196",
+   "category": "ALERTS",
+   "intent": "alert_not_triggered",
+   "instruction": "Site24x7 did not send an alert when the threshold was crossed",
+   "response": "If an expected Site24x7 alert was not triggered, compare the monitor's actual metric or state with the configured threshold and alert condition. Also verify the alert profile, notification settings, suppression or maintenance settings, and the time of the event."
+  },
+  {
+   "kb_entry_id": "KB-0311",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "my API monitor is failing in Site24x7",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0329",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "my application monitor is not collecting metrics",
+   "response": "For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0283",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "how do I configure SNMP monitoring in Site24x7",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0052",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "How do i configure netflow in site24x7",
+   "response": "I understand you're looking for help with Site24x7. For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0092",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "I need help configuring Azure monitoring please",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0385",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "API-Gateway-APAC is down in site24x7, how can i troubleshoot it",
+   "response": "I can help troubleshoot why API-Gateway-APAC is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0098",
+   "category": "WEB_MONITORING",
+   "intent": "website_monitoring",
+   "instruction": "I need help configuring a website monitor please",
+   "response": "For website monitoring, configure the URL, monitoring locations, request or validation settings, and alert profile. If the monitor reports downtime, review the response code, response time, DNS/connectivity details, and the timestamp of the failure."
+  },
+  {
+   "kb_entry_id": "KB-0114",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "I need help monitoring my windows server",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0053",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "How do i configure pagerduty with site24x7",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0086",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "I need assistance troubleshooting a Site24x7 issue please",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0234",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "Why is site24x7 alerting when the monitor is available",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0368",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "why is Site24x7 not receiving flow data please",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0269",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "how can I open a Site24x7 support ticket",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0344",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "unexpected alerts are being generated in Site24x7 please",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0097",
+   "category": "WEB_MONITORING",
+   "intent": "website_monitoring",
+   "instruction": "I need help configuring a website monitor",
+   "response": "For website monitoring, configure the URL, monitoring locations, request or validation settings, and alert profile. If the monitor reports downtime, review the response code, response time, DNS/connectivity details, and the timestamp of the failure."
+  },
+  {
+   "kb_entry_id": "KB-0033",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "How can i monitor my application in site24x7",
+   "response": "For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0242",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "Why was my site24x7 monitor suspended due to license limits please",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0019",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "How can i change the cpu threshold in site24x7",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0290",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "how do I configure log monitoring in Site24x7 please",
+   "response": "For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0164",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "My kubernetes monitoring is not collecting data",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0189",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "Site24x7 agent is not communicating with the server please",
+   "response": "If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0157",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "My application logs are not appearing in site24x7",
+   "response": "For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0288",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "how do I configure an integration in Site24x7 please",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0070",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "How long are my monitoring records available",
+   "response": "I understand you're looking for help with Site24x7. Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0212",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "What do the monitor statuses in site24x7 mean",
+   "response": "Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0306",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "how do I validate an API response in Site24x7 please",
+   "response": "I understand you're looking for help with Site24x7. For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0204",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "Site24x7 says Payments-API is down but the service is working please",
+   "response": "I can help troubleshoot why Payments-API is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0061",
+   "category": "REPORTING",
+   "intent": "report_dashboard",
+   "instruction": "How do i create a dashboard in site24x7",
+   "response": "For Site24x7 dashboards and reports, select the required monitors or metrics and configure the relevant widgets, time ranges, filters, and permissions. If a metric is unavailable, first verify that the underlying monitor is collecting the data."
+  },
+  {
+   "kb_entry_id": "KB-0252",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "how can I change the CPU threshold in Site24x7 please",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0039",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "How can i troubleshoot a site24x7 integration",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0138",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "I need to change the alert configuration for Staging-WebServer-01",
+   "response": "To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0372",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "why is my APM instance not reporting data please",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0173",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "My snmp device is not showing metrics",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0037",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "How can i open a site24x7 support ticket",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0148",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "I want alerts for Azure-VM-WebApp-01 to go to my team please",
+   "response": "To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0099",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "I need help configuring api monitoring",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0239",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "Why is the servicenow api rejecting site24x7 alert data please",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0243",
+   "category": "ALERTS",
+   "intent": "alert_not_triggered",
+   "instruction": "Why was no alert generated for DB-Primary-US-East",
+   "response": "I understand you're looking for help with Site24x7. If an expected Site24x7 alert was not triggered, compare the monitor's actual metric or state with the configured threshold and alert condition. Also verify the alert profile, notification settings, suppression or maintenance settings, and the time of the event."
+  },
+  {
+   "kb_entry_id": "KB-0338",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "server metrics are missing in Site24x7 please",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0145",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "I received a down alert for APM-Checkout-Service",
+   "response": "I can help troubleshoot why APM-Checkout-Service is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0082",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "I cannot see Staging-WebServer-01 after discovery please",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0180",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "Server metrics are missing in site24x7",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0254",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "how can I check the current status of LoadBalancer-Prod-01 please",
+   "response": "Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0162",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "My docker monitor is not reporting container data",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0322",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "my SNMP device is not showing metrics please",
+   "response": "I understand you're looking for help with Site24x7. For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0299",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "how do I monitor Kubernetes with Site24x7",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0241",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "Why was my site24x7 monitor suspended due to license limits",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0191",
+   "category": "ALERTS",
+   "intent": "alert_not_triggered",
+   "instruction": "Site24x7 alert notification was not triggered please",
+   "response": "If an expected Site24x7 alert was not triggered, compare the monitor's actual metric or state with the configured threshold and alert condition. Also verify the alert profile, notification settings, suppression or maintenance settings, and the time of the event."
+  },
+  {
+   "kb_entry_id": "KB-0126",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "I need help troubleshooting kubernetes monitoring",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0217",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "What permissions are required for the site24x7 agent installation",
+   "response": "For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0356",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "why are application metrics missing in Site24x7 please",
+   "response": "For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0187",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "Site24x7 agent installation is failing please",
+   "response": "For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0030",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "How can i monitor azure resources in site24x7 please",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0169",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "My site24x7 agent is installed but not reporting",
+   "response": "If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0005",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "Apm traces are missing in site24x7",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0013",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "Docker metrics are missing from Site24x7",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0025",
+   "category": "REPORTING",
+   "intent": "report_dashboard",
+   "instruction": "How can i generate a site24x7 report",
+   "response": "For Site24x7 dashboards and reports, select the required monitors or metrics and configure the relevant widgets, time ranges, filters, and permissions. If a metric is unavailable, first verify that the underlying monitor is collecting the data."
+  },
+  {
+   "kb_entry_id": "KB-0176",
+   "category": "WEB_MONITORING",
+   "intent": "website_monitoring",
+   "instruction": "My website monitor is showing downtime",
+   "response": "For website monitoring, configure the URL, monitoring locations, request or validation settings, and alert profile. If the monitor reports downtime, review the response code, response time, DNS/connectivity details, and the timestamp of the failure."
+  },
+  {
+   "kb_entry_id": "KB-0280",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "how do I configure NetFlow in Site24x7 please",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0174",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "My third-party integration is not receiving alerts",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0045",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "How do i configure an alert profile in site24x7",
+   "response": "To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0276",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "how do I check my Site24x7 license usage please",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0059",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "How do i contact site24x7 support",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0358",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "why are new log entries not being collected please",
+   "response": "For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0194",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "Site24x7 alerts are not reaching servicenow",
+   "response": "I understand you're looking for help with Site24x7. For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0342",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "the server agent stopped sending data to Site24x7 please",
+   "response": "If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0166",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "My netflow interface is not showing traffic",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0312",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "my API monitor is failing in Site24x7 please",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0374",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "why is my Site24x7 monitor showing down for DB-Replica-02 please",
+   "response": "I can help troubleshoot why DB-Replica-02 is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0163",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "My docker monitor is not reporting container data please",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0200",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "Site24x7 is not discovering Azure-Blob-Storage-Monitor",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0310",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "how long does Site24x7 retain APM traces please",
+   "response": "Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0062",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "How do i install the site24x7 agent",
+   "response": "I understand you're looking for help with Site24x7. For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0050",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "How do i configure log monitoring in site24x7",
+   "response": "For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0292",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "how do I configure the ServiceNow integration please",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0071",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "How long does site24x7 retain apm traces",
+   "response": "Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0113",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "I need help monitoring my Windows server please",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0029",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "How can i monitor azure resources in site24x7",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0232",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "Why is my apm instance not reporting data",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0318",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "my Kubernetes monitoring is not collecting data please",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0135",
+   "category": "REPORTING",
+   "intent": "report_dashboard",
+   "instruction": "I need to add monitor metrics to a dashboard please",
+   "response": "I understand you're looking for help with Site24x7. For Site24x7 dashboards and reports, select the required monitors or metrics and configure the relevant widgets, time ranges, filters, and permissions. If a metric is unavailable, first verify that the underlying monitor is collecting the data."
+  },
+  {
+   "kb_entry_id": "KB-0133",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "I need help with snmp oids in site24x7 please",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0027",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "How can i monitor an api using site24x7",
+   "response": "I understand you're looking for help with Site24x7. For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0057",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "How do i configure the servicenow integration",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0282",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "how do I configure PagerDuty with Site24x7 please",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0236",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "Why is site24x7 not receiving flow data",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0233",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "Why is my site24x7 monitor showing down for App-Server-04",
+   "response": "I can help troubleshoot why App-Server-04 is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0260",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "how can I monitor Azure resources in Site24x7 please",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0179",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "Pagerduty is not receiving site24x7 alerts",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0270",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "how can I open a Site24x7 support ticket please",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0167",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "My server is not appearing in site24x7 discovery",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0366",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "why is Site24x7 alerting when the monitor is available please",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0153",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "Kubernetes metrics are missing in site24x7",
+   "response": "I understand you're looking for help with Site24x7. For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0378",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "why was my Site24x7 monitor suspended due to license limits please",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0117",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "I need help monitoring server logs please",
+   "response": "For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0009",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "Azure metrics are missing from site24x7",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0171",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "My site24x7 apm monitor is showing down",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0144",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "I received a down alert for Website-Homepage-Monitor please",
+   "response": "I can help troubleshoot why Website-Homepage-Monitor is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0035",
+   "category": "WEB_MONITORING",
+   "intent": "website_monitoring",
+   "instruction": "How can i monitor website availability and response time",
+   "response": "For website monitoring, configure the URL, monitoring locations, request or validation settings, and alert profile. If the monitor reports downtime, review the response code, response time, DNS/connectivity details, and the timestamp of the failure."
+  },
+  {
+   "kb_entry_id": "KB-0262",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "how can I monitor Docker containers in Site24x7 please",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0354",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "where can I configure warning and critical thresholds please",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0348",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "what is the data retention period in Site24x7 please",
+   "response": "Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0087",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "I need assistance troubleshooting a site24x7 issue",
+   "response": "I understand you're looking for help with Site24x7. If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0068",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "How do i validate an api response in site24x7",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0184",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "Servicenow is missing fields from site24x7 alerts",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0207",
+   "category": "ALERTS",
+   "intent": "alert_not_triggered",
+   "instruction": "The monitor changed state but i did not receive an alert",
+   "response": "If an expected Site24x7 alert was not triggered, compare the monitor's actual metric or state with the configured threshold and alert condition. Also verify the alert profile, notification settings, suppression or maintenance settings, and the time of the event."
+  },
+  {
+   "kb_entry_id": "KB-0095",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "I need help configuring a netflow device",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0183",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "ServiceNow is missing fields from Site24x7 alerts please",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0205",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "Site24x7 says App-Server-04 is down but the service is working",
+   "response": "I can help troubleshoot why App-Server-04 is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0229",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "Why is cpu or memory data not appearing for my server monitor please",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0225",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "Why did the pagerduty integration fail",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0380",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "why was my device not discovered in Site24x7 please",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0080",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "I am receiving false alerts for Server-DB-Backup-01",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0123",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "I need help troubleshooting Kubernetes monitoring please",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0350",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "what is the difference between down and suspended in Site24x7 please",
+   "response": "I understand you're looking for help with Site24x7. Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0043",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "How do i check my site24x7 license usage",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0382",
+   "category": "ALERTS",
+   "intent": "alert_not_triggered",
+   "instruction": "why was no alert generated for Log-Ingest-Pipeline-01 please",
+   "response": "If an expected Site24x7 alert was not triggered, compare the monitor's actual metric or state with the configured threshold and alert condition. Also verify the alert profile, notification settings, suppression or maintenance settings, and the time of the event."
+  },
+  {
+   "kb_entry_id": "KB-0075",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "I am getting a PagerDuty rate limit error please",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0101",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "I need help configuring application performance monitoring please",
+   "response": "For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0003",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "Agent metrics are missing from site24x7",
+   "response": "If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0320",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "my NetFlow interface is not showing traffic please",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0250",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "how can I activate a monitor after increasing the license please",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0328",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "my application logs are not appearing in Site24x7 please",
+   "response": "I understand you're looking for help with Site24x7. For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0064",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "How do i monitor a linux server with site24x7",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0119",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "I need help setting up an integration please",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0083",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "I cannot see Auth-Service after discovery",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0221",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "Why are application metrics missing in site24x7",
+   "response": "For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0014",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "Docker metrics are missing from Site24x7 please",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0020",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "How can i change the cpu threshold in site24x7 please",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0227",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "Why does my monitor show suspended in site24x7",
+   "response": "Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0160",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "My azure monitor is not collecting data",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0199",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "Site24x7 is not discovering K8s-Cluster-Staging please",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0149",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "I want alerts for Server-DB-Backup-01 to go to my team",
+   "response": "I understand you're looking for help with Site24x7. To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0346",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "what do the monitor statuses in Site24x7 mean please",
+   "response": "Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0132",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "I need help with snmp oids in site24x7",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0258",
+   "category": "REPORTING",
+   "intent": "report_dashboard",
+   "instruction": "how can I generate a Site24x7 report please",
+   "response": "For Site24x7 dashboards and reports, select the required monitors or metrics and configure the relevant widgets, time ranges, filters, and permissions. If a metric is unavailable, first verify that the underlying monitor is collecting the data."
+  },
+  {
+   "kb_entry_id": "KB-0370",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "why is memory utilization incorrect for my SNMP monitor please",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0197",
+   "category": "ALERTS",
+   "intent": "alert_not_triggered",
+   "instruction": "Site24x7 did not send an alert when the threshold was crossed please",
+   "response": "If an expected Site24x7 alert was not triggered, compare the monitor's actual metric or state with the configured threshold and alert condition. Also verify the alert profile, notification settings, suppression or maintenance settings, and the time of the event."
+  },
+  {
+   "kb_entry_id": "KB-0360",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "why did the PagerDuty integration fail please",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0314",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "my Azure monitor is not collecting data please",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0294",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "how do I contact Site24x7 support please",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0079",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "I am receiving false alerts for App-Server-04 please",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0272",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "how can I troubleshoot a Site24x7 integration please",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0248",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "can I extend trace retention in Site24x7 please",
+   "response": "Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0324",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "my Site24x7 APM monitor is showing down please",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0364",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "why is CPU or memory data not appearing for my server monitor please",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0031",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "How can i monitor docker containers in site24x7",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0084",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "I cannot see APM-Checkout-Service after discovery please",
+   "response": "I understand you're looking for help with Site24x7. If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0152",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "Kubernetes metrics are missing in Site24x7 please",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0129",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "I need help with SNMP OIDs in Site24x7 please",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0330",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "my application monitor is not collecting metrics please",
+   "response": "For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0298",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "how do I install the Site24x7 agent please",
+   "response": "For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0304",
+   "category": "WEB_MONITORING",
+   "intent": "website_monitoring",
+   "instruction": "how do I monitor my website in Site24x7 please",
+   "response": "For website monitoring, configure the URL, monitoring locations, request or validation settings, and alert profile. If the monitor reports downtime, review the response code, response time, DNS/connectivity details, and the timestamp of the failure."
+  },
+  {
+   "kb_entry_id": "KB-0060",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "How do i contact site24x7 support please",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0326",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "my Site24x7 agent is installed but not reporting please",
+   "response": "If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0090",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "I need help configuring API monitoring please",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0142",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "I need to update a site24x7 monitor threshold",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0274",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "how do I change the threshold for Website-Homepage-Monitor please",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0012",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "Can i extend trace retention in site24x7 please",
+   "response": "Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0286",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "how do I configure an alert profile in Site24x7 please",
+   "response": "To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0226",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "Why did the pagerduty integration fail please",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0268",
+   "category": "WEB_MONITORING",
+   "intent": "website_monitoring",
+   "instruction": "how can I monitor website availability and response time please",
+   "response": "For website monitoring, configure the URL, monitoring locations, request or validation settings, and alert profile. If the monitor reports downtime, review the response code, response time, DNS/connectivity details, and the timestamp of the failure."
+  },
+  {
+   "kb_entry_id": "KB-0175",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "My third-party integration is not receiving alerts please",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0264",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "how can I monitor an API using Site24x7 please",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0219",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "Where can i configure warning and critical thresholds",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0066",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "How do i monitor kubernetes with site24x7 please",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0011",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "Can i extend trace retention in site24x7",
+   "response": "Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0296",
+   "category": "REPORTING",
+   "intent": "report_dashboard",
+   "instruction": "how do I create a dashboard in Site24x7 please",
+   "response": "For Site24x7 dashboards and reports, select the required monitors or metrics and configure the relevant widgets, time ranges, filters, and permissions. If a metric is unavailable, first verify that the underlying monitor is collecting the data."
+  },
+  {
+   "kb_entry_id": "KB-0336",
+   "category": "WEB_MONITORING",
+   "intent": "website_monitoring",
+   "instruction": "my website monitor is showing downtime please",
+   "response": "For website monitoring, configure the URL, monitoring locations, request or validation settings, and alert profile. If the monitor reports downtime, review the response code, response time, DNS/connectivity details, and the timestamp of the failure."
+  },
+  {
+   "kb_entry_id": "KB-0237",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "Why is site24x7 not receiving flow data please",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0202",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "Site24x7 is sending an alert even though the service is healthy please",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0073",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "I added monitors over the license limit please",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0246",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "agent metrics are missing from Site24x7 please",
+   "response": "If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0384",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "CDN-Edge-US-West is down in Site24x7, how can I troubleshoot it please",
+   "response": "I can help troubleshoot why CDN-Edge-US-West is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0172",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "My site24x7 apm monitor is showing down please",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0137",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "I need to change the alert configuration for Docker-Host-03 please",
+   "response": "I understand you're looking for help with Site24x7. To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0069",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "How do i validate an api response in site24x7 please",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0002",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "APM traces are missing in Site24x7 please",
+   "response": "I understand you're looking for help with Site24x7. For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0376",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "why is the ServiceNow API rejecting Site24x7 alert data please",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0216",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "What is the difference between down and suspended in site24x7 please",
+   "response": "Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0352",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "what permissions are required for the Site24x7 agent installation please",
+   "response": "For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0024",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "How can i configure alerts in site24x7 please",
+   "response": "To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0015",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "Docker metrics are missing from site24x7",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0063",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "How do i install the site24x7 agent please",
+   "response": "I understand you're looking for help with Site24x7. For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0230",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "Why is memory utilization incorrect for my snmp monitor",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0146",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "I received a down alert for API-Gateway-EU please",
+   "response": "I can help troubleshoot why API-Gateway-EU is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0026",
+   "category": "REPORTING",
+   "intent": "report_dashboard",
+   "instruction": "How can i generate a site24x7 report please",
+   "response": "For Site24x7 dashboards and reports, select the required monitors or metrics and configure the relevant widgets, time ranges, filters, and permissions. If a metric is unavailable, first verify that the underlying monitor is collecting the data."
+  },
+  {
+   "kb_entry_id": "KB-0105",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "I need help from Site24x7 technical support please",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0215",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "What is the difference between down and suspended in site24x7",
+   "response": "Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0185",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "Servicenow is missing fields from site24x7 alerts please",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0161",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "My azure monitor is not collecting data please",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0032",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "How can i monitor docker containers in site24x7 please",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0231",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "Why is memory utilization incorrect for my snmp monitor please",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0158",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "My application logs are not appearing in site24x7 please",
+   "response": "For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0278",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "how do I configure Docker monitoring please",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0220",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "Where can i configure warning and critical thresholds please",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0170",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "My site24x7 agent is installed but not reporting please",
+   "response": "I understand you're looking for help with Site24x7. If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0038",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "How can i open a site24x7 support ticket please",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0094",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "I need help configuring a NetFlow device please",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0077",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "I am getting a pagerduty rate limit error please",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0008",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "Azure metrics are missing from Site24x7 please",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0096",
+   "category": "NETFLOW",
+   "intent": "netflow_monitoring",
+   "instruction": "I need help configuring a netflow device please",
+   "response": "For NetFlow monitoring, verify that NetFlow is enabled and configured on the source device and that flows are exported to the expected collector. If interfaces show no traffic, confirm that the device is actually sending flow records and that the configuration matches the monitored interface."
+  },
+  {
+   "kb_entry_id": "KB-0034",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "How can i monitor my application in site24x7 please",
+   "response": "For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0334",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "my third-party integration is not receiving alerts please",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0028",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "How can i monitor an api using site24x7 please",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0022",
+   "category": "MONITORING",
+   "intent": "monitor_status",
+   "instruction": "How can i check the current status of Prod-WebServer-02 please",
+   "response": "Site24x7 monitor status can represent conditions such as up, down, trouble, or suspended depending on the monitor type and configuration. Check the status history and event details for the exact reason. A monitor can also be suspended when it exceeds the applicable license limit."
+  },
+  {
+   "kb_entry_id": "KB-0211",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "Unexpected alerts are being generated in site24x7 please",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0150",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "I want alerts for NetFlow-Router-EU to go to my team please",
+   "response": "I understand you're looking for help with Site24x7. To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0218",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "What permissions are required for the site24x7 agent installation please",
+   "response": "For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0058",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "How do i configure the servicenow integration please",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0010",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "Azure metrics are missing from site24x7 please",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0016",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "Docker metrics are missing from site24x7 please",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0056",
+   "category": "SNMP",
+   "intent": "snmp_monitoring",
+   "instruction": "How do i configure snmp monitoring in site24x7 please",
+   "response": "For SNMP monitoring, verify SNMP version, credentials/community details, connectivity, and the configured OIDs. If a metric is incorrect or missing, validate the OID and returned value directly on the device and compare it with the Site24x7 monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0224",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "Why are new log entries not being collected please",
+   "response": "For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0115",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "I need help monitoring my windows server please",
+   "response": "For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  },
+  {
+   "kb_entry_id": "KB-0036",
+   "category": "WEB_MONITORING",
+   "intent": "website_monitoring",
+   "instruction": "How can i monitor website availability and response time please",
+   "response": "For website monitoring, configure the URL, monitoring locations, request or validation settings, and alert profile. If the monitor reports downtime, review the response code, response time, DNS/connectivity details, and the timestamp of the failure."
+  },
+  {
+   "kb_entry_id": "KB-0042",
+   "category": "ALERTS",
+   "intent": "monitor_threshold",
+   "instruction": "How do i change the threshold for Auth-Service please",
+   "response": "You can review and update the monitor's threshold settings from the monitor configuration. Confirm the warning and critical values match the intended monitoring requirement and allow enough evaluation time to avoid unnecessary alerts."
+  },
+  {
+   "kb_entry_id": "KB-0208",
+   "category": "ALERTS",
+   "intent": "alert_not_triggered",
+   "instruction": "The monitor changed state but i did not receive an alert please",
+   "response": "I understand you're looking for help with Site24x7. If an expected Site24x7 alert was not triggered, compare the monitor's actual metric or state with the configured threshold and alert condition. Also verify the alert profile, notification settings, suppression or maintenance settings, and the time of the event."
+  },
+  {
+   "kb_entry_id": "KB-0168",
+   "category": "MONITORING",
+   "intent": "monitor_not_discovered",
+   "instruction": "My server is not appearing in site24x7 discovery please",
+   "response": "If a device or server is not discovered in Site24x7, verify that the discovery prerequisites, credentials, network connectivity, and required ports are configured correctly. Check the discovery logs for errors and confirm that the device is reachable from the monitoring environment."
+  },
+  {
+   "kb_entry_id": "KB-0088",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "I need assistance troubleshooting a site24x7 issue please",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0214",
+   "category": "DATA",
+   "intent": "data_retention",
+   "instruction": "What is the data retention period in site24x7 please",
+   "response": "Site24x7 retention varies by data type and plan or tenant configuration. For APM traces, check the retention configured for your account. If extended retention is available for your tenant, confirm the applicable retention option with the account or support team."
+  },
+  {
+   "kb_entry_id": "KB-0040",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "How can i troubleshoot a site24x7 integration please",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0165",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "My kubernetes monitoring is not collecting data please",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0125",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "I need help troubleshooting apm instrumentation please",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0156",
+   "category": "WEB_MONITORING",
+   "intent": "api_monitoring",
+   "instruction": "My api monitor is failing in site24x7 please",
+   "response": "For API monitoring, verify the endpoint, request method, headers, authentication, request body, expected response, and validation conditions. If the monitor fails, review the API response and error details from the monitor execution."
+  },
+  {
+   "kb_entry_id": "KB-0139",
+   "category": "ALERTS",
+   "intent": "alert_configuration",
+   "instruction": "I need to change the alert configuration for K8s-Cluster-Prod please",
+   "response": "To configure alerts in Site24x7, review the monitor's alert configuration and associated alert profile. Confirm the required conditions, notification channels, recipients, and alert thresholds. For bulk changes, verify whether the required setting supports bulk actions for that monitor type."
+  },
+  {
+   "kb_entry_id": "KB-0386",
+   "category": "MONITORING",
+   "intent": "monitor_down",
+   "instruction": "Website-Homepage-Monitor is down in site24x7, how can i troubleshoot it please",
+   "response": "I can help troubleshoot why Website-Homepage-Monitor is showing down in Site24x7. Please check the monitor's availability details, recent downtime, response/error information, and whether the monitored service is reachable from the configured monitoring location. If the service is healthy, share the monitor name, timestamp, and relevant diagnostic details so the cause can be narrowed down."
+  },
+  {
+   "kb_entry_id": "KB-0044",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "How do i check my site24x7 license usage please",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0004",
+   "category": "AGENT",
+   "intent": "agent_not_reporting",
+   "instruction": "Agent metrics are missing from site24x7 please",
+   "response": "If the Site24x7 agent is installed but not reporting, first verify that the agent service is running and that the server can reach the required Site24x7 endpoints. Review the agent logs for connection, permission, or installation errors. If the issue persists, diagnostic logs can help identify the cause."
+  },
+  {
+   "kb_entry_id": "KB-0054",
+   "category": "INTEGRATION",
+   "intent": "pagerduty_integration",
+   "instruction": "How do i configure pagerduty with site24x7 please",
+   "response": "For PagerDuty integration issues, verify the integration key, endpoint configuration, event payload, and PagerDuty response. If a rate-limit error is returned, review the frequency of events and the integration response details before retrying."
+  },
+  {
+   "kb_entry_id": "KB-0047",
+   "category": "INTEGRATION",
+   "intent": "integrations",
+   "instruction": "How do i configure an integration in site24x7 please",
+   "response": "For a Site24x7 third-party integration, verify the integration credentials, endpoint, required fields, notification settings, and API response. Integration logs or event details can help identify authentication, validation, or rate-limit problems."
+  },
+  {
+   "kb_entry_id": "KB-0127",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "I need help troubleshooting kubernetes monitoring please",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0006",
+   "category": "APM",
+   "intent": "apm_troubleshooting",
+   "instruction": "Apm traces are missing in site24x7 please",
+   "response": "For Site24x7 APM issues, verify that the APM agent or instrumentation is active and that the application is generating traffic. Review agent logs and trace availability. If an APM monitor appears down when there is no active traffic, confirm the monitor behavior and the applicable feature or release configuration."
+  },
+  {
+   "kb_entry_id": "KB-0235",
+   "category": "ALERTS",
+   "intent": "false_alert",
+   "instruction": "Why is site24x7 alerting when the monitor is available please",
+   "response": "For unexpected Site24x7 alerts, check the monitor's metric history, threshold configuration, alert profile, and the exact event timestamp. Comparing the alert with the underlying metric and monitor status can help determine whether the condition was transient or incorrectly configured."
+  },
+  {
+   "kb_entry_id": "KB-0111",
+   "category": "AGENT",
+   "intent": "agent_installation",
+   "instruction": "I need help installing the site24x7 linux agent please",
+   "response": "For Site24x7 agent installation, use the installer appropriate for the operating system and ensure the installation is performed with the required permissions. If installation fails, collect the installer output and agent logs and check whether required Site24x7 download domains are reachable."
+  },
+  {
+   "kb_entry_id": "KB-0018",
+   "category": "ACCOUNT",
+   "intent": "licensing",
+   "instruction": "How can i activate a monitor after increasing the license please",
+   "response": "If monitors are suspended because the account is over its Site24x7 license limit, review current license usage and the monitors consuming licenses. After the required license capacity is available, verify the affected monitors and reactivate them as appropriate."
+  },
+  {
+   "kb_entry_id": "KB-0195",
+   "category": "INTEGRATION",
+   "intent": "servicenow_integration",
+   "instruction": "Site24x7 alerts are not reaching servicenow please",
+   "response": "For ServiceNow integration issues, verify the Site24x7 integration configuration and confirm that ServiceNow accepts the fields being sent. If specific fields such as top CPU or top memory process data are expected, ensure the corresponding fields exist and match the receiving ServiceNow schema."
+  },
+  {
+   "kb_entry_id": "KB-0103",
+   "category": "CLOUD",
+   "intent": "azure_monitoring",
+   "instruction": "I need help configuring azure monitoring please",
+   "response": "For Azure monitoring, verify the Azure account or integration configuration, permissions, selected resources, and metric availability. If data is missing, check the integration status and the time range and resource selection used by the monitor."
+  },
+  {
+   "kb_entry_id": "KB-0049",
+   "category": "CONTAINERS",
+   "intent": "docker_monitoring",
+   "instruction": "How do i configure docker monitoring please",
+   "response": "For Docker monitoring, verify the Docker installation, agent permissions, Docker socket access, and container discovery. If container metrics are missing, review the agent and Docker-related logs and confirm the required monitoring configuration."
+  },
+  {
+   "kb_entry_id": "KB-0051",
+   "category": "LOGS",
+   "intent": "log_monitoring",
+   "instruction": "How do i configure log monitoring in site24x7 please",
+   "response": "For log monitoring, verify the log file path, collection configuration, permissions, and agent status. If new entries are not appearing, check whether the configured file is accessible and whether the agent is able to read and forward the log data."
+  },
+  {
+   "kb_entry_id": "KB-0244",
+   "category": "ALERTS",
+   "intent": "alert_not_triggered",
+   "instruction": "Why was no alert generated for Auth-Service please",
+   "response": "If an expected Site24x7 alert was not triggered, compare the monitor's actual metric or state with the configured threshold and alert condition. Also verify the alert profile, notification settings, suppression or maintenance settings, and the time of the event."
+  },
+  {
+   "kb_entry_id": "KB-0107",
+   "category": "SUPPORT",
+   "intent": "contact_support",
+   "instruction": "I need help from site24x7 technical support please",
+   "response": "If you need Site24x7 technical assistance, provide the monitor name, affected server or application, approximate event time, screenshots or error messages, and relevant logs or diagnostic files. These details help the support team investigate the issue efficiently."
+  },
+  {
+   "kb_entry_id": "KB-0154",
+   "category": "CONTAINERS",
+   "intent": "kubernetes_monitoring",
+   "instruction": "Kubernetes metrics are missing in site24x7 please",
+   "response": "For Kubernetes monitoring, verify the cluster monitoring configuration, required permissions, agent components, and connectivity. If metrics are missing, inspect the relevant agent or collector logs and confirm that the expected Kubernetes resources are being discovered."
+  },
+  {
+   "kb_entry_id": "KB-0222",
+   "category": "APPLICATION_MONITORING",
+   "intent": "application_monitoring",
+   "instruction": "Why are application metrics missing in site24x7 please",
+   "response": "For application monitoring, verify that the application monitor or required agent/instrumentation is configured correctly and reporting data. Review application metrics, errors, traces, and agent logs to identify collection or instrumentation problems."
+  },
+  {
+   "kb_entry_id": "KB-0181",
+   "category": "SERVER_MONITORING",
+   "intent": "server_monitoring",
+   "instruction": "Server metrics are missing in site24x7 please",
+   "response": "I understand you're looking for help with Site24x7. For server monitoring, verify that the server agent or required monitoring method is installed and communicating correctly. If CPU, memory, disk, or process metrics are missing, check the agent status, permissions, and relevant monitor configuration."
+  }
+ ]
+}

@@ -105,7 +105,8 @@ class AppSailCredentials:
     def from_headers(cls, headers: dict[str, str]) -> "AppSailCredentials | None":
         """headers: lower-cased header names -> values."""
         token, project_id = headers.get("x-zc-admin-cred-token"), headers.get("x-zc-projectid")
-        if not (token and project_id):
+        # project_id goes into the URL path: digits only.
+        if not (token and project_id and project_id.isdigit()):
             return None
         return cls(
             admin_token=token,

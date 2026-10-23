@@ -1,8 +1,9 @@
 """Lightweight KB-candidate retrieval for the live app.
 
-Loads the 386 canonical Site24x7 KB entries (data/silver/tickets.parquet
-+ resolutions.parquet, deduped by `kb_entry_id` — see
-src/pipeline/02_silver_transform.py) once per process, and scores them
+Loads the 386 canonical Site24x7 KB entries once per process from
+data/kb/kb_entries.json — exported from the silver Parquet tables
+(tickets + resolutions, deduped by `kb_entry_id`) by scripts/export_kb.py,
+so the deployed backend needs no pandas/pyarrow — and scores them
 against incoming ticket text with TF-IDF-weighted cosine similarity over
 word tokens. No embedding model is wired in yet (see CLAUDE.md's
 src/agent/ eval-track roadmap); this is deliberately simple and
@@ -14,6 +15,7 @@ names it has never seen an example of.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections import Counter
@@ -21,11 +23,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-import pandas as pd
-
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_TICKETS_PATH = _PROJECT_ROOT / "data" / "silver" / "tickets.parquet"
-_RESOLUTIONS_PATH = _PROJECT_ROOT / "data" / "silver" / "resolutions.parquet"
+KB_PATH = _PROJECT_ROOT / "data" / "kb" / "kb_entries.json"
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -127,37 +126,24 @@ class _KBIndex:
         return scored[:top_k]
 
 
+def build_index(entries: list[dict]) -> "_KBIndex":
+    return _KBIndex([
+        KBEntry(kb_entry_id=e["kb_entry_id"], category=e["category"], intent=e["intent"],
+                instruction=e["instruction"], response=e["response"] or "")
+        for e in entries
+    ])
+
+
 @lru_cache(maxsize=1)
 def _load_index() -> "_KBIndex | None":
-    if not _TICKETS_PATH.exists() or not _RESOLUTIONS_PATH.exists():
+    if not KB_PATH.exists():
         return None
-
-    tickets = pd.read_parquet(
-        _TICKETS_PATH,
-        columns=["ticket_id", "kb_entry_id", "category", "intent", "instruction_text"],
-    )
-    resolutions = pd.read_parquet(
-        _RESOLUTIONS_PATH, columns=["ticket_id", "response_text"]
-    )
-    merged = tickets.merge(resolutions, on="ticket_id", how="left")
-    canonical = merged.drop_duplicates(subset="kb_entry_id", keep="first")
-
-    entries = [
-        KBEntry(
-            kb_entry_id=row.kb_entry_id,
-            category=row.category,
-            intent=row.intent,
-            instruction=row.instruction_text,
-            response=row.response_text or "",
-        )
-        for row in canonical.itertuples(index=False)
-    ]
-    return _KBIndex(entries)
+    return build_index(json.loads(KB_PATH.read_text(encoding="utf-8"))["entries"])
 
 
 def retrieve_candidates(ticket_text: str, top_k: int = 3) -> list[KBCandidate]:
     """Top-k KB entries (by TF-IDF cosine similarity) for `ticket_text`.
-    Returns [] if the silver tables haven't been generated yet or no
+    Returns [] if data/kb/kb_entries.json hasn't been exported yet or no
     token in the query matches anything in the KB — callers must treat
     an empty list as "no grounding available", not as an error."""
     index = _load_index()

@@ -1,0 +1,15 @@
+# Everything for local development, the data pipeline and the tests:
+# the runtime set plus the heavy libraries the deployed backend no longer
+# needs (pandas/pyarrow/duckdb for the pipeline and scripts/export_kb.py,
+# openai for the optional openai_compatible/azure providers).
+-r requirements-runtime.txt
+pandas>=2.2
+numpy>=1.26
+duckdb>=1.0
+faker>=24.0
+pyarrow>=15.0
+pytest>=8.0
+matplotlib>=3.8
+streamlit>=1.38
+openai>=1.50
+uvicorn[standard]>=0.30

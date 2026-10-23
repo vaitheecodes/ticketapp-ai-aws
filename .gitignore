@@ -48,3 +48,6 @@ frontend/dist/
 .agents/
 .claude/
 .catalystrc
+
+# Phase 4: AppSail bundle (scripts/build_appsail.sh)
+build/

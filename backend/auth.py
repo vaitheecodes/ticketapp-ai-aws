@@ -33,7 +33,8 @@ from backend import audit, db
 
 logger = logging.getLogger(__name__)
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-me")
+_DEV_JWT_SECRET = "dev-secret-change-me"
+JWT_SECRET = os.environ.get("JWT_SECRET", _DEV_JWT_SECRET)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 24
 
@@ -99,6 +100,16 @@ def email_in_use(conn, email: str) -> bool:
 # ---------------------------------------------------------------------------
 # Admin bootstrap
 # ---------------------------------------------------------------------------
+def check_production_config() -> None:
+    """In production, refuse to start with the public dev JWT secret (or a
+    short one): anyone could forge a token for any role."""
+    if is_production() and (JWT_SECRET == _DEV_JWT_SECRET or len(JWT_SECRET) < 32):
+        raise RuntimeError(
+            "APP_ENV=production but JWT_SECRET is unset, the dev default, or shorter "
+            "than 32 characters; refusing to start."
+        )
+
+
 def ensure_admin() -> None:
     """Create the single admin from ADMIN_EMAIL/ADMIN_PASSWORD if no admin
     exists yet. Never overwrites an existing admin (so rotating the env

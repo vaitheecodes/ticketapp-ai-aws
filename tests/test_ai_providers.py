@@ -424,3 +424,43 @@ def test_lexical_similarity_groups_one_outage_and_splits_unrelated():
     groups = incidents._split_by_similarity(tickets, vectors, 0.15)
     assert sorted(sorted(t["ticket_id"] for t in g) for g in groups) == [["A", "B", "C"], ["D"]]
     assert provider.embeddings_deployment() is None  # mock/QuickML: no embeddings
+
+
+# ---------------------------------------------------------------------------
+# Header safety
+# ---------------------------------------------------------------------------
+def test_non_numeric_project_id_is_not_captured():
+    assert AppSailCredentials.from_headers({"x-zc-admin-cred-token": "t", "x-zc-projectid": "1/../x"}) is None
+
+
+def test_quickml_base_url_never_comes_from_a_header(quickml_env, monkeypatch):
+    monkeypatch.delenv("X_ZOHO_CATALYST_CONSOLE_URL")
+    monkeypatch.setenv("QUICKML_API_BASE", "https://api.catalyst.zoho.in")
+    creds = AppSailCredentials.from_headers({"x-zc-admin-cred-token": "t", "x-zc-projectid": "1",
+                                             "x-zc-project-domain": "https://evil.example"})
+    assert QuickMLAppSailBackend.url(creds).startswith("https://api.catalyst.zoho.in/")
+
+
+def test_header_probe_is_admin_only_and_returns_no_values(quickml_env, tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "t.db")
+    probe = "999000111222333"
+    forged = {"X-Zc-Projectid": probe, "X-Zc-Admin-Cred-Token": probe}
+    with TestClient(main.app) as c:
+        customer = _signup(c)
+        assert c.get(f"/api/admin/diag/appsail-headers?probe={probe}", headers=customer).status_code == 403
+        admin = c.post("/api/auth/login", json={"email": "admin@example.com",
+                                                "password": "admin-dev-password"}).json()["token"]
+        res = c.get(f"/api/admin/diag/appsail-headers?probe={probe}",
+                    headers={"Authorization": f"Bearer {admin}", **forged}).json()
+    assert res["headers"]["x-zc-projectid"] == {"count": 1, "probe_value_seen": True}
+    assert res["captured_project_id_is_probe"] and res["captured_token_is_probe"]
+    assert probe not in json.dumps(res["headers"]).replace('"probe_value_seen"', "")
+
+
+def test_appsail_headers_never_authorize(quickml_env, tmp_path, monkeypatch):
+    """Our JWT is the only authority: injected/forged X-ZC-* headers alone
+    get 401/403 everywhere."""
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "t.db")
+    with TestClient(main.app) as c:
+        for path in ("/api/admin/tickets", "/api/staff/tickets", "/api/tickets/mine", "/api/incidents"):
+            assert c.get(path, headers=APPSAIL_HEADERS).status_code in (401, 403)

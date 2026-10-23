@@ -88,8 +88,15 @@ app.include_router(admin.router)
 app.include_router(incident_resolution.router)
 
 
+@app.get("/health")
+def health() -> dict:
+    """Liveness for AppSail and uptime checks: no auth, no DB, no AI."""
+    return {"ok": True}
+
+
 @app.on_event("startup")
 def on_startup() -> None:
+    auth.check_production_config()
     db.init_db()
     auth.ensure_admin()
     conn = db.get_connection()

@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from backend import db, main, seed_data  # noqa: E402
+from backend import auth, db, main, seed_data  # noqa: E402
 
 ADMIN_EMAIL = "root-admin@example.com"
 ADMIN_PASSWORD = "admin-test-password"
@@ -104,8 +104,12 @@ def test_admin_seeded_once_from_env_and_never_overwritten(db_path, monkeypatch):
     assert conn.execute("SELECT COUNT(*) FROM admins").fetchone()[0] == 1
 
 
+STRONG_SECRET = "x" * 40
+
+
 def test_production_without_admin_env_refuses_to_start(db_path, monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setattr(auth, "JWT_SECRET", STRONG_SECRET)
     with pytest.raises(RuntimeError, match="ADMIN_EMAIL"):
         with TestClient(main.app):
             pass
@@ -120,8 +124,25 @@ def test_dev_without_admin_env_uses_fallback_with_loud_warning(db_path, caplog):
     assert "DEV-ONLY admin" in caplog.text
 
 
+@pytest.mark.parametrize("secret", ["dev-secret-change-me", "short-secret"])
+def test_production_refuses_a_weak_jwt_secret(db_path, monkeypatch, secret):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL)
+    monkeypatch.setenv("ADMIN_PASSWORD", ADMIN_PASSWORD)
+    monkeypatch.setattr(auth, "JWT_SECRET", secret)
+    with pytest.raises(RuntimeError, match="JWT_SECRET"):
+        with TestClient(main.app):
+            pass
+
+
+def test_health_is_public(db_path):
+    with TestClient(main.app) as c:
+        assert c.get("/health").json() == {"ok": True}
+
+
 def test_demo_staff_not_seeded_in_production(db_path, monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setattr(auth, "JWT_SECRET", STRONG_SECRET)
     monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL)
     monkeypatch.setenv("ADMIN_PASSWORD", ADMIN_PASSWORD)
     with TestClient(main.app) as c:

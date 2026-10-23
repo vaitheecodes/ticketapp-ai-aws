@@ -20,12 +20,13 @@ import json
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError
 
 from backend import app_settings, audit, auth, db, graph, runtime
 from backend import ticket_lifecycle as lifecycle
 from backend.ai_service import AIError
+from backend.ai_service import backends as ai_backends
 from backend.conversation import insert_ticket_message
 from backend.email_utils import clean_email
 
@@ -704,3 +705,30 @@ def admin_audit_log(
         }
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Temporary (Phase 4 stage 2): does AppSail strip or override client-sent
+# X-ZC-* headers? Remove once answered.
+# ---------------------------------------------------------------------------
+@router.get("/api/admin/diag/appsail-headers")
+def appsail_header_probe(
+    request: Request,
+    probe: str = Query(min_length=12, max_length=64, pattern=r"^[A-Za-z0-9-]+$"),
+    admin_id: str = Depends(_admin),
+):
+    """The client sends X-ZC-* headers whose value is `probe`. Reports, per
+    X-ZC-* header name that reached the app, how many values arrived and
+    whether the probe value is among them. Never returns header values."""
+    names = sorted({k.lower() for k in request.headers.keys() if k.lower().startswith("x-zc-")})
+    creds = ai_backends.appsail_credentials.get()
+    return {
+        "headers": {
+            name: {"count": len(request.headers.getlist(name)),
+                   "probe_value_seen": probe in request.headers.getlist(name)}
+            for name in names
+        },
+        "captured_credentials": creds is not None,
+        "captured_project_id_is_probe": bool(creds and creds.project_id == probe),
+        "captured_token_is_probe": bool(creds and creds.admin_token == probe),
+    }

@@ -3,9 +3,9 @@ startup) never duplicate or reset data a tester may have relied on.
 
 - Mock `orders` — so generate_response's order-lookup grounding
   (backend/graph.py:lookup_order) has real records to answer from,
-  instead of inventing plausible-sounding order details. Faker-driven,
-  fixed seed, same convention as src/pipeline/02_silver_transform.py
-  (SEED = 42) for reproducibility. Skipped if `orders` already has rows.
+  instead of inventing plausible-sounding order details. Standard-library
+  random with a fixed seed (no Faker at runtime), same convention as
+  src/pipeline/02_silver_transform.py (SEED = 42) for reproducibility. Skipped if `orders` already has rows.
 - Default `departments` — skipped if any department exists, so an
   admin's edits survive restarts.
 - One demo manager + one demo technician — dev only (APP_ENV !=
@@ -21,7 +21,6 @@ import uuid
 from datetime import date, timedelta
 
 import bcrypt
-from faker import Faker
 
 SEED = 42
 NUM_ORDERS = 80
@@ -36,7 +35,11 @@ _ITEM_CATALOG = [
     "Wireless Mouse", "Monitor Arm", "Office Chair", "Standing Desk",
 ]
 
-# A few fixed, memorable emails (not just random Faker output) so a
+_FIRST = ["asha", "ben", "chen", "dina", "eli", "farah", "gopal", "hana", "ivan", "jia", "kofi", "lena"]
+_LAST = ["rao", "ortiz", "wei", "kumar", "smith", "haddad", "silva", "tanaka", "novak", "mensah"]
+_DOMAINS = ["example.com", "example.net", "example.org"]
+
+# A few fixed, memorable emails (not just random generated ones) so a
 # tester can sign up as one of these and immediately have real order
 # matches to test against, without hunting through seeded data first.
 DEMO_EMAILS = ["demo@example.com", "customer@example.com", "test@example.com"]
@@ -47,15 +50,15 @@ def seed_orders(conn) -> None:
     if already_seeded:
         return
 
-    fake = Faker()
-    Faker.seed(SEED)
     rng = random.Random(SEED)
+    names = random.Random(SEED + 1)  # separate stream: emails don't shift the order draws
 
     rows = []
     for i in range(NUM_ORDERS):
         order_id = f"ORD-{100000 + i}"
         # first few orders per demo email so they're easy to find/test with
-        email = DEMO_EMAILS[i % len(DEMO_EMAILS)] if i < len(DEMO_EMAILS) * 4 else fake.email()
+        email = DEMO_EMAILS[i % len(DEMO_EMAILS)] if i < len(DEMO_EMAILS) * 4 else (
+            f"{names.choice(_FIRST)}.{names.choice(_LAST)}{names.randint(1, 99)}@{names.choice(_DOMAINS)}")
         status = rng.choices(_STATUSES, weights=_STATUS_WEIGHTS)[0]
         items = ", ".join(rng.sample(_ITEM_CATALOG, k=rng.randint(1, 3)))
         order_date = (date.today() - timedelta(days=rng.randint(1, 60))).isoformat()
