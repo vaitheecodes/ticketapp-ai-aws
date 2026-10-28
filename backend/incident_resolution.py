@@ -129,18 +129,30 @@ def draft_resolution(incident_id: str, body: DraftRequest, user: dict = Depends(
             "updated_at = ? WHERE incident_id = ?",
             (resolved_at, note, root_cause, now(), incident_id),
         )
-        ai_error = None
-        try:
-            customer_summary, internal_summary = draft_post_incident.draft_post_incident(
-                _facts(conn, cluster, resolved_at, note, root_cause)
-            )
+        facts = _facts(conn, cluster, resolved_at, note, root_cause)
+        conn.commit()
+    finally:
+        conn.close()
+
+    # The staff input is saved; the draft is written with no connection held.
+    ai_error = None
+    try:
+        customer_summary, internal_summary = draft_post_incident.draft_post_incident(facts)
+    except AIError:
+        ai_error = AI_UNAVAILABLE
+    conn = db.get_connection()
+    try:
+        current = conn.execute(
+            "SELECT status, summary_status FROM incident_clusters WHERE incident_id = ?", (incident_id,)
+        ).fetchone()
+        # Never overwrite a summary that was sent, or draft for an incident
+        # that stopped being confirmed, while the AI was working.
+        if ai_error is None and current["status"] == "confirmed" and current["summary_status"] != "sent":
             conn.execute(
                 "UPDATE incident_clusters SET customer_summary = ?, internal_summary = ?, "
                 "summary_status = 'draft' WHERE incident_id = ?",
                 (customer_summary, internal_summary, incident_id),
             )
-        except AIError:
-            ai_error = AI_UNAVAILABLE
         audit.record(conn, user["id"], "incident.summary_drafted", "incident", incident_id,
                      source="failed" if ai_error else "ai", root_cause_given=bool(root_cause))
         conn.commit()

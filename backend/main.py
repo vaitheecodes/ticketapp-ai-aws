@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import uuid
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -247,8 +248,14 @@ def _record_ai_reply(conn, ticket, text: str, outbox: _Outbox) -> str:
     return message_id
 
 
-def _escalate_to_human(conn, ticket, transcript: str, category, confidence,
-                       outbox: _Outbox, reason_key: str) -> None:
+def _ticket_handoff(transcript: str, ticket, reason_key: str, category) -> tuple:
+    """The hand-off brief, made with no connection held. Never depends on
+    the AI: see conversation.handoff_brief."""
+    return handoff_brief("ticket", transcript, reason_key, _subject_for(ticket), category)
+
+
+def _write_escalation(conn, ticket, summary, steps: list[str], category, confidence,
+                      outbox: _Outbox) -> None:
     """Hand an AI-handled ticket to the support team: attach the AI
     hand-off brief (summary + suggested steps; staff-only, also appended
     to `ticket_text` so the queue preview shows it), move the ticket into
@@ -257,11 +264,7 @@ def _escalate_to_human(conn, ticket, transcript: str, category, confidence,
     signals in backend/handoff_signals.py, and a customer reopening an
     AI-resolved ticket — one mechanism, so a ticket escalated for any
     reason reaches the queue looking the same. (Chats escalate through
-    backend/chats.py.) The brief never blocks the hand-off: see
-    conversation.handoff_brief."""
-    summary, steps = handoff_brief(
-        "ticket", transcript, reason_key, _subject_for(ticket), category
-    )
+    backend/chats.py.)"""
     original_text = ticket["ticket_text"].split(f"\n\n{_ESCALATION_MARKER}\n", 1)[0]
     conn.execute(
         "UPDATE tickets SET route = 'human', category = ?, confidence = ?, ticket_text = ?, "
@@ -287,108 +290,126 @@ def _escalate_to_human(conn, ticket, transcript: str, category, confidence,
     )
 
 
-def _pipeline_state(conn, ticket, ticket_text: str, **extra) -> dict:
+def _pipeline_state(ticket, ticket_text: str, customer_name: str, **extra) -> dict:
     state = {
         "ticket_id": ticket["ticket_id"],
         "customer_id": ticket["customer_id"],
         "channel": ticket["channel"],
         "ticket_text": ticket_text,
         "reply_format": "email",
-        "customer_name": _display_name(conn, ticket),
+        "customer_name": customer_name,
     }
     state.update(extra)
     return state
 
 
-def _handle_followup(conn, ticket, message_text: str, outbox: _Outbox) -> dict:
-    """A customer reply on a ticket the AI is still handling (route ai or
-    clarify). Stores the message, then acts on conversation.followup_gate.
-    If any AI step fails, everything after the stored message is rolled
-    back: the ticket is never resolved, closed or escalated because an AI
-    call failed. Caller commits."""
-    ticket_id = ticket["ticket_id"]
-    prior_ai_response = _last_ai_message(conn, ticket_id)
-    _insert_message(conn, ticket_id, "customer", message_text)
-    conn.execute("SAVEPOINT followup")
-    try:
-        response = _run_followup(conn, ticket, message_text, prior_ai_response, outbox)
-        conn.execute("RELEASE followup")
-        return response
-    except Exception:  # noqa: BLE001 — provider/network/parse failures alike
-        logger.exception("AI follow-up failed for %s", ticket_id)
-        conn.execute("ROLLBACK TO followup")
-        conn.execute("RELEASE followup")
-        outbox.clear()
-        return {"route": ticket["route"], "ai_error": _AI_UNAVAILABLE}
+def _with_ai_line(transcript: str, text: str) -> str:
+    """The transcript as it will read once the AI reply is stored."""
+    return f"{transcript}\n{_build_transcript([{'sender': 'ai', 'message': text}])}"
 
 
-def _run_followup(conn, ticket, message_text: str, prior_ai_response, outbox: _Outbox) -> dict:
-    ticket_id = ticket["ticket_id"]
+# A follow-up on a ticket the AI is still handling (route ai or clarify)
+# runs in three steps so no connection is held while the model works:
+# store the customer's message and commit; work out the outcome with the
+# AI (no connection); re-check the ticket is still with the AI and write
+# the outcome in one transaction. An AI failure writes nothing after the
+# stored message: the ticket is never resolved, closed or escalated
+# because an AI call failed.
+@dataclass
+class _Followup:
+    ticket: dict
+    transcript: str
+    prior_ai: str | None
+    customer_name: str
+
+
+@dataclass
+class _FollowupOutcome:
+    kind: Literal["reply", "close", "classified", "escalate"]
+    response: dict
+    text: str | None = None              # AI reply to store first
+    result: dict | None = None           # pipeline result ("classified")
+    summary: object = None
+    steps: list[str] = field(default_factory=list)
+    category: object = None
+    confidence: object = None
+
+
+def _decide_followup(f: _Followup, message_text: str) -> _FollowupOutcome:
+    ticket = f.ticket
     # "Was there an outage yesterday?" — answered from incident memory only.
     incident_answer = incident_memory.answer_incident_question(
-        conn, ticket["customer_id"], message_text, on_ticket=True
+        None, ticket["customer_id"], message_text, on_ticket=True
     )
     if incident_answer is not None:
-        _record_ai_reply(conn, ticket, incident_answer, outbox)
-        return {"route": ticket["route"], "message": incident_answer}
+        return _FollowupOutcome("reply", {"route": ticket["route"], "message": incident_answer},
+                                text=incident_answer)
 
-    gate = followup_gate(message_text, prior_ai_response, answered=ticket["status"] == "resolved")
+    gate = followup_gate(message_text, f.prior_ai, answered=ticket["status"] == "resolved")
+
+    def escalate(reason_key, response, transcript, category, confidence, text=None):
+        summary, steps = _ticket_handoff(transcript, ticket, reason_key, category)
+        return _FollowupOutcome("escalate", response, text=text, summary=summary, steps=steps,
+                                category=category, confidence=confidence)
 
     if gate == "handoff":
-        _escalate_to_human(
-            conn, ticket, _transcript_for(conn, ticket_id),
-            ticket["category"], ticket["confidence"], outbox,
-            reason_key="customer_request",
-        )
-        return {"route": "human"}
+        return escalate("customer_request", {"route": "human"}, f.transcript,
+                        ticket["category"], ticket["confidence"])
 
     if gate == "close":
-        _insert_message(conn, ticket_id, "system", _TICKET_CLOSED_MESSAGE)
-        lifecycle.set_status(conn, ticket_id, "closed", ticket["customer_id"])
-        return {"route": "closed", "message": _TICKET_CLOSED_MESSAGE}
+        return _FollowupOutcome("close", {"route": "closed", "message": _TICKET_CLOSED_MESSAGE})
 
     if gate == "continuation":
         state = _pipeline_state(
-            conn,
             ticket,
-            _transcript_for(conn, ticket_id),
+            f.transcript,
+            f.customer_name,
             category=ticket["category"],
-            kb_candidates=graph.retrieve_kb_candidates_for_continuation(
-                prior_ai_response, message_text
-            ),
+            kb_candidates=graph.retrieve_kb_candidates_for_continuation(f.prior_ai, message_text),
             continuation=True,
         )
         state.update(graph.fetch_customer_history(state))
         state.update(graph.lookup_order(state))
         ai_response = graph.generate_response(state)["ai_response"]
-        _record_ai_reply(conn, ticket, ai_response, outbox)
         # An answer that concedes it can't actually help hasn't resolved anything.
         if handoff_signals.admits_limitation(ai_response):
-            _escalate_to_human(
-                conn, ticket, _transcript_for(conn, ticket_id),
-                ticket["category"], ticket["confidence"], outbox,
-                reason_key="ai_cannot_resolve",
-            )
-            return {"route": "human", "message": ai_response}
-        return {"route": "ai", "message": ai_response}
+            return escalate("ai_cannot_resolve", {"route": "human", "message": ai_response},
+                            _with_ai_line(f.transcript, ai_response),
+                            ticket["category"], ticket["confidence"], text=ai_response)
+        return _FollowupOutcome("reply", {"route": "ai", "message": ai_response}, text=ai_response)
 
-    transcript = _transcript_for(conn, ticket_id)
     result = runtime.get_graph().invoke(
-        _pipeline_state(
-            conn, ticket, transcript, clarification_attempts=ticket["clarification_attempts"]
-        )
+        _pipeline_state(ticket, f.transcript, f.customer_name,
+                        clarification_attempts=ticket["clarification_attempts"])
     )
     if result["route"] in ("ai", "clarify"):
-        _record_ai_reply(conn, ticket, result["ai_response"], outbox)
         # An "ai" answer that concedes it can't do the thing is a hand-off
         # signal, not a resolution (see backend/handoff_signals.py).
         if result["route"] == "ai" and handoff_signals.admits_limitation(result["ai_response"]):
-            _escalate_to_human(
-                conn, ticket, _transcript_for(conn, ticket_id),
-                result.get("category"), result.get("confidence"), outbox,
-                reason_key="ai_cannot_resolve",
-            )
-            return {"route": "human", "message": result["ai_response"]}
+            return escalate("ai_cannot_resolve", {"route": "human", "message": result["ai_response"]},
+                            _with_ai_line(f.transcript, result["ai_response"]),
+                            result.get("category"), result.get("confidence"),
+                            text=result["ai_response"])
+        return _FollowupOutcome("classified", {"route": result["route"], "message": result["ai_response"]},
+                                text=result["ai_response"], result=result)
+
+    # decide_route escalated mid-conversation.
+    return escalate("routing_policy", {"route": "human"}, f.transcript,
+                    result.get("category"), result.get("confidence"))
+
+
+def _apply_followup(conn, ticket_id: str, o: _FollowupOutcome, outbox: _Outbox) -> dict | None:
+    """None (nothing written) if the ticket left the AI meanwhile. Caller commits."""
+    ticket = _load_ticket(conn, ticket_id)
+    if ticket["route"] == "human" or ticket["status"] == "closed":
+        return None
+    if o.text is not None:
+        _record_ai_reply(conn, ticket, o.text, outbox)
+    if o.kind == "close":
+        _insert_message(conn, ticket_id, "system", _TICKET_CLOSED_MESSAGE)
+        lifecycle.set_status(conn, ticket_id, "closed", ticket["customer_id"])
+    elif o.kind == "classified":
+        result = o.result
         conn.execute(
             "UPDATE tickets SET category = ?, confidence = ?, route = ?, "
             "clarification_attempts = ? WHERE ticket_id = ?",
@@ -401,14 +422,9 @@ def _run_followup(conn, ticket, message_text: str, prior_ai_response, outbox: _O
             ),
         )
         lifecycle.set_status(conn, ticket_id, _STATUS_FOR_ROUTE[result["route"]], lifecycle.SYSTEM)
-        return {"route": result["route"], "message": result["ai_response"]}
-
-    # decide_route escalated mid-conversation.
-    _escalate_to_human(
-        conn, ticket, transcript, result.get("category"), result.get("confidence"), outbox,
-        reason_key="routing_policy",
-    )
-    return {"route": "human"}
+    elif o.kind == "escalate":
+        _write_escalation(conn, ticket, o.summary, o.steps, o.category, o.confidence, outbox)
+    return o.response
 
 
 # ---------------------------------------------------------------------------
@@ -648,12 +664,23 @@ def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_ta
     # don't have access to your billing details") hasn't resolved
     # anything, however confidently it was classified — route it to a
     # human instead of recording it as the resolution. Same signal as
-    # the follow-up check in _handle_followup.
+    # the follow-up check in _decide_followup.
     escalate_for_limitation = route == "ai" and handoff_signals.admits_limitation(
         ai_response or ""
     )
     if escalate_for_limitation:
         route = "human"
+
+    handoff = None
+    if escalate_for_limitation:
+        # The brief is written before the connection is opened; the
+        # transcript is what the thread will hold (the request + the reply).
+        handoff = _ticket_handoff(
+            _build_transcript([{"sender": "customer", "message": ticket_text},
+                               {"sender": "ai", "message": ai_response}]),
+            {"subject": subject, "ticket_text": ticket_text}, "ai_cannot_resolve",
+            result.get("category"),
+        )
 
     outbox = _Outbox()
     conn = db.get_connection()
@@ -677,11 +704,8 @@ def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_ta
         if ai_response:
             _record_ai_reply(conn, ticket, ai_response, outbox)
         if escalate_for_limitation:
-            _escalate_to_human(
-                conn, ticket, _transcript_for(conn, ticket_id),
-                result.get("category"), result.get("confidence"), outbox,
-                reason_key="ai_cannot_resolve",
-            )
+            _write_escalation(conn, ticket, *handoff, result.get("category"),
+                              result.get("confidence"), outbox)
         elif route == "human" and not result.get("pipeline_failed"):
             # decide_route sent it straight to a human: tell the customer.
             _record_ai_reply(
@@ -725,6 +749,7 @@ def ticket_reply(
         raise HTTPException(status_code=400, detail="message cannot be empty")
 
     outbox = _Outbox()
+    followup = None
     conn = db.get_connection()
     try:
         ticket = _customer_ticket_or_error(conn, ticket_id, customer_id)
@@ -738,18 +763,47 @@ def ticket_reply(
                 lifecycle.set_status(conn, ticket_id, "open", customer_id)
             response = {"route": "human"}
         else:
-            response = _handle_followup(conn, ticket, message_text, outbox)
-            message_id = conn.execute(
-                "SELECT message_id FROM ticket_messages WHERE ticket_id = ? AND sender = 'customer' "
-                "ORDER BY created_at DESC, rowid DESC LIMIT 1",
-                (ticket_id,),
-            ).fetchone()["message_id"]
+            prior_ai = _last_ai_message(conn, ticket_id)
+            message_id = _insert_message(conn, ticket_id, "customer", message_text)
+            followup = _Followup(dict(ticket), _transcript_for(conn, ticket_id), prior_ai,
+                                 _display_name(conn, ticket))
         conn.commit()
+    finally:
+        conn.close()
+
+    if followup is not None:
+        response = _finish_followup(ticket_id, followup, message_text, outbox)
+    conn = db.get_connection()
+    try:
         response["message_id"] = message_id
         response["status"] = _load_ticket(conn, ticket_id)["status"]
     finally:
         conn.close()
     outbox.flush(background_tasks)
+    return response
+
+
+def _finish_followup(ticket_id: str, followup: _Followup, message_text: str, outbox: _Outbox) -> dict:
+    unavailable = {"route": followup.ticket["route"], "ai_error": _AI_UNAVAILABLE}
+    try:
+        outcome = _decide_followup(followup, message_text)
+    except Exception:  # noqa: BLE001 — provider/network/parse failures alike
+        logger.exception("AI follow-up failed for %s", ticket_id)
+        return unavailable
+    conn = db.get_connection()
+    try:
+        response = _apply_followup(conn, ticket_id, outcome, outbox)
+        conn.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("Storing the AI follow-up failed for %s", ticket_id)
+        conn.rollback()
+        outbox.clear()
+        return unavailable
+    finally:
+        conn.close()
+    if response is None:  # the ticket left the AI while it was working
+        outbox.clear()
+        return {"route": "human"}
     return response
 
 
@@ -769,15 +823,23 @@ def ticket_reopen(
         ticket = _customer_ticket_or_error(conn, ticket_id, customer_id)
         if ticket["status"] != "resolved":
             raise HTTPException(status_code=400, detail="Only resolved tickets can be reopened")
+        transcript = None if ticket["route"] == "human" else _transcript_for(conn, ticket_id)
+    finally:
+        conn.close()
+    # An AI-resolved ticket goes to the support team with a hand-off brief,
+    # written with no connection held.
+    handoff = None if transcript is None else _ticket_handoff(
+        transcript, ticket, "customer_reopened", ticket["category"])
+    conn = db.get_connection()
+    try:
+        ticket = _load_ticket(conn, ticket_id)
+        if ticket["status"] != "resolved":
+            raise HTTPException(status_code=400, detail="Only resolved tickets can be reopened")
         _insert_message(conn, ticket_id, "system", _REOPENED_MESSAGE)
-        if ticket["route"] == "human":
+        if ticket["route"] == "human" or handoff is None:
             lifecycle.set_status(conn, ticket_id, "open", customer_id)
         else:
-            _escalate_to_human(
-                conn, ticket, _transcript_for(conn, ticket_id),
-                ticket["category"], ticket["confidence"], outbox,
-                reason_key="customer_reopened",
-            )
+            _write_escalation(conn, ticket, *handoff, ticket["category"], ticket["confidence"], outbox)
         conn.commit()
         status = _load_ticket(conn, ticket_id)["status"]
     finally:

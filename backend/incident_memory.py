@@ -31,7 +31,7 @@ import math
 import re
 from datetime import timedelta
 
-from backend import app_settings
+from backend import app_settings, db
 from backend.ai_service import AIError, incident_question, provider
 from backend.ai_service.schemas import IncidentQuestionInput
 from backend.conversation import now
@@ -221,7 +221,10 @@ def compose_answer(conn, customer_id: str, matches: list[dict], on_ticket: bool 
 def answer_incident_question(conn, customer_id: str, message: str, on_ticket: bool = False) -> str | None:
     """The reply to an incident question, or None if the message isn't
     one. Raises AIError if the question can't be interpreted (callers
-    treat that as "AI unavailable" and change nothing)."""
+    treat that as "AI unavailable" and change nothing). With conn=None
+    (the chat and ticket follow-up paths, which hold no connection during
+    AI calls) a short connection is opened for the lookup after the AI
+    call."""
     if not looks_like_incident_question(message):
         return None
     question = incident_question.parse_incident_question(IncidentQuestionInput(
@@ -229,9 +232,15 @@ def answer_incident_question(conn, customer_id: str, message: str, on_ticket: bo
     ))
     if not question.is_incident_question:
         return None
-    matches = find_matches(conn, customer_id, question.window_start, question.window_end,
-                           question.category, question.topic)
-    return compose_answer(conn, customer_id, matches, on_ticket=on_ticket)
+    own = conn is None
+    conn = db.get_connection() if own else conn
+    try:
+        matches = find_matches(conn, customer_id, question.window_start, question.window_end,
+                               question.category, question.topic)
+        return compose_answer(conn, customer_id, matches, on_ticket=on_ticket)
+    finally:
+        if own:
+            conn.close()
 
 
 # ---------------------------------------------------------------------------

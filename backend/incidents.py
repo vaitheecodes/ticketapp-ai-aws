@@ -269,13 +269,19 @@ def _refresh_needs_routing(conn, incident_id: str) -> None:
                  (0 if has_department else 1, incident_id))
 
 
-def _process_group(conn, tickets, cfg) -> str | None:
+def _process_group(tickets, cfg) -> str | None:
+    """One candidate group. Reads, then the AI judgement with no
+    connection held, then the writes in their own transaction."""
     group_ids = {t["ticket_id"] for t in tickets}
-    existing = _open_cluster_for(conn, group_ids)
-    if existing and group_ids <= _cluster_ticket_ids(conn, existing["incident_id"]):
-        return None  # nothing new for the model to judge
+    conn = db.get_connection()
+    try:
+        existing = _open_cluster_for(conn, group_ids)
+        if existing and group_ids <= _cluster_ticket_ids(conn, existing["incident_id"]):
+            return None  # nothing new for the model to judge
+        departments, by_name, owner_of = _department_options(conn)
+    finally:
+        conn.close()
 
-    departments, by_name, owner_of = _department_options(conn)
     input_ = _correlation_input(tickets, departments, cfg["window_hours"])
     judgement = correlate_incidents.correlate_incidents(input_)
     related = set(judgement.related_ticket_ids)
@@ -285,11 +291,11 @@ def _process_group(conn, tickets, cfg) -> str | None:
     narrative = _narrative(input_, judgement)
     summary = json.dumps({**judgement.model_dump(), **narrative})
 
-    # Serialise writers: a concurrent run must see this cluster, not
-    # create a second one for the same event.
-    conn.commit()
-    db.begin_write(conn, "incident-clusters")
+    conn = db.get_connection()
     try:
+        # Serialise writers: a concurrent run must see this cluster, not
+        # create a second one for the same event.
+        db.begin_write(conn, "incident-clusters")
         existing = _open_cluster_for(conn, related)
         stamp = now()
         if existing:
@@ -321,6 +327,8 @@ def _process_group(conn, tickets, cfg) -> str | None:
     except Exception:
         conn.rollback()
         raise
+    finally:
+        conn.close()
     return incident_id
 
 
@@ -339,19 +347,22 @@ def run_correlation(trigger_ticket_id: str | None = None) -> list[str]:
     updated."""
     cfg = settings()
     conn = db.get_connection()
-    touched = []
     try:
-        for group in candidate_groups(conn, cfg, trigger_ticket_id):
-            try:
-                incident_id = _process_group(conn, group, cfg)
-            except AIError:
-                logger.warning("Incident correlation skipped a group: AI unavailable")
-                continue
-            if incident_id:
-                touched.append(incident_id)
+        # With embeddings configured this also embeds new tickets (an AI
+        # call made while this connection is open).
+        groups = candidate_groups(conn, cfg, trigger_ticket_id)
         conn.commit()
     finally:
         conn.close()
+    touched = []
+    for group in groups:
+        try:
+            incident_id = _process_group(group, cfg)
+        except AIError:
+            logger.warning("Incident correlation skipped a group: AI unavailable")
+            continue
+        if incident_id:
+            touched.append(incident_id)
     return touched
 
 

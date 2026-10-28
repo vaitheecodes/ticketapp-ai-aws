@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from dataclasses import dataclass, field
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -186,12 +187,39 @@ def _pipeline_state(session, transcript: str, **extra) -> dict:
 # ---------------------------------------------------------------------------
 # Outcomes
 # ---------------------------------------------------------------------------
-def _resolve(conn, session) -> None:
-    session_id = session["session_id"]
+# A chat turn runs in three steps so no database connection is held while
+# the model works (1-10 s): store the customer's message and commit; work
+# out the outcome with the AI (no connection; graph nodes open their own
+# short ones); then re-check the chat is still active and write the
+# outcome in one transaction. An AI failure in step 2 writes nothing.
+@dataclass
+class _Turn:
+    """What step 2 needs, read in step 1."""
+    session: dict
+    transcript: str
+    prior_ai: str | None
+
+
+@dataclass
+class _Outcome:
+    kind: Literal["incident_answer", "answer", "resolve", "escalate"]
+    text: str | None = None              # AI reply to store first
+    result: dict | None = None           # pipeline result (classification)
+    last_route: str | None = None        # stored with the classification
+    summary: object = None               # resolution / hand-off summary
+    steps: list[str] = field(default_factory=list)
+    reason_key: str | None = None
+
+
+def _resolution_summary(transcript: str, issue: str, last_ai: str | None):
     try:
-        summary = summarize_conversation.summarize_resolution(_transcript_text(conn, session_id))
+        return summarize_conversation.summarize_resolution(transcript)
     except AIError:
-        summary = summarize_conversation.fallback_resolution(session["issue"], _last_ai(conn, session_id))
+        return summarize_conversation.fallback_resolution(issue, last_ai)
+
+
+def _write_resolution(conn, session, summary) -> None:
+    session_id = session["session_id"]
     _insert_chat_message(conn, session_id, "ai", _RESOLVED_REPLY)
     conn.execute(
         "UPDATE chat_sessions SET status = 'resolved', resolved_at = ?, summary = ? "
@@ -205,14 +233,17 @@ def _resolve(conn, session) -> None:
     )
 
 
-def _escalate(conn, session, reason_key: str, subject: str | None = None) -> str:
-    """Create the unassigned ticket for a chat and close the chat as
-    escalated. Never depends on the AI: see conversation.handoff_brief."""
-    session_id = session["session_id"]
-    summary, steps = handoff_brief(
-        "chat", _transcript_text(conn, session_id), reason_key, session["issue"], session["category"]
-    )
+def _handoff(transcript: str, session, reason_key: str, category) -> tuple:
+    """The hand-off brief. Never depends on the AI: see
+    conversation.handoff_brief."""
+    return handoff_brief("chat", transcript, reason_key, session["issue"], category)
 
+
+def _write_escalation(conn, session, reason_key: str, summary, steps: list[str],
+                      subject: str | None = None) -> str:
+    """Create the unassigned ticket for a chat and close the chat as
+    escalated."""
+    session_id = session["session_id"]
     ticket_id = f"TCK-{uuid.uuid4().hex[:8]}"
     contact_name = session["contact_name"] or customer_row(conn, session["customer_id"])["name"]
     conn.execute(
@@ -267,49 +298,37 @@ def _escalate(conn, session, reason_key: str, subject: str | None = None) -> str
     return ticket_id
 
 
-def _run_turn(conn, session, message_text: str) -> str | None:
-    """Store the customer's message and let the AI respond. Returns an
-    error message for the customer if the AI failed (state unchanged
-    apart from the stored message), else None. Caller commits."""
+def _store_customer_message(conn, session, message_text: str) -> _Turn:
+    """Step 1. Caller commits."""
     session_id = session["session_id"]
     prior_ai = _last_ai(conn, session_id)
     _insert_chat_message(conn, session_id, "customer", message_text)
-    conn.execute("SAVEPOINT chat_turn")
-    try:
-        _respond(conn, session, message_text, prior_ai)
-        conn.execute("RELEASE chat_turn")
-        return None
-    except Exception:  # noqa: BLE001 — provider/network/parse failures alike
-        logger.exception("AI chat turn failed for %s", session_id)
-        conn.execute("ROLLBACK TO chat_turn")
-        conn.execute("RELEASE chat_turn")
-        return AI_UNAVAILABLE
+    return _Turn(dict(_reload(conn, session_id)), _transcript_text(conn, session_id), prior_ai)
 
 
-def _respond(conn, session, message_text: str, prior_ai: str | None) -> None:
-    session_id = session["session_id"]
+def _decide(turn: _Turn, message_text: str) -> _Outcome:
+    """Step 2: no database connection held. Raises on any AI failure."""
+    session = turn.session
     # "Was there an outage yesterday?" — answered from incident memory only.
-    incident_answer = incident_memory.answer_incident_question(conn, session["customer_id"], message_text)
+    incident_answer = incident_memory.answer_incident_question(None, session["customer_id"], message_text)
     if incident_answer is not None:
-        _insert_chat_message(conn, session_id, "ai", incident_answer)
-        conn.execute("UPDATE chat_sessions SET last_route = 'ai' WHERE session_id = ?", (session_id,))
-        return
+        return _Outcome("incident_answer", text=incident_answer)
 
-    gate = followup_gate(message_text, prior_ai, answered=session["last_route"] == "ai")
+    gate = followup_gate(message_text, turn.prior_ai, answered=session["last_route"] == "ai")
 
     if gate == "handoff":
-        _escalate(conn, session, "customer_request")
-        return
+        summary, steps = _handoff(turn.transcript, session, "customer_request", session["category"])
+        return _Outcome("escalate", summary=summary, steps=steps, reason_key="customer_request")
     if gate == "close":
-        _resolve(conn, session)
-        return
+        return _Outcome("resolve", summary=_resolution_summary(
+            turn.transcript, session["issue"], turn.prior_ai))
 
     if gate == "continuation":
         state = _pipeline_state(
             session,
-            _transcript_text(conn, session_id),
+            turn.transcript,
             category=session["category"],
-            kb_candidates=graph.retrieve_kb_candidates_for_continuation(prior_ai, message_text),
+            kb_candidates=graph.retrieve_kb_candidates_for_continuation(turn.prior_ai, message_text),
             continuation=True,
         )
         state.update(graph.fetch_customer_history(state))
@@ -319,24 +338,70 @@ def _respond(conn, session, message_text: str, prior_ai: str | None) -> None:
                   "clarification_attempts": session["clarification_attempts"]}
     else:
         result = runtime.get_graph().invoke(
-            _pipeline_state(
-                session,
-                _transcript_text(conn, session_id),
-                clarification_attempts=session["clarification_attempts"],
-            )
+            _pipeline_state(session, turn.transcript,
+                            clarification_attempts=session["clarification_attempts"])
         )
 
     if result["route"] == "human":
-        _store_classification(conn, session_id, result, last_route=None)
-        _escalate(conn, _reload(conn, session_id), "routing_policy")
-        return
+        summary, steps = _handoff(turn.transcript, session, "routing_policy", result.get("category"))
+        return _Outcome("escalate", result=result, summary=summary, steps=steps,
+                        reason_key="routing_policy")
 
-    _insert_chat_message(conn, session_id, "ai", result["ai_response"])
-    _store_classification(conn, session_id, result, last_route=result["route"])
     # An answer that concedes it can't actually do the thing ("I don't have
     # access to your billing") is a hand-off, not a resolution.
     if result["route"] == "ai" and handoff_signals.admits_limitation(result["ai_response"]):
-        _escalate(conn, _reload(conn, session_id), "ai_cannot_resolve")
+        transcript = f"{turn.transcript}\nAgent (AI): {result['ai_response']}"
+        summary, steps = _handoff(transcript, session, "ai_cannot_resolve", result.get("category"))
+        return _Outcome("escalate", text=result["ai_response"], result=result,
+                        last_route=result["route"], summary=summary, steps=steps,
+                        reason_key="ai_cannot_resolve")
+    return _Outcome("answer", text=result["ai_response"], result=result, last_route=result["route"])
+
+
+def _apply(conn, session_id: str, outcome: _Outcome, subject: str | None = None) -> bool:
+    """Step 3. False (nothing written) if the chat stopped being active
+    meanwhile, e.g. another request escalated it. Caller commits."""
+    session = _reload(conn, session_id)
+    if session["status"] != "active":
+        return False
+    if outcome.text is not None:
+        _insert_chat_message(conn, session_id, "ai", outcome.text)
+    if outcome.kind == "incident_answer":
+        conn.execute("UPDATE chat_sessions SET last_route = 'ai' WHERE session_id = ?", (session_id,))
+    elif outcome.kind == "resolve":
+        _write_resolution(conn, session, outcome.summary)
+    else:
+        if outcome.result is not None:
+            _store_classification(conn, session_id, outcome.result, last_route=outcome.last_route)
+        if outcome.kind == "escalate":
+            _write_escalation(conn, _reload(conn, session_id), outcome.reason_key,
+                              outcome.summary, outcome.steps, subject)
+    return True
+
+
+def _finish_turn(turn: _Turn, message_text: str, background_tasks: BackgroundTasks) -> dict:
+    """Steps 2 and 3, then the customer's view of the chat."""
+    session_id = turn.session["session_id"]
+    ai_error = None
+    try:
+        outcome = _decide(turn, message_text)
+    except Exception:  # noqa: BLE001 — provider/network/parse failures alike
+        logger.exception("AI chat turn failed for %s", session_id)
+        outcome, ai_error = None, AI_UNAVAILABLE
+    conn = db.get_connection()
+    try:
+        if outcome is not None:
+            try:
+                _apply(conn, session_id, outcome)
+                conn.commit()
+            except Exception:  # noqa: BLE001
+                logger.exception("Storing the AI chat turn failed for %s", session_id)
+                conn.rollback()
+                ai_error = AI_UNAVAILABLE
+        _after_escalation(conn, session_id, background_tasks)
+        return _view(conn, session_id, ai_error)
+    finally:
+        conn.close()
 
 
 def _store_classification(conn, session_id: str, result: dict, last_route) -> None:
@@ -375,12 +440,11 @@ def start_chat(
             "VALUES (?, ?, 'active', ?, ?, ?, ?, ?)",
             (session_id, customer_id, issue, now(), now(), body.category, contact_name),
         )
-        ai_error = _run_turn(conn, _reload(conn, session_id), issue)
+        turn = _store_customer_message(conn, _reload(conn, session_id), issue)
         conn.commit()
-        _after_escalation(conn, session_id, background_tasks)
-        return _view(conn, session_id, ai_error)
     finally:
         conn.close()
+    return _finish_turn(turn, issue, background_tasks)
 
 
 @router.get("/api/chats")
@@ -425,12 +489,11 @@ def send_chat_message(
     try:
         session = _session_or_error(conn, session_id, customer_id)
         _require_active(session)
-        ai_error = _run_turn(conn, session, message)
+        turn = _store_customer_message(conn, session, message)
         conn.commit()
-        _after_escalation(conn, session_id, background_tasks)
-        return _view(conn, session_id, ai_error)
     finally:
         conn.close()
+    return _finish_turn(turn, message, background_tasks)
 
 
 @router.post("/api/chats/{session_id}/resolve")
@@ -440,9 +503,19 @@ def resolve_chat(session_id: str, customer_id: str = Depends(auth.get_current_cu
     try:
         session = _session_or_error(conn, session_id, customer_id)
         _require_active(session)
-        if _last_ai(conn, session_id) is None:
+        last_ai = _last_ai(conn, session_id)
+        if last_ai is None:
             raise HTTPException(status_code=400, detail="The assistant hasn't answered yet")
-        _resolve(conn, session)
+        transcript = _transcript_text(conn, session_id)
+    finally:
+        conn.close()
+    # The summary is written with no connection held.
+    summary = _resolution_summary(transcript, session["issue"], last_ai)
+    conn = db.get_connection()
+    try:
+        session = _reload(conn, session_id)
+        _require_active(session)
+        _write_resolution(conn, session, summary)
         conn.commit()
         return _view(conn, session_id)
     finally:
@@ -462,7 +535,16 @@ def escalate_chat(
     try:
         session = _session_or_error(conn, session_id, customer_id)
         _require_active(session)
-        _escalate(conn, session, "customer_raised_ticket", body.subject)
+        transcript = _transcript_text(conn, session_id)
+    finally:
+        conn.close()
+    # The hand-off brief is written with no connection held.
+    summary, steps = _handoff(transcript, session, "customer_raised_ticket", session["category"])
+    conn = db.get_connection()
+    try:
+        session = _reload(conn, session_id)
+        _require_active(session)
+        _write_escalation(conn, session, "customer_raised_ticket", summary, steps, body.subject)
         conn.commit()
         _after_escalation(conn, session_id, background_tasks)
         return _view(conn, session_id)
