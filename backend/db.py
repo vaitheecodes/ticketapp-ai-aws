@@ -1,8 +1,10 @@
-"""SQLite connection + schema init for the ticket resolution app.
+"""Database connections + schema init for the ticket resolution app.
 
-Phase 1: a single local SQLite file. Phase 2 swaps this module for an
-Azure SQL/Cosmos client — nothing outside this file should know how a
-connection is obtained.
+DB_BACKEND selects the database: `sqlite` (default: a local file, used
+for local runs and the test suite) or `postgres` (backend/db_postgres.py:
+pooled psycopg connections, versioned migrations in migrations/postgres).
+Nothing outside this module should know how a connection is obtained;
+both backends take the same SQLite-style SQL.
 
 `DB_PATH` is overridable by env var because on Azure App Service only
 /home persists across restarts and deploys — the rest of the container
@@ -369,7 +371,24 @@ def _journal_mode() -> str:
     return mode if mode in _JOURNAL_MODES else "WAL"
 
 
-def get_connection() -> sqlite3.Connection:
+def backend_name() -> str:
+    name = (os.environ.get("DB_BACKEND") or "sqlite").strip().lower()
+    if name not in ("sqlite", "postgres"):
+        raise ValueError("DB_BACKEND must be sqlite or postgres")
+    return name
+
+
+def is_postgres(conn=None) -> bool:
+    if conn is not None:
+        return getattr(conn, "backend", "sqlite") == "postgres"
+    return backend_name() == "postgres"
+
+
+def get_connection():
+    if backend_name() == "postgres":
+        from backend import db_postgres
+
+        return db_postgres.get_connection()
     # timeout: wait for another request's write instead of failing at once.
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.execute(f"PRAGMA journal_mode={_journal_mode()}")
@@ -384,6 +403,11 @@ def begin_write(conn, lock_key: str | None = None) -> None:
     first write), so a check-then-write can't race another request.
     `lock_key` names what is being protected; backends with finer-grained
     locks use it (see db_postgres)."""
+    if is_postgres(conn):
+        from backend import db_postgres
+
+        db_postgres.begin_write(conn, lock_key)
+        return
     conn.execute("BEGIN IMMEDIATE")
 
 
@@ -589,7 +613,26 @@ def uploads_dir() -> Path:
     return path
 
 
+def _init_postgres() -> None:
+    """Versioned migrations, then the same seeds as SQLite."""
+    from backend import db_postgres
+
+    db_postgres.wait_until_ready()
+    db_postgres.migrate()
+    conn = get_connection()
+    try:
+        seed_orders(conn)
+        seed_departments(conn)
+        seed_demo_staff(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
+    if backend_name() == "postgres":
+        _init_postgres()
+        return
     # Reads the module attribute rather than the import-time constant so a
     # test (or a script) that repoints DB_PATH still gets its directory
     # created. /home/data on App Service does not exist until something

@@ -11,7 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 # import name -> distribution name, where they differ
-DIST = {"jwt": "pyjwt", "dotenv": "python-dotenv", "typing_extensions": "typing-extensions"}
+DIST = {"jwt": "pyjwt", "dotenv": "python-dotenv", "typing_extensions": "typing-extensions",
+        "psycopg_pool": "psycopg-pool"}
 # Imported only lazily by optional providers; not needed with quickml_appsail/mock.
 OPTIONAL = {"openai"}
 # Pulled in transitively by fastapi/pydantic, and botocore by boto3.

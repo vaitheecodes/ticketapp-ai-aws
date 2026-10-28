@@ -16,11 +16,11 @@ from typing import Literal
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from backend import admin, app_settings, auth, chats, db, email_utils, graph, handoff_signals, incidents
-from backend import incident_memory, incident_resolution, runtime, staff_tickets
+from backend import db_postgres, incident_memory, incident_resolution, runtime, staff_tickets
 from backend.ai_service import backends as ai_backends
 from backend import ticket_lifecycle as lifecycle
 from backend.conversation import ESCALATION_MARKER as _ESCALATION_MARKER
@@ -103,6 +103,22 @@ app.include_router(incident_resolution.router)
 def health() -> dict:
     """Liveness for AppSail and uptime checks: no auth, no DB, no AI."""
     return {"ok": True}
+
+
+@app.exception_handler(db_postgres.DatabaseBusy)
+@app.exception_handler(db_postgres.DatabaseUnavailable)
+def database_unavailable(request, exc):
+    """Pool exhausted (or Postgres down): ask the client to retry rather
+    than hang or return a bare 500. The message has no credentials."""
+    logger.warning("Database unavailable: %s", exc)
+    return JSONResponse(status_code=503, content={"detail": "The service is busy. Please try again."},
+                        headers={"Retry-After": "2"})
+
+
+@app.on_event("shutdown")
+def on_shutdown() -> None:
+    if db.is_postgres():
+        db_postgres.close_pool()
 
 
 @app.on_event("startup")
@@ -484,7 +500,7 @@ def tickets_mine(customer_id: str = Depends(auth.get_current_customer)):
             f"   WHERE m.ticket_id = t.ticket_id AND {db.CUSTOMER_VISIBLE_SQL}) AS last_message_at, "
             "  EXISTS (SELECT 1 FROM ticket_messages m WHERE m.ticket_id = t.ticket_id "
             "          AND m.sender IN ('ai', 'staff') AND m.visibility = 'public_reply' "
-            "          AND m.created_at > COALESCE(t.customer_last_read_at, '')) AS unread "
+            "          AND (t.customer_last_read_at IS NULL OR m.created_at > t.customer_last_read_at)) AS unread "
             "FROM tickets t WHERE t.customer_id = ? "
             "ORDER BY t.created_at DESC",
             (customer_id,),
