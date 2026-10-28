@@ -32,7 +32,7 @@ def _isolated_app_env(monkeypatch):
     for name in ("QUICKML_ENDPOINT_KEY", "QUICKML_ENDPOINT_NAME", "QUICKML_ENVIRONMENT", "QUICKML_API_BASE",
                  "QUICKML_ORG_ID", "CATALYST_ORG_ID", "X_ZOHO_CATALYST_ORG_ID", "X_ZOHO_CATALYST_LISTEN_PORT", "X_ZOHO_CATALYST_CONSOLE_URL", "AI_BASE_URL", "AI_API_KEY",
                  "AI_MODEL", "AI_EMBEDDING_MODEL", "AI_MAX_TOKENS", "AZURE_OPENAI_ENDPOINT",
-                 "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT"):
+                 "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT", "BEDROCK_MODEL_ID"):
         monkeypatch.delenv(name, raising=False)
     provider.set_backend(None)
     monkeypatch.delenv("ADMIN_EMAIL", raising=False)

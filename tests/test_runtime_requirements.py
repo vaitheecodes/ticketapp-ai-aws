@@ -14,8 +14,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DIST = {"jwt": "pyjwt", "dotenv": "python-dotenv", "typing_extensions": "typing-extensions"}
 # Imported only lazily by optional providers; not needed with quickml_appsail/mock.
 OPTIONAL = {"openai"}
-# Pulled in transitively by fastapi/pydantic.
-TRANSITIVE = {"pydantic", "starlette", "typing-extensions"}
+# Pulled in transitively by fastapi/pydantic, and botocore by boto3.
+TRANSITIVE = {"pydantic", "starlette", "typing-extensions", "botocore"}
 
 
 def _runtime_requirements() -> set[str]:

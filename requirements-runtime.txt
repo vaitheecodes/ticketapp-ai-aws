@@ -9,3 +9,5 @@ bcrypt>=4.2
 python-dotenv>=1.0
 httpx>=0.27
 python-multipart>=0.0.9
+# AI_PROVIDER=bedrock (Amazon Bedrock Converse API).
+boto3>=1.35

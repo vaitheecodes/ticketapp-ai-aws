@@ -15,6 +15,9 @@ Selected by AI_PROVIDER:
                      with the credential AppSail injects into each incoming
                      request (docs/quickml-appsail-call.md). Only works
                      while serving a request on AppSail.
+  bedrock            Amazon Bedrock Converse API (boto3, default AWS
+                     credential chain: AWS_PROFILE locally, the service's
+                     IAM role when deployed).
   openai_compatible  Any OpenAI-style chat completions API (optional
                      fallback).
   azure              Azure OpenAI (legacy; removed in Phase 4 stage C6).
@@ -313,6 +316,129 @@ class AzureOpenAIBackend(OpenAICompatibleBackend):
 
 
 # ---------------------------------------------------------------------------
+# Amazon Bedrock
+# ---------------------------------------------------------------------------
+# Bedrock error codes -> (config problem?, message). The AWS error message
+# itself is never used: it can echo request details.
+BEDROCK_ERRORS = {
+    "ThrottlingException": (False, "Bedrock throttled the request (ThrottlingException)"),
+    "ServiceQuotaExceededException": (False, "Bedrock quota exceeded (ServiceQuotaExceededException)"),
+    "ModelTimeoutException": (False, "Bedrock model timed out (ModelTimeoutException)"),
+    "ServiceUnavailableException": (False, "Bedrock is unavailable (ServiceUnavailableException)"),
+    "ModelNotReadyException": (False, "Bedrock model is not ready (ModelNotReadyException)"),
+    "InternalServerException": (False, "Bedrock internal error (InternalServerException)"),
+    "ModelErrorException": (False, "Bedrock model error (ModelErrorException)"),
+    "AccessDeniedException": (True, "Bedrock refused access (AccessDeniedException): check the IAM "
+                                    "policy and that model access is enabled for BEDROCK_MODEL_ID"),
+    "UnrecognizedClientException": (True, "AWS rejected the credentials (UnrecognizedClientException)"),
+    "ExpiredTokenException": (True, "AWS credentials have expired (ExpiredTokenException)"),
+    "ValidationException": (True, "Bedrock rejected the request (ValidationException): check "
+                                  "BEDROCK_MODEL_ID, AWS_REGION and AI_MAX_TOKENS"),
+    "ResourceNotFoundException": (True, "Bedrock model not found (ResourceNotFoundException): "
+                                        "check BEDROCK_MODEL_ID and AWS_REGION"),
+}
+
+
+class BedrockBackend:
+    """Amazon Bedrock Converse API via boto3. Credentials come from the
+    default AWS chain only (AWS_PROFILE locally, the service role when
+    deployed); none are read or stored here. BEDROCK_MODEL_ID (default
+    Nova Lite through the APAC inference profile), AWS_REGION.
+
+    boto3's own retries are off: like every backend, a provider error is
+    reported once and never retried. `on_usage(dict)` is an optional hook
+    (scripts/bedrock_quality_check.py) for token counts and latency."""
+
+    name = "bedrock"
+    DEFAULT_MODEL = "apac.amazon.nova-lite-v1:0"
+    DEFAULT_REGION = "ap-south-1"
+
+    def __init__(self, client=None, on_usage=None):
+        self._client = client
+        self.on_usage = on_usage
+
+    @classmethod
+    def model_id(cls) -> str:
+        return env("BEDROCK_MODEL_ID", cls.DEFAULT_MODEL)
+
+    @classmethod
+    def region(cls) -> str:
+        return env("AWS_REGION") or env("AWS_DEFAULT_REGION") or cls.DEFAULT_REGION
+
+    def client(self):
+        if self._client is None:
+            import boto3
+            from botocore.config import Config
+
+            config = Config(region_name=self.region(), connect_timeout=10, read_timeout=timeout_seconds(),
+                            retries={"total_max_attempts": 1, "mode": "standard"})
+            try:
+                self._client = boto3.client("bedrock-runtime", config=config)
+            except Exception as exc:  # noqa: BLE001 — e.g. ProfileNotFound
+                raise ConfigError(f"Could not create the Bedrock client ({type(exc).__name__}): "
+                                  "check AWS_PROFILE / AWS_REGION") from None
+        return self._client
+
+    @staticmethod
+    def request(system_prompt, user_content, *, max_tokens, json_mode, extra_messages, model_id):
+        # Converse needs alternating roles, so correction notes are extra
+        # text blocks in the one user turn. The JSON reminder sits after the
+        # data, as in the single-prompt form.
+        blocks = [{"text": user_content}] + [{"text": note} for note in extra_messages]
+        if json_mode:
+            blocks.append({"text": "Return only the JSON object, with no other text."})
+        request = {
+            "modelId": model_id,
+            "messages": [{"role": "user", "content": blocks}],
+            "inferenceConfig": {"maxTokens": max_tokens, "temperature": 0.0 if json_mode else 0.3},
+        }
+        if system_prompt:
+            request["system"] = [{"text": system_prompt}]
+        return request
+
+    def generate(self, system_prompt, user_content, *, max_tokens, json_schema=None, extra_messages=()):
+        from botocore.exceptions import (BotoCoreError, ClientError, ConnectTimeoutError,
+                                         EndpointConnectionError, NoCredentialsError, ReadTimeoutError)
+
+        request = self.request(system_prompt, user_content, max_tokens=max_tokens,
+                               json_mode=json_schema is not None, extra_messages=extra_messages,
+                               model_id=self.model_id())
+        try:
+            response = self.client().converse(**request)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            is_config, message = BEDROCK_ERRORS.get(code, (False, f"Bedrock error ({code or 'unknown'})"))
+            raise (ConfigError if is_config else BackendError)(message) from None
+        except (ReadTimeoutError, ConnectTimeoutError):
+            raise BackendError(f"Bedrock timed out after {timeout_seconds():.0f}s") from None
+        except NoCredentialsError:
+            raise ConfigError("No AWS credentials found: set AWS_PROFILE locally, or give the "
+                              "service an IAM role") from None
+        except EndpointConnectionError:
+            raise BackendError(f"Could not reach Bedrock in {self.region()}") from None
+        except BotoCoreError as exc:
+            raise BackendError(f"Bedrock request failed ({type(exc).__name__})") from None
+        if self.on_usage:
+            self.on_usage({**response.get("usage", {}), "latencyMs": response.get("metrics", {}).get("latencyMs"),
+                           "stopReason": response.get("stopReason")})
+        return extract_bedrock_text(response)
+
+
+def extract_bedrock_text(response: Any) -> str:
+    """Joined text blocks of output.message.content; anything else is an
+    error. A reply cut off at maxTokens is returned as is (validation then
+    rejects truncated JSON)."""
+    try:
+        blocks = response["output"]["message"]["content"]
+    except (KeyError, TypeError):
+        raise BackendError("Unrecognised Bedrock response shape") from None
+    texts = [b["text"] for b in blocks if isinstance(b, dict) and isinstance(b.get("text"), str)]
+    if not texts:
+        raise BackendError("Bedrock response had no text")
+    return "".join(texts)
+
+
+# ---------------------------------------------------------------------------
 # Mock
 # ---------------------------------------------------------------------------
 def _sample(schema: dict, defs: dict) -> Any:
@@ -363,6 +489,7 @@ class MockBackend:
 BACKENDS = {
     "quickml_appsail": QuickMLAppSailBackend,
     "openai_compatible": OpenAICompatibleBackend,
+    "bedrock": BedrockBackend,
     "azure": AzureOpenAIBackend,
     "mock": MockBackend,
 }

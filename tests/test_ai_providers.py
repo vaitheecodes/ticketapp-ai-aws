@@ -106,7 +106,7 @@ def _categorize():
 # ---------------------------------------------------------------------------
 def test_provider_selected_by_env(monkeypatch):
     provider.set_backend(None)
-    assert set(backends.BACKENDS) == {"quickml_appsail", "openai_compatible", "azure", "mock"}
+    assert set(backends.BACKENDS) == {"quickml_appsail", "bedrock", "openai_compatible", "azure", "mock"}
     for name, cls in backends.BACKENDS.items():
         monkeypatch.setenv("AI_PROVIDER", name)
         assert isinstance(provider.get_backend(), cls)

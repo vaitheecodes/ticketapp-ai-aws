@@ -136,10 +136,11 @@ deploy steps are in [docs/appsail-deploy.md](docs/appsail-deploy.md).
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `AI_PROVIDER` | `azure` if `AZURE_OPENAI_ENDPOINT` is set, else `mock` | `quickml_appsail`, `openai_compatible`, `azure`, `mock` (see `backend/ai_service/backends.py`) |
+| `AI_PROVIDER` | `azure` if `AZURE_OPENAI_ENDPOINT` is set, else `mock` | `quickml_appsail`, `bedrock`, `openai_compatible`, `azure`, `mock` (see `backend/ai_service/backends.py`) |
 | `AI_MAX_TOKENS`, `AI_TIMEOUT_SECONDS` | 2048, 90 | Per-call limits |
 | `QUICKML_ENDPOINT_KEY`, `QUICKML_ENDPOINT_NAME`, `QUICKML_ORG_ID` | — | Catalyst QuickML LLM Serving endpoint, called from AppSail with the credential AppSail injects per request ([docs/quickml-appsail-call.md](docs/quickml-appsail-call.md)) |
 | `QUICKML_ENVIRONMENT`, `QUICKML_API_BASE` | `Development`, `https://api.catalyst.zoho.in` | Fallbacks when AppSail doesn't inject `X-ZC-Environment` / `X_ZOHO_CATALYST_CONSOLE_URL` |
+| `BEDROCK_MODEL_ID`, `AWS_REGION` | `apac.amazon.nova-lite-v1:0`, `ap-south-1` | `bedrock` provider (Converse API); credentials from the default AWS chain only (`AWS_PROFILE` locally, the IAM role when deployed) |
 | `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_EMBEDDING_MODEL` | — | `openai_compatible` provider |
 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION`, `AZURE_OPENAI_DEPLOYMENT` | — | `azure` provider (removed in Phase 4 C6) |
 | `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | unset | Optional embeddings with `azure`; otherwise incident grouping uses lexical TF-IDF similarity |
@@ -206,6 +207,14 @@ incident summary, post-incident summary draft, incident-question parsing):
 - **Grounding**: answers and suggested steps use the closest KB entries;
   prompts forbid inventing results or claiming to have checked systems
   the app isn't connected to.
+- **Amazon Bedrock** (`AI_PROVIDER=bedrock`): the Converse API through
+  boto3, with the AWS credentials from the default chain (never in code or
+  `.env`). boto3's own retries are off, so a throttled or failed call is
+  reported once, like every provider. Access denied, an unknown model id
+  and invalid requests are logged as configuration errors; the AWS error
+  text is never logged. `scripts/bedrock_quality_check.py` runs the 10 key
+  prompts against the real model (billed) and reports rejected replies,
+  latency, tokens and an estimated cost.
 - **Routing policy** (`graph.decide_route`, editable in Admin →
   Settings): escalation language (abuse, negation, long compound
   messages) → human; high-risk categories (ACCOUNT, DATA) below 90%
@@ -297,6 +306,7 @@ tests script the model's replies). Highlights:
 | `test_chat_sessions.py`, `test_chat_followup_gates.py`, `test_handoff_escalation.py` | chat resolution vs escalation, AI-failure handling, review records, migration |
 | `test_ticket_workspace.py` | claim race, public vs internal visibility, history, manager scope |
 | `test_ai_service.py` | schema validation and retry, provider failure, injection containment, no secrets in logs |
+| `test_ai_providers.py`, `test_bedrock_provider.py` | each provider's request, response parsing, retry note, error mapping (never retried, nothing secret logged), AI failure changes nothing; boto3 is always faked |
 | `test_incidents.py` | clustering, time window, pre-filters, dedupe, routing, review, banner |
 | `test_incident_resolution.py` | resolve only when confirmed, facts-only draft (invented times/causes rejected), idempotent fan-out, per-ticket failure isolation, email gate, "was there an outage?" answers (linked / unlinked / public / expired, no cross-customer leakage), AI failure sends nothing |
 | `test_admin_console.py` | account administration, settings, audit log, email gate, attachment access |

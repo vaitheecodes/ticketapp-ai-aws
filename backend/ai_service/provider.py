@@ -3,7 +3,7 @@
 Every AI operation calls complete_json (structured) or complete_text
 (prose replies); both go through complete(), which sends the request to
 the backend chosen by AI_PROVIDER (backends.py: quickml_appsail,
-openai_compatible, azure, mock). Trusted instructions go in
+bedrock, openai_compatible, azure, mock). Trusted instructions go in
 the system prompt; untrusted customer/ticket text goes in delimited data
 blocks the customer can't close. Replies are cleaned (reasoning text and
 code fences stripped, the JSON object extracted; a plain-text reply the
