@@ -34,6 +34,7 @@ import contextvars
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -339,6 +340,9 @@ BEDROCK_ERRORS = {
 }
 
 
+TOOL_NAME_UNSAFE = re.compile(r"[^a-zA-Z0-9_-]")
+
+
 class BedrockBackend:
     """Amazon Bedrock Converse API via boto3. Credentials come from the
     default AWS chain only (AWS_PROFILE locally, the service role when
@@ -380,13 +384,18 @@ class BedrockBackend:
         return self._client
 
     @staticmethod
-    def request(system_prompt, user_content, *, max_tokens, json_mode, extra_messages, model_id):
-        # Converse needs alternating roles, so correction notes are extra
-        # text blocks in the one user turn. The JSON reminder sits after the
-        # data, as in the single-prompt form.
+    def request(system_prompt, user_content, *, max_tokens, json_schema, extra_messages, model_id):
+        """Converse needs alternating roles, so correction notes are extra
+        text blocks in the one user turn.
+
+        Structured output uses tool use: the operation's schema is the
+        input schema of a single tool the model is forced to call. Asked
+        for JSON in text, Nova Lite returned schema-shaped objects
+        ({"properties": {...answer...}, "type": "object"} or the schema
+        itself) for 6 of 10 key prompts; validation and the retry stay as
+        the backstop."""
+        json_mode = json_schema is not None
         blocks = [{"text": user_content}] + [{"text": note} for note in extra_messages]
-        if json_mode:
-            blocks.append({"text": "Return only the JSON object, with no other text."})
         request = {
             "modelId": model_id,
             "messages": [{"role": "user", "content": blocks}],
@@ -394,6 +403,15 @@ class BedrockBackend:
         }
         if system_prompt:
             request["system"] = [{"text": system_prompt}]
+        if json_mode and json_schema.get("properties"):
+            name = TOOL_NAME_UNSAFE.sub("_", json_schema.get("title") or "")[:64] or "respond"
+            request["toolConfig"] = {
+                "tools": [{"toolSpec": {"name": name, "description": "Return the result.",
+                                        "inputSchema": {"json": json_schema}}}],
+                "toolChoice": {"tool": {"name": name}},
+            }
+        elif json_mode:
+            blocks.append({"text": "Return only the JSON object, with no other text."})
         return request
 
     def generate(self, system_prompt, user_content, *, max_tokens, json_schema=None, extra_messages=()):
@@ -401,7 +419,7 @@ class BedrockBackend:
                                          EndpointConnectionError, NoCredentialsError, ReadTimeoutError)
 
         request = self.request(system_prompt, user_content, max_tokens=max_tokens,
-                               json_mode=json_schema is not None, extra_messages=extra_messages,
+                               json_schema=json_schema, extra_messages=extra_messages,
                                model_id=self.model_id())
         try:
             response = self.client().converse(**request)
@@ -425,13 +443,18 @@ class BedrockBackend:
 
 
 def extract_bedrock_text(response: Any) -> str:
-    """Joined text blocks of output.message.content; anything else is an
-    error. A reply cut off at maxTokens is returned as is (validation then
-    rejects truncated JSON)."""
+    """The forced tool call's input as JSON text, else the joined text
+    blocks of output.message.content; anything else is an error. A reply
+    cut off at maxTokens is returned as is (validation then rejects
+    truncated JSON)."""
     try:
         blocks = response["output"]["message"]["content"]
     except (KeyError, TypeError):
         raise BackendError("Unrecognised Bedrock response shape") from None
+    for block in blocks:
+        tool_use = block.get("toolUse") if isinstance(block, dict) else None
+        if isinstance(tool_use, dict) and isinstance(tool_use.get("input"), dict):
+            return json.dumps(tool_use["input"])
     texts = [b["text"] for b in blocks if isinstance(b, dict) and isinstance(b.get("text"), str)]
     if not texts:
         raise BackendError("Bedrock response had no text")

@@ -14,7 +14,7 @@ normal rule), so at most 20 calls are made; the script stops if that
 would be exceeded.
 
 Cost uses BEDROCK_PRICE_INPUT_PER_1M / BEDROCK_PRICE_OUTPUT_PER_1M (USD)
-when set, else the Nova Lite list price; check the Bedrock pricing page.
+when set, else the Mumbai list price for Nova Lite / Nova Pro (see PRICES).
 Never prints credentials.
 """
 
@@ -33,8 +33,10 @@ from backend.ai_service.backends import BedrockBackend  # noqa: E402
 
 CASES = ai_smoke_test.CASES[:10]
 MAX_CALLS = 2 * len(CASES)
-# USD per 1M tokens (input, output), list prices.
-PRICES = {"amazon.nova-lite-v1:0": (0.06, 0.24)}
+# USD per 1M tokens (input, output): on-demand, Asia Pacific (Mumbai), from
+# AWS's public Price List (offers/v1.0/aws/AmazonBedrock/current/ap-south-1,
+# published 2026-10-28). APAC cross-region profiles bill at the source region.
+PRICES = {"amazon.nova-lite-v1:0": (0.071, 0.284), "amazon.nova-pro-v1:0": (0.94, 3.76)}
 
 
 class _Rejected(logging.Handler):

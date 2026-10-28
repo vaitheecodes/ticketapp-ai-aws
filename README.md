@@ -209,7 +209,9 @@ incident summary, post-incident summary draft, incident-question parsing):
   the app isn't connected to.
 - **Amazon Bedrock** (`AI_PROVIDER=bedrock`): the Converse API through
   boto3, with the AWS credentials from the default chain (never in code or
-  `.env`). boto3's own retries are off, so a throttled or failed call is
+  `.env`). Structured (JSON) operations use Converse tool use: the
+  operation's schema is a tool the model is forced to call, because Nova
+  Lite asked for JSON in text echoed the schema instead of filling it. boto3's own retries are off, so a throttled or failed call is
   reported once, like every provider. Access denied, an unknown model id
   and invalid requests are logged as configuration errors; the AWS error
   text is never logged. `scripts/bedrock_quality_check.py` runs the 10 key

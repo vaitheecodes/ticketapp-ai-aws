@@ -6,7 +6,8 @@ contract as the other providers: the Converse request (system
 instructions, fenced data, max tokens, model id), JSON validation with
 one retry, code-fence/reasoning stripping, the {"response": ...} wrapper,
 error mapping without retries or leaked AWS messages, timeouts, and no
-state change when the AI fails.
+state change when the AI fails, and structured output through a forced
+tool call (toolConfig + toolChoice).
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from botocore.exceptions import ClientError, EndpointConnectionError, NoCredenti
 from fastapi.testclient import TestClient
 
 from backend import db, main, runtime
-from backend.ai_service import AIError, backends, categorize_ticket, chat_response, provider
+from backend.ai_service import AIError, backends, categorize_ticket, chat_response, provider, schemas
 from backend.ai_service.backends import BedrockBackend
 from backend.ai_service.schemas import AnswerInput, CategorizeInput
 
@@ -52,6 +53,12 @@ class _Client:
         return {"output": {"message": {"role": "assistant", "content": [{"text": reply}]}},
                 "stopReason": "end_turn", "usage": {"inputTokens": 40, "outputTokens": 12, "totalTokens": 52},
                 "metrics": {"latencyMs": 321}}
+
+
+def _tool_reply(data):
+    return {"output": {"message": {"role": "assistant", "content": [
+        {"toolUse": {"toolUseId": "t1", "name": "x", "input": data}}]}},
+        "stopReason": "tool_use", "usage": {"inputTokens": 40, "outputTokens": 12}, "metrics": {"latencyMs": 5}}
 
 
 def _bedrock(*replies, **kwargs) -> _Client:
@@ -130,7 +137,12 @@ def test_converse_request_shape(real_complete, monkeypatch):
     (message,) = call["messages"]
     assert message["role"] == "user"
     assert "<ticket>\nMy Linux agent stopped sending data\n</ticket>" in message["content"][0]["text"]
-    assert message["content"][-1]["text"] == "Return only the JSON object, with no other text."
+    assert len(message["content"]) == 1  # no text reminder: the tool carries the format
+    tools = call["toolConfig"]
+    (tool,) = tools["tools"]
+    assert tool["toolSpec"]["name"] == "Categorization"
+    assert tool["toolSpec"]["inputSchema"]["json"] == schemas.Categorization.model_json_schema()
+    assert tools["toolChoice"] == {"tool": {"name": "Categorization"}}
 
 
 def test_model_id_comes_from_settings(real_complete, monkeypatch):
@@ -145,6 +157,34 @@ def test_text_request_has_no_json_reminder(real_complete):
     assert chat_response.answer(AnswerInput(ticket_text="agent offline")).text == "Restart the agent service."
     blocks = client.calls[0]["messages"][0]["content"]
     assert len(blocks) == 1 and client.calls[0]["inferenceConfig"]["temperature"] == 0.3
+    assert "toolConfig" not in client.calls[0]
+
+
+def test_tool_use_input_is_the_json_reply(real_complete):
+    _bedrock(_tool_reply({"category": "AGENT", "confidence": 0.9}))
+    result = _categorize()
+    assert (result.category, result.confidence) == ("AGENT", 0.9)
+
+
+def test_schema_shaped_tool_input_is_still_rejected_and_retried(real_complete):
+    # What Nova Lite did with text JSON; validation stays the backstop.
+    client = _bedrock(_tool_reply({"properties": {"category": "AGENT", "confidence": 0.9}, "type": "object"}),
+                      _tool_reply({"category": "AGENT", "confidence": 0.9}))
+    assert _categorize().category == "AGENT"
+    assert len(client.calls) == 2 and "toolConfig" in client.calls[1]
+
+
+def test_json_without_a_schema_falls_back_to_a_text_reminder():
+    request = BedrockBackend.request("sys", "data", max_tokens=100, json_schema={}, extra_messages=(),
+                                     model_id="m")
+    assert "toolConfig" not in request
+    assert request["messages"][0]["content"][-1]["text"].startswith("Return only the JSON object")
+
+
+def test_tool_name_is_sanitised():
+    schema = {"title": "Odd name/with spaces", "type": "object", "properties": {"a": {"type": "string"}}}
+    request = BedrockBackend.request("s", "d", max_tokens=10, json_schema=schema, extra_messages=(), model_id="m")
+    assert request["toolConfig"]["toolChoice"] == {"tool": {"name": "Odd_name_with_spaces"}}
 
 
 def test_customer_text_stays_fenced(real_complete):
@@ -179,7 +219,7 @@ def test_retry_adds_the_correction_to_the_same_user_turn(real_complete):
                       '{"category": "AGENT", "confidence": 0.9}')
     assert _categorize().category == "AGENT"
     first, second = client.calls
-    assert len(first["messages"][0]["content"]) == 2
+    assert len(first["messages"][0]["content"]) == 1
     assert [m["role"] for m in second["messages"]] == ["user"]  # Converse needs alternating roles
     correction = second["messages"][0]["content"][1]["text"]
     assert "rejected" in correction and "category" in correction
@@ -195,7 +235,7 @@ def test_two_invalid_replies_raise(real_complete):
 
 @pytest.mark.parametrize("response", [
     {"output": {}},
-    {"output": {"message": {"content": [{"toolUse": {}}]}}},
+    {"output": {"message": {"content": [{"toolUse": {"input": "not an object"}}]}}},
     {"unexpected": True},
 ])
 def test_unknown_response_shapes_are_ai_errors(real_complete, response):

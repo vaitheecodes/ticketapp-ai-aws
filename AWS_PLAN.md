@@ -28,7 +28,8 @@ Catalyst-specific code (QuickML-on-AppSail provider, AppSail build,
 
 1. Database: RDS PostgreSQL vs DynamoDB.
 2. Backend and frontend hosting.
-3. Bedrock model (region: `ap-south-1`, APAC inference profiles).
+3. Bedrock model: Nova Lite for now (see stage A1); revisit after
+   reviewing real outputs.
 
 ## AWS setup (done)
 
@@ -44,13 +45,41 @@ Catalyst-specific code (QuickML-on-AppSail provider, AppSail build,
 `AI_MAX_TOKENS`; credentials from the default AWS chain only.
 
 First run of `scripts/bedrock_quality_check.py` with Nova Lite (28 Oct
-2026): **4/10 prompts valid**. Chat answer, clarifying question,
+2026, JSON asked for in text): **4/10 prompts valid**. Chat answer, clarifying question,
 continuation check and suggested steps passed. Both categorisations, the
 escalation summary, incident correlation, incident summary and
 post-incident draft were rejected twice (16 calls, 9,469 input / 2,816
 output tokens, ~16 s total, ~$0.0012). The raw replies weren't saved on
 that run, so the cause isn't known yet (the categorise replies were ~40
 tokens where a valid one is ~15, which suggests the schema is being
-echoed or wrapped). Next: re-run with `--save-rejected`, then fix the
-prompt or use Bedrock tool use for structured output, and compare a
-stronger model before choosing.
+echoed or wrapped).
+
+Diagnosis (`--save-rejected`, same result): every rejected reply was
+**schema-shaped**: the answer nested under `"properties"` next to
+`"required"` / `"title"` / `"type"` (categorise, incident correlation,
+incident summary, post-incident draft), values put inside the schema's
+field definitions (escalation summary), or the schema returned with no
+answer at all (two retries). Fences and preamble appeared too but were
+already stripped. Not truncation (no reply hit max tokens) and not wrong
+keys otherwise.
+
+Fix: JSON operations on Bedrock now use Converse **tool use**: the
+operation's pydantic schema is the input schema of one tool and
+`toolChoice` forces it; the tool input is the JSON reply. Validation and
+the one retry stay as the backstop. Text replies are unchanged.
+
+| Run (28 Oct 2026, 10 prompts) | Valid | Calls | Latency (sum) | In / out tokens | Cost |
+|---|---|---|---|---|---|
+| Nova Lite, JSON in text | 4/10 | 16 | 14.6 s | 9,469 / 2,464 | $0.00137 |
+| Nova Lite, tool use | **10/10** | 10 | 9.2 s | 9,753 / 1,019 | $0.00098 |
+| Nova Pro, tool use | **10/10** | 10 | 11.7 s | 9,753 / 1,017 | $0.01299 |
+
+Prices: on-demand, Asia Pacific (Mumbai), from AWS's public Price List
+for Bedrock (published 2026-10-28): Nova Lite $0.071 / $0.284 and Nova
+Pro $0.94 / $3.76 per 1M input / output tokens. Pro is ~13x the cost and
+~25% slower for the same pass rate here.
+
+Decision: keep `BEDROCK_MODEL_ID` = Nova Lite as the single default.
+A per-task model setting (e.g. a stronger model only for incident
+correlation / summaries) is an option if a review of real outputs shows
+Lite's wording is weaker; not built.
