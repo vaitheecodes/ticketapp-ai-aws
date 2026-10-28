@@ -168,6 +168,7 @@ def test_technician_with_open_tickets_cannot_change_role(client):
     assert res.status_code == 409
 
 
+@pytest.mark.sqlite_only
 def test_legacy_manager_mapping_keeps_the_first_department(client):
     staff = client.get("/api/admin/staff", headers=_admin(client)).json()
     (manager,) = [s for s in staff if s["role"] == "manager"]

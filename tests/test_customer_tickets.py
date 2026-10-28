@@ -184,6 +184,7 @@ def test_technician_pickup_moves_ticket_to_in_progress(client):
     assert _row(ticket_id)["status"] == "in_progress"
 
 
+@pytest.mark.sqlite_only
 def test_legacy_statuses_are_migrated(client):
     headers, _ = _customer(client)
     ticket_id = _raise(client, headers, _HUMAN)["ticket_id"]

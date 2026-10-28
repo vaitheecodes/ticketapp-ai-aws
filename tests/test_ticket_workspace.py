@@ -284,6 +284,7 @@ def test_status_change_events_show_to_customer_but_admin_reassign_does_not(clien
     assert history[-1]["to_user"] == other_id and history[-1]["changed_by"].startswith("ADMIN-")
 
 
+@pytest.mark.sqlite_only
 def test_legacy_system_messages_become_customer_visible_events(client):
     customer = _customer(client)
     ticket_id = _raise(client, customer)

@@ -450,11 +450,19 @@ def test_confirmed_unresolved_incident_is_described_neutrally(client, asks, pipe
     assert "investigating" in answer and "Secret internal cause" not in answer
 
 
+def _public_history():
+    conn = db.get_connection()
+    try:
+        return incident_memory.public_history(conn)
+    finally:
+        conn.close()
+
+
 def test_expired_incidents_are_not_used(client, model, asks, pipeline):
     _, reporters = _resolved_incident(client, model, visibility="public")
     old = (datetime.now(timezone.utc) - timedelta(days=91)).isoformat()
     _exec("UPDATE incident_memory SET resolved_at = ?", (old,))
-    assert incident_memory.public_history(db.get_connection()) == []
+    assert _public_history() == []
     # Even a window that covers the old incident finds nothing.
     answer = _ask_in_chat(client, reporters[0][0], pipeline)
     assert answer == incident_memory.NO_MATCH
@@ -464,11 +472,11 @@ def test_memory_days_comes_from_env(client, model, monkeypatch):
     _resolved_incident(client, model, visibility="public")
     old = (datetime.now(timezone.utc) - timedelta(days=100)).isoformat()
     _exec("UPDATE incident_memory SET resolved_at = ?", (old,))
-    assert incident_memory.public_history(db.get_connection()) == []
+    assert _public_history() == []
     monkeypatch.setenv("INCIDENT_MEMORY_DAYS", "120")
     app_settings.clear_cache()
     assert incident_memory.memory_days() == 120
-    assert len(incident_memory.public_history(db.get_connection())) == 1
+    assert len(_public_history()) == 1
 
 
 def test_dismissed_incident_is_forgotten(client):

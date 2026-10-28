@@ -312,6 +312,7 @@ def test_review_workflow_is_staff_only_with_valid_transitions(client, ai_summari
 # ---------------------------------------------------------------------------
 # Migration of pre-session chat tickets
 # ---------------------------------------------------------------------------
+@pytest.mark.sqlite_only
 def test_legacy_chat_tickets_migrate_into_sessions(client):
     headers = _customer(client)
     customer_id = client.get("/api/auth/me", headers=headers).json()["user_id"]

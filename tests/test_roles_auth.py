@@ -100,8 +100,11 @@ def test_admin_seeded_once_from_env_and_never_overwritten(db_path, monkeypatch):
         assert _login(c, ADMIN_EMAIL, ADMIN_PASSWORD).status_code == 200
         assert _login(c, ADMIN_EMAIL, "a-different-password").status_code == 401
 
-    conn = sqlite3.connect(db_path)
-    assert conn.execute("SELECT COUNT(*) FROM admins").fetchone()[0] == 1
+    conn = db.get_connection()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM admins").fetchone()[0] == 1
+    finally:
+        conn.close()
 
 
 STRONG_SECRET = "x" * 40
@@ -399,6 +402,7 @@ def test_technicians_cannot_own_departments(client):
 # ---------------------------------------------------------------------------
 # Legacy agents -> technicians migration
 # ---------------------------------------------------------------------------
+@pytest.mark.sqlite_only
 def test_legacy_agents_migrate_to_technicians_keeping_assignments(db_path, monkeypatch):
     conn = sqlite3.connect(db_path)
     conn.executescript("""
