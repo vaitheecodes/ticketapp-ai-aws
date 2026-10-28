@@ -92,7 +92,7 @@ class DepartmentRequest(BaseModel):
 def _email_taken(conn, email: str, except_id: str | None = None) -> bool:
     for table, id_col in (("customers", "customer_id"), ("staff", "staff_id"), ("admins", "admin_id")):
         row = conn.execute(
-            f"SELECT {id_col} AS id FROM {table} WHERE email = ? COLLATE NOCASE", (email,)
+            f"SELECT {id_col} AS id FROM {table} WHERE lower(email) = lower(?)", (email,)
         ).fetchone()
         if row and row["id"] != except_id:
             return True
@@ -138,7 +138,7 @@ def admin_technicians(admin_id: str = Depends(_admin)):
             "COALESCE(SUM(CASE WHEN t.status = 'resolved' THEN 1 ELSE 0 END), 0) AS resolved_count "
             "FROM staff s LEFT JOIN tickets t ON t.assigned_technician_id = s.staff_id "
             "WHERE s.role = 'technician' AND s.active = 1 "
-            "GROUP BY s.staff_id, s.name, s.email ORDER BY s.name COLLATE NOCASE"
+            "GROUP BY s.staff_id, s.name, s.email ORDER BY lower(s.name)"
         )]
     finally:
         conn.close()
@@ -210,7 +210,7 @@ def _staff_rows(conn, staff_id: str | None = None) -> list[dict]:
         "s.department_id, d.name AS department_name FROM staff s "
         "LEFT JOIN departments d ON d.department_id = s.department_id "
         + ("WHERE s.staff_id = ? " if staff_id else "")
-        + "ORDER BY s.role, s.name COLLATE NOCASE",
+        + "ORDER BY s.role, lower(s.name)",
         (staff_id,) if staff_id else (),
     ).fetchall()
     return [
@@ -369,7 +369,7 @@ def _customer_rows(conn, where: str = "", params: tuple = ()) -> list[dict]:
         "SELECT c.customer_id, c.name, c.email, c.active, c.must_change_password, "
         "(SELECT COUNT(*) FROM tickets t WHERE t.customer_id = c.customer_id) AS ticket_count, "
         "(SELECT COUNT(*) FROM chat_sessions s WHERE s.customer_id = c.customer_id) AS chat_count "
-        f"FROM customers c {where} ORDER BY c.name COLLATE NOCASE LIMIT 500",
+        f"FROM customers c {where} ORDER BY lower(c.name) LIMIT 500",
         params,
     ).fetchall()
     return [
@@ -392,7 +392,8 @@ def admin_list_customers(q: str | None = Query(default=None, max_length=200),
     try:
         if q and q.strip():
             like = f"%{q.strip()}%"
-            return _customer_rows(conn, "WHERE c.name LIKE ? OR c.email LIKE ? OR c.customer_id LIKE ?",
+            return _customer_rows(conn, "WHERE lower(c.name) LIKE lower(?) OR lower(c.email) LIKE lower(?) "
+                                  "OR lower(c.customer_id) LIKE lower(?)",
                                   (like, like, like))
         return _customer_rows(conn)
     finally:
@@ -497,7 +498,7 @@ def admin_reset_customer_password(customer_id: str, body: ResetPasswordRequest,
 def department_rows(conn, where: str = "", params: tuple = ()) -> list[dict]:
     departments = []
     for row in conn.execute(
-        f"SELECT department_id, name, categories FROM departments {where} ORDER BY name COLLATE NOCASE",
+        f"SELECT department_id, name, categories FROM departments {where} ORDER BY lower(name)",
         params,
     ):
         dept = dict(row)
@@ -520,7 +521,7 @@ def _validate_department(conn, body: DepartmentRequest, department_id: str | Non
     if invalid:
         raise HTTPException(status_code=400, detail=f"Unknown category: {', '.join(invalid)}")
     clash = conn.execute(
-        "SELECT 1 FROM departments WHERE name = ? COLLATE NOCASE AND department_id != ?",
+        "SELECT 1 FROM departments WHERE lower(name) = lower(?) AND department_id != ?",
         (body.name.strip(), department_id or ""),
     ).fetchone()
     if clash:
@@ -676,7 +677,7 @@ def admin_audit_log(
             clauses.append(f"{column} = ?")
             params.append(value)
     if action:
-        clauses.append("action LIKE ?")
+        clauses.append("lower(action) LIKE lower(?)")
         params.append(f"{action}%")
     if since:
         clauses.append("at >= ?")

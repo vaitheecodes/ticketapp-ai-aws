@@ -185,7 +185,7 @@ def post_update(conn, incident_id: str, ticket, text: str) -> str:
 def _deliver(conn, incident_id: str, ticket_id: str, text: str, mark_resolved: bool,
              actor: str, outbox: Outbox) -> str:
     """One ticket, one transaction. Returns 'sent', 'skipped' or 'failed'."""
-    conn.execute("BEGIN IMMEDIATE")
+    db.begin_write(conn, f"incident-delivery:{incident_id}:{ticket_id}")
     try:
         done = conn.execute(
             "SELECT 1 FROM incident_deliveries WHERE incident_id = ? AND ticket_id = ? AND status = 'sent'",

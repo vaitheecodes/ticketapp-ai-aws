@@ -140,8 +140,10 @@ def _list_rows(conn, where: str, order: str, params: dict, *, q=None, priority=N
     clauses = ["t.route = 'human'", where]
     if q:
         clauses.append(
-            "(t.ticket_id LIKE :q OR t.subject LIKE :q OR t.ticket_text LIKE :q "
-            "OR c.name LIKE :q OR c.email LIKE :q)"
+            # lower() on both sides: case-insensitive on SQLite and Postgres alike.
+            "(lower(t.ticket_id) LIKE lower(:q) OR lower(t.subject) LIKE lower(:q) "
+            "OR lower(t.ticket_text) LIKE lower(:q) OR lower(c.name) LIKE lower(:q) "
+            "OR lower(c.email) LIKE lower(:q))"
         )
         params["q"] = f"%{q.strip()}%"
     if priority:
@@ -316,7 +318,7 @@ def claim_ticket(ticket_id: str, technician_id: str = Depends(auth.get_current_t
     two simultaneous claims exactly one succeeds; the other gets 409."""
     conn = db.get_connection()
     try:
-        conn.execute("BEGIN IMMEDIATE")
+        db.begin_write(conn, f"ticket-claim:{ticket_id}")
         claimed = conn.execute(
             "UPDATE tickets SET assigned_technician_id = ? WHERE ticket_id = ? "
             "AND assigned_technician_id IS NULL AND route = 'human' "
@@ -428,7 +430,7 @@ def manager_overview(manager_id: str = Depends(auth.get_current_manager)):
                 "FROM staff s LEFT JOIN tickets t ON t.assigned_technician_id = s.staff_id "
                 f"AND t.route = 'human' AND {in_scope} "
                 "WHERE s.role = 'technician' AND s.active = 1 "
-                "GROUP BY s.staff_id, s.name ORDER BY s.name COLLATE NOCASE",
+                "GROUP BY s.staff_id, s.name ORDER BY lower(s.name)",
                 params,
             )
         ]

@@ -378,6 +378,15 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def begin_write(conn, lock_key: str | None = None) -> None:
+    """Start a write transaction that serialises with other writers.
+    SQLite: BEGIN IMMEDIATE takes the database write lock now (not at the
+    first write), so a check-then-write can't race another request.
+    `lock_key` names what is being protected; backends with finer-grained
+    locks use it (see db_postgres)."""
+    conn.execute("BEGIN IMMEDIATE")
+
+
 def _table_exists(conn, name: str) -> bool:
     return conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)

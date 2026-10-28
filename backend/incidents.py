@@ -141,8 +141,9 @@ def _embeddings(conn, tickets) -> dict[str, list[float]] | None:
         for (ticket_id, digest, _), vector in zip(missing, fresh):
             vectors[ticket_id] = vector
             conn.execute(
-                "INSERT OR REPLACE INTO ticket_embeddings (ticket_id, model, text_hash, vector) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO ticket_embeddings (ticket_id, model, text_hash, vector) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT (ticket_id) DO UPDATE SET model = excluded.model, "
+                "text_hash = excluded.text_hash, vector = excluded.vector",
                 (ticket_id, model, digest, json.dumps(vector)),
             )
     return vectors
@@ -254,8 +255,8 @@ def _route(conn, incident_id: str, judgement: CorrelationJudgement, tickets, by_
         proposed |= {by_name[name] for name in judgement.candidate_departments if name in by_name}
     for department_id in proposed:
         conn.execute(
-            "INSERT OR IGNORE INTO incident_departments (incident_id, department_id, source, confirmed) "
-            "VALUES (?, ?, 'ai', 0)",
+            "INSERT INTO incident_departments (incident_id, department_id, source, confirmed) "
+            "VALUES (?, ?, 'ai', 0) ON CONFLICT DO NOTHING",
             (incident_id, department_id),
         )
     _refresh_needs_routing(conn, incident_id)
@@ -287,7 +288,7 @@ def _process_group(conn, tickets, cfg) -> str | None:
     # Serialise writers: a concurrent run must see this cluster, not
     # create a second one for the same event.
     conn.commit()
-    conn.execute("BEGIN IMMEDIATE")
+    db.begin_write(conn, "incident-clusters")
     try:
         existing = _open_cluster_for(conn, related)
         stamp = now()
@@ -309,7 +310,8 @@ def _process_group(conn, tickets, cfg) -> str | None:
                 (incident_id, narrative["title"], category, summary, judgement.confidence, stamp, stamp),
             )
         conn.executemany(
-            "INSERT OR IGNORE INTO incident_tickets (incident_id, ticket_id, added_at) VALUES (?, ?, ?)",
+            "INSERT INTO incident_tickets (incident_id, ticket_id, added_at) VALUES (?, ?, ?) "
+            "ON CONFLICT DO NOTHING",
             [(incident_id, tid, stamp) for tid in sorted(related)],
         )
         _route(conn, incident_id, judgement, tickets, by_name, owner_of, cfg)
@@ -550,7 +552,7 @@ def incident_detail(incident_id: str, user: dict = Depends(_viewer)):
             ),
             "technicians": [dict(r) for r in conn.execute(
                 "SELECT staff_id, name FROM staff WHERE role = 'technician' AND active = 1 "
-                "ORDER BY name COLLATE NOCASE")] if staff_view else [],
+                "ORDER BY lower(name)")] if staff_view else [],
             "resolution": {
                 "resolution_note": cluster["resolution_note"],
                 "root_cause": cluster["root_cause"],
