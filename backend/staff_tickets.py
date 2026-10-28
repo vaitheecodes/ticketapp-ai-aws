@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from backend import audit, auth, chats, db, incidents
 from backend import ticket_lifecycle as lifecycle
+from backend.repositories import tickets as tickets_repo
 from backend.conversation import (
     ESCALATION_MARKER,
     Outbox,
@@ -313,19 +314,11 @@ def staff_ticket_detail(ticket_id: str, user: dict = Depends(_current_staff)):
 
 @router.post("/api/staff/tickets/{ticket_id}/claim")
 def claim_ticket(ticket_id: str, technician_id: str = Depends(auth.get_current_technician)):
-    """Take an unassigned ticket. BEGIN IMMEDIATE serialises writers and
-    the UPDATE only matches while the ticket is still unassigned, so of
-    two simultaneous claims exactly one succeeds; the other gets 409."""
+    """Take an unassigned ticket. Of simultaneous claims exactly one
+    succeeds (repositories.tickets.claim); the others get 409."""
     conn = db.get_connection()
     try:
-        db.begin_write(conn, f"ticket-claim:{ticket_id}")
-        claimed = conn.execute(
-            "UPDATE tickets SET assigned_technician_id = ? WHERE ticket_id = ? "
-            "AND assigned_technician_id IS NULL AND route = 'human' "
-            "AND status NOT IN ('resolved', 'closed')",
-            (technician_id, ticket_id),
-        ).rowcount
-        if not claimed:
+        if not tickets_repo.claim(conn, ticket_id, technician_id):
             ticket = conn.execute(
                 "SELECT route, assigned_technician_id FROM tickets WHERE ticket_id = ?", (ticket_id,)
             ).fetchone()

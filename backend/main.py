@@ -23,6 +23,7 @@ from backend import admin, app_settings, auth, chats, db, email_utils, graph, ha
 from backend import db_postgres, incident_memory, incident_resolution, runtime, staff_tickets
 from backend.ai_service import backends as ai_backends
 from backend import ticket_lifecycle as lifecycle
+from backend.repositories import messages as messages_repo
 from backend.conversation import ESCALATION_MARKER as _ESCALATION_MARKER
 from backend.conversation import Outbox as _Outbox
 from backend.conversation import customer_row as _customer_row
@@ -227,12 +228,7 @@ def _last_ai_message(conn, ticket_id: str) -> str | None:
 def _transcript_for(conn, ticket_id: str) -> str:
     """The public conversation, for AI prompts: internal notes and system
     events never reach the model."""
-    rows = conn.execute(
-        "SELECT sender, message FROM ticket_messages WHERE ticket_id = ? "
-        "AND visibility = 'public_reply' ORDER BY created_at ASC, rowid ASC",
-        (ticket_id,),
-    ).fetchall()
-    return _build_transcript([dict(row) for row in rows])
+    return _build_transcript([dict(row) for row in messages_repo.public_replies(conn, ticket_id)])
 
 
 def _load_ticket(conn, ticket_id: str):
@@ -583,11 +579,7 @@ def ticket_detail(ticket_id: str, customer_id: str = Depends(auth.get_current_cu
             _thread_message(row, customer_name, staff_names, attachments.get(row["message_id"], []))
             # Internal notes and staff-only events are filtered here, in the
             # query: they never leave the database on a customer request.
-            for row in conn.execute(
-                "SELECT * FROM ticket_messages WHERE ticket_id = ? "
-                f"AND {db.CUSTOMER_VISIBLE_SQL} ORDER BY created_at ASC, rowid ASC",
-                (ticket_id,),
-            )
+            for row in messages_repo.customer_thread(conn, ticket_id)
         ]
         chat = None
         if ticket["chat_session_id"]:
