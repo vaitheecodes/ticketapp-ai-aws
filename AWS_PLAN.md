@@ -10,7 +10,7 @@ Catalyst-specific code (QuickML-on-AppSail provider, AppSail build,
 | Concern | Today (Catalyst branch) | AWS target | Status |
 |---|---|---|---|
 | AI provider | `quickml_appsail` (GLM on QuickML), `mock` locally | **Amazon Bedrock** provider (`AI_PROVIDER=bedrock`, Converse API) behind the existing `backend/ai_service` interface (same validation, retry and fail-safe rules) | Built (A1); model quality open, see below |
-| Attachments | Local disk (`db.uploads_dir()`) | **Amazon S3** behind a storage interface; private bucket, authorised download endpoint only (no public links) | Planned |
+| Attachments | Local disk (`db.uploads_dir()`) | **Amazon S3** (`STORAGE_BACKEND=s3`) behind a storage interface; private bucket, authorised download endpoint only (no public links) | Built (A3); round trip verified against the real bucket |
 | Database | SQLite | **RDS for PostgreSQL** (`DB_BACKEND=postgres`) | Built and tested locally on PostgreSQL 18 (A2); no RDS instance yet |
 | Backend host | AppSail | **Decide later** (e.g. App Runner, ECS Fargate, Lambda) | Open |
 | Frontend host | Slate (planned) | **Decide later** (e.g. S3 + CloudFront, Amplify) | Open |
@@ -37,7 +37,8 @@ Catalyst-specific code (QuickML-on-AppSail provider, AppSail build,
 - IAM user `ticketapp-dev` (CLI profile `ticketapp`), policy
   `ticketapp-dev-policy`: Bedrock list/invoke, the attachments bucket.
 - Private bucket `ticketapp-ai-attachments-<account id>` in `ap-south-1`:
-  public access blocked, default encryption on. Not used by the app yet.
+  public access blocked, default encryption on. Used by `STORAGE_BACKEND=s3`
+  (objects under `attachments/`).
 
 ## Stage A1: Bedrock provider (Oct 2026)
 
@@ -112,3 +113,23 @@ No AWS resources were created. `DB_BACKEND=postgres` selects
   CA); keep the password in Secrets Manager; run `scripts/db_migrate.py`
   as a deploy step.
 
+## Stage A3: attachments on S3 (Oct 2026)
+
+`backend/storage.py`: `local` (default) or `s3`, selected by
+`STORAGE_BACKEND`. Settings `S3_BUCKET`, `S3_PREFIX` (`attachments/`),
+`AWS_REGION`; credentials from the default AWS chain only.
+
+- Same validation as before, run before anything is stored; a failed
+  upload deletes what it put and rolls back the rows.
+- Only metadata in the database. Objects written with SSE-S3 (AES256).
+- Downloads only through the authorised endpoint, which streams the bytes
+  after the access check. **No presigned URLs**: nothing to leak, and the
+  10 MB limit keeps streaming through the app cheap.
+- S3 errors map to our own messages and a 503; AWS error text is never
+  logged.
+- Tests use a fake S3 client. `scripts/s3_storage_check.py --yes` was run
+  once against the real bucket (29 Oct 2026): put/get/delete of a 35-byte
+  object, about 1.1 s in total; nothing left in the bucket.
+- For the deployed role: `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`
+  on `arn:aws:s3:::<bucket>/attachments/*` only (the CLI user's policy is
+  broader: the whole bucket).

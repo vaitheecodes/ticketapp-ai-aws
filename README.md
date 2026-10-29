@@ -148,7 +148,9 @@ deploy steps are in [docs/appsail-deploy.md](docs/appsail-deploy.md).
 | `APP_ENV` | `development` | `production` requires `ADMIN_*` and skips demo staff |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | — | The single admin, created once if no admin exists (never overwritten) |
 | `DB_BACKEND` | `sqlite` | `sqlite` or `postgres` (see Database and migrations) |
-| `DB_PATH` | `backend/ticketapp.db` | SQLite file; attachments go to `uploads/` beside it (on both backends, for now) |
+| `DB_PATH` | `backend/ticketapp.db` | SQLite file; local attachments go to `uploads/` beside it |
+| `STORAGE_BACKEND` | `local` | Attachment bytes: `local` (disk) or `s3` |
+| `S3_BUCKET`, `S3_PREFIX` | —, `attachments/` | Private bucket and key prefix for `STORAGE_BACKEND=s3`; credentials from the default AWS chain only |
 | `DATABASE_URL`, or `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` `DB_SSLMODE` | — | Postgres connection (never logged; only host:port/db appears in logs) |
 | `DB_POOL_MAX`, `DB_POOL_MIN`, `DB_POOL_TIMEOUT` | 10, 1, 10 s | Postgres pool size and how long a request waits for a connection before a 503 |
 | `ALLOWED_ORIGINS` | localhost dev ports | CORS origins, comma-separated |
@@ -225,6 +227,24 @@ DB_BACKEND=postgres TEST_DATABASE_URL=postgresql://ticketapp:ticketapp-local-tes
 
 The password exists only for that loopback test server.
 `docker-compose.yml` is the same setup for Docker (unverified).
+
+## Attachments
+
+Customers attach up to 5 files per message (10 MB each; PNG, JPG, PDF,
+TXT, LOG, with the contents checked against the extension). The database
+keeps only metadata and a random `stored_name`; the bytes go to
+`backend/storage.py`:
+
+- `STORAGE_BACKEND=local` (default): `<DB_PATH parent>/uploads`.
+- `STORAGE_BACKEND=s3`: a private bucket (`S3_BUCKET`, objects under
+  `S3_PREFIX`, server-side encrypted), with credentials from the default
+  AWS chain (`AWS_PROFILE` locally, the IAM role when deployed).
+
+Downloads are only through `GET /api/tickets/{id}/attachments/{id}`: the
+customer of that ticket (only from messages they can see), staff or the
+admin. The app checks access, then streams the bytes itself; no public or
+presigned URL is ever created. `scripts/s3_storage_check.py --yes` does a
+real put/get/delete round trip against the bucket.
 
 ## AI configuration
 
@@ -355,6 +375,7 @@ tests script the model's replies). Highlights:
 | `test_chat_sessions.py`, `test_chat_followup_gates.py`, `test_handoff_escalation.py` | chat resolution vs escalation, AI-failure handling, review records, migration |
 | `test_ticket_workspace.py` | claim race, public vs internal visibility, history, manager scope |
 | `test_ai_service.py` | schema validation and retry, provider failure, injection containment, no secrets in logs |
+| `test_storage_s3.py` | S3 attachments with a fake client: only metadata in the DB, validation before any upload, cleanup on failure, downloads only through the authorised endpoint (no links), S3 errors → 503 without AWS text, bad settings stop startup |
 | `test_postgres_backend.py` | SQL translation, rows, settings never leak the password, 20 concurrent claims with exactly one winner (SQLite and Postgres), more chat turns than pool connections without deadlock, exhausted pool answers 503 |
 | `test_ai_providers.py`, `test_bedrock_provider.py` | each provider's request, response parsing, retry note, error mapping (never retried, nothing secret logged), AI failure changes nothing; boto3 is always faked |
 | `test_incidents.py` | clustering, time window, pre-filters, dedupe, routing, review, banner |
@@ -395,7 +416,8 @@ and clicking through each portal in a browser at desktop and phone widths.
   correlation runs as an in-process background task. Postgres removes the
   single-file limit, but several workers would each keep their own
   settings cache until it's refreshed.
-- **Attachments are on local disk** on both backends (S3 is planned).
+- **Attachments on S3 are read into memory** to stream them (fine at the
+  10 MB limit). No lifecycle rule or virus scan yet.
 - **The negation rule is broad.** Any "no"/"not" sends a message to a
   person, so most long ticket descriptions skip the AI. Admins can turn
   it off in Settings.
