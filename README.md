@@ -147,7 +147,10 @@ deploy steps are in [docs/appsail-deploy.md](docs/appsail-deploy.md).
 | `JWT_SECRET` | dev value | Signs session tokens; use a long random value in production |
 | `APP_ENV` | `development` | `production` requires `ADMIN_*` and skips demo staff |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | — | The single admin, created once if no admin exists (never overwritten) |
-| `DB_PATH` | `backend/ticketapp.db` | SQLite file; attachments go to `uploads/` beside it |
+| `DB_BACKEND` | `sqlite` | `sqlite` or `postgres` (see Database and migrations) |
+| `DB_PATH` | `backend/ticketapp.db` | SQLite file; attachments go to `uploads/` beside it (on both backends, for now) |
+| `DATABASE_URL`, or `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` `DB_SSLMODE` | — | Postgres connection (never logged; only host:port/db appears in logs) |
+| `DB_POOL_MAX`, `DB_POOL_MIN`, `DB_POOL_TIMEOUT` | 10, 1, 10 s | Postgres pool size and how long a request waits for a connection before a 503 |
 | `ALLOWED_ORIGINS` | localhost dev ports | CORS origins, comma-separated |
 | `INCIDENT_WINDOW_HOURS` | 12 | Reports considered together |
 | `INCIDENT_MIN_TICKETS` | 3 | Group size before asking the AI (from 2+ customers) |
@@ -164,9 +167,12 @@ saved values win.
 
 ## Database and migrations
 
-SQLite, created and migrated by `db.init_db()` on every startup — no
-separate migration step. Migrations are in place and non-destructive
-(columns added, data moved, never dropped), and safe to run repeatedly:
+`DB_BACKEND` picks the database; both take the same SQL.
+
+**SQLite** (default; local runs and the test suite): created and migrated
+by `db.init_db()` on every startup — no separate migration step.
+Migrations are in place and non-destructive (columns added, data moved,
+never dropped), and safe to run repeatedly:
 
 - legacy `agents` → `staff` (technicians), `assigned_agent_id` →
   `assigned_technician_id`
@@ -185,6 +191,40 @@ Main tables: `customers`, `staff`, `admins`, `departments`, `tickets`,
 `incident_departments`, `incident_reviews`, `incident_deliveries`,
 `incident_memory`, `audit_events`,
 `app_settings`. Schema and comments: `backend/db.py`.
+
+**PostgreSQL** (`DB_BACKEND=postgres`, for RDS): `backend/db_postgres.py`.
+- Schema as versioned files in `migrations/postgres/` (`0001_initial.sql`
+  matches the SQLite schema above), applied at startup or ahead of a
+  deploy with `scripts/db_migrate.py [--status]`, under an advisory lock
+  so several instances can start at once. Adds CHECKs on status columns
+  and case-insensitive unique emails and department names (the app
+  already enforced both). The SQLite legacy migrations aren't needed: a
+  new database has no old rows.
+- The existing SQL runs unchanged: placeholders are translated, rows act
+  like `sqlite3.Row`, timestamps come back as the same ISO-8601 UTC
+  strings, flags stay 0/1, JSON stays text.
+- Connection pool with an explicit size and wait timeout; a full pool or
+  an unreachable database answers **503** (`Retry-After: 2`) instead of
+  hanging. No request holds a connection while the AI works (1-10 s):
+  chat turns, ticket follow-ups and escalations read and commit, call the
+  model, then re-check and write.
+- Ticket claim (`repositories/tickets.py`): `UPDATE ... WHERE
+  assigned_technician_id IS NULL ... RETURNING`; of concurrent claims
+  exactly one wins. Writers that used SQLite's `BEGIN IMMEDIATE` take a
+  transaction-scoped advisory lock.
+
+Local Postgres for the tests (Homebrew, no Docker; data in `.local/`):
+
+```bash
+scripts/pg_local.sh start
+```
+
+```bash
+DB_BACKEND=postgres TEST_DATABASE_URL=postgresql://ticketapp:ticketapp-local-test-only@127.0.0.1:5433/ticketapp_test pytest
+```
+
+The password exists only for that loopback test server.
+`docker-compose.yml` is the same setup for Docker (unverified).
 
 ## AI configuration
 
@@ -297,6 +337,13 @@ pytest tests/
 cd frontend && npm run build && npm run lint
 ```
 
+By default the suite runs on SQLite. With `DB_BACKEND=postgres` and
+`TEST_DATABASE_URL` (a database whose name ends in `_test`; every table
+is truncated before each test) the same suite runs on Postgres; if that
+database isn't reachable the tests are skipped with the reason.
+`TEST_DB_POOL_MAX=1` makes a Postgres run fail on any code that holds a
+connection while asking for another.
+
 The pytest suite covers the data pipeline and the help desk; tests never
 call the real AI provider (`tests/conftest.py` disables it; individual
 tests script the model's replies). Highlights:
@@ -308,6 +355,7 @@ tests script the model's replies). Highlights:
 | `test_chat_sessions.py`, `test_chat_followup_gates.py`, `test_handoff_escalation.py` | chat resolution vs escalation, AI-failure handling, review records, migration |
 | `test_ticket_workspace.py` | claim race, public vs internal visibility, history, manager scope |
 | `test_ai_service.py` | schema validation and retry, provider failure, injection containment, no secrets in logs |
+| `test_postgres_backend.py` | SQL translation, rows, settings never leak the password, 20 concurrent claims with exactly one winner (SQLite and Postgres), more chat turns than pool connections without deadlock, exhausted pool answers 503 |
 | `test_ai_providers.py`, `test_bedrock_provider.py` | each provider's request, response parsing, retry note, error mapping (never retried, nothing secret logged), AI failure changes nothing; boto3 is always faked |
 | `test_incidents.py` | clustering, time window, pre-filters, dedupe, routing, review, banner |
 | `test_incident_resolution.py` | resolve only when confirmed, facts-only draft (invented times/causes rejected), idempotent fan-out, per-ticket failure isolation, email gate, "was there an outage?" answers (linked / unlinked / public / expired, no cross-customer leakage), AI failure sends nothing |
@@ -343,10 +391,11 @@ and clicking through each portal in a browser at desktop and phone widths.
 
 ## Known limitations
 
-- **SQLite, one process.** Settings are cached per process, and incident
-  correlation runs as an in-process background task. Fine for the
-  single-process App Service setup, but needs work for several workers or
-  heavy load.
+- **One process.** Settings are cached per process, and incident
+  correlation runs as an in-process background task. Postgres removes the
+  single-file limit, but several workers would each keep their own
+  settings cache until it's refreshed.
+- **Attachments are on local disk** on both backends (S3 is planned).
 - **The negation rule is broad.** Any "no"/"not" sends a message to a
   person, so most long ticket descriptions skip the AI. Admins can turn
   it off in Settings.

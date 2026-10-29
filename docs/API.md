@@ -11,7 +11,10 @@ and forced password changes apply immediately. Errors use FastAPI's
 `{"detail": "..."}` shape with these statuses: `401` not signed in,
 `403` wrong role / not yours / password change required / deactivated,
 `404` not found, `409` conflict (e.g. a ticket already claimed), `422`
-invalid input, `503` AI provider unavailable (simulator only).
+invalid input, `503` AI provider unavailable (simulator only), or, on any
+endpoint, the database is busy or unreachable (`Retry-After: 2`; with
+`DB_BACKEND=postgres`, when no pooled connection frees up within
+`DB_POOL_TIMEOUT`).
 
 Roles: **C** customer · **T** technician · **M** manager · **A** admin ·
 **public** no token.

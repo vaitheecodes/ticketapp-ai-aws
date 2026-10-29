@@ -11,7 +11,7 @@ Catalyst-specific code (QuickML-on-AppSail provider, AppSail build,
 |---|---|---|---|
 | AI provider | `quickml_appsail` (GLM on QuickML), `mock` locally | **Amazon Bedrock** provider (`AI_PROVIDER=bedrock`, Converse API) behind the existing `backend/ai_service` interface (same validation, retry and fail-safe rules) | Built (A1); model quality open, see below |
 | Attachments | Local disk (`db.uploads_dir()`) | **Amazon S3** behind a storage interface; private bucket, authorised download endpoint only (no public links) | Planned |
-| Database | SQLite | Hosted database: **RDS PostgreSQL or DynamoDB** | **Decide later** (atomic ticket claim is the hard requirement) |
+| Database | SQLite | **RDS for PostgreSQL** (`DB_BACKEND=postgres`) | Built and tested locally on PostgreSQL 18 (A2); no RDS instance yet |
 | Backend host | AppSail | **Decide later** (e.g. App Runner, ECS Fargate, Lambda) | Open |
 | Frontend host | Slate (planned) | **Decide later** (e.g. S3 + CloudFront, Amplify) | Open |
 
@@ -26,7 +26,8 @@ Catalyst-specific code (QuickML-on-AppSail provider, AppSail build,
 
 ## Open decisions (ask before implementing)
 
-1. Database: RDS PostgreSQL vs DynamoDB.
+1. Database: RDS PostgreSQL (chosen in A2). Still open: instance size,
+   Multi-AZ, and RDS Proxy vs the app's own pool.
 2. Backend and frontend hosting.
 3. Bedrock model: Nova Lite for now (see stage A1); revisit after
    reviewing real outputs.
@@ -83,3 +84,31 @@ Decision: keep `BEDROCK_MODEL_ID` = Nova Lite as the single default.
 A per-task model setting (e.g. a stronger model only for incident
 correlation / summaries) is an option if a review of real outputs shows
 Lite's wording is weaker; not built.
+
+## Stage A2: SQLite -> PostgreSQL (Oct 2026)
+
+No AWS resources were created. `DB_BACKEND=postgres` selects
+`backend/db_postgres.py`; SQLite stays the default.
+
+- **Version:** RDS supports PostgreSQL 14-18 (AWS release calendar; 18.6
+  is the newest minor). Tested on Homebrew **PostgreSQL 18.3**, the same
+  major. Availability in ap-south-1 wasn't checked from the CLI (the
+  `ticketapp` user has no `rds:Describe*` permission).
+- **Library:** psycopg 3 + psycopg_pool (SQLAlchemy would mean rewriting
+  the hand-written SQL for no gain).
+- **Approach:** an adapter runs the existing SQL on Postgres; targeted
+  repositories for the claim, account lookup and customer-visible
+  threads. Migrations: `migrations/postgres/`, `scripts/db_migrate.py`.
+- **Pool safety:** DB_POOL_MAX (10) and DB_POOL_TIMEOUT (10 s); 503 when
+  exhausted. No connection is held during AI calls, except one case:
+  with an embeddings model configured, incident correlation embeds new
+  tickets while its read connection is open (Bedrock has no embeddings
+  configured, so it doesn't happen today).
+- **Concurrency:** 20 simultaneous claims of one ticket -> exactly one
+  winner, on SQLite and Postgres. 8 chat turns through a 2-connection
+  pool all finish.
+- **Before RDS:** pick DB_POOL_MAX x instances below the instance's
+  max_connections; use `DB_SSLMODE=require` (or verify-full with the RDS
+  CA); keep the password in Secrets Manager; run `scripts/db_migrate.py`
+  as a deploy step.
+
