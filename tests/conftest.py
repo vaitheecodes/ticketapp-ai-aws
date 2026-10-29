@@ -106,6 +106,12 @@ def _database_backend(request, monkeypatch):
     for name in ("DB_POOL_MAX", "DB_POOL_MIN", "DB_POOL_TIMEOUT", "DB_HOST", "DB_PORT", "DB_NAME",
                  "DB_USER", "DB_PASSWORD", "DB_SSLMODE"):
         monkeypatch.delenv(name, raising=False)
+    # Attachments on local disk unless a test picks S3 (with a fake client).
+    from backend import storage
+
+    for name in ("STORAGE_BACKEND", "S3_BUCKET", "S3_PREFIX"):
+        monkeypatch.delenv(name, raising=False)
+    storage.set_storage(None)
     if POSTGRES_RUN:
         request.getfixturevalue("_postgres_schema")
         monkeypatch.setenv("DB_BACKEND", "postgres")

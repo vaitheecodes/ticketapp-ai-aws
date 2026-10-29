@@ -13,14 +13,15 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
 from backend import admin, app_settings, auth, chats, db, email_utils, graph, handoff_signals, incidents
-from backend import db_postgres, incident_memory, incident_resolution, runtime, staff_tickets
+from backend import db_postgres, incident_memory, incident_resolution, runtime, staff_tickets, storage
 from backend.ai_service import backends as ai_backends
 from backend import ticket_lifecycle as lifecycle
 from backend.repositories import messages as messages_repo
@@ -106,6 +107,15 @@ def health() -> dict:
     return {"ok": True}
 
 
+@app.exception_handler(storage.StorageError)
+def storage_unavailable(request, exc):
+    """S3 unreachable or refusing: the message is ours (no AWS text)."""
+    logger.warning("Attachment storage unavailable: %s", exc)
+    return JSONResponse(status_code=503, content={"detail": "Attachments are unavailable right now. "
+                                                            "Please try again."},
+                        headers={"Retry-After": "5"})
+
+
 @app.exception_handler(db_postgres.DatabaseBusy)
 @app.exception_handler(db_postgres.DatabaseUnavailable)
 def database_unavailable(request, exc):
@@ -125,6 +135,10 @@ def on_shutdown() -> None:
 @app.on_event("startup")
 def on_startup() -> None:
     auth.check_production_config()
+    try:
+        storage.check_config()
+    except storage.StorageConfigError as exc:
+        raise auth.config_error(exc.variable, exc.problem) from None
     db.init_db()
     auth.ensure_admin()
     conn = db.get_connection()
@@ -888,7 +902,8 @@ def upload_attachments(
     """Attach files to one of the customer's own messages on their own
     ticket. All files are validated before any is written: at most 5 per
     message, 10 MB each, png/jpg/pdf/txt/log whose contents match the
-    extension. Stored under db.uploads_dir() with a random name."""
+    extension. Stored (backend/storage.py: local disk or S3) under a random
+    name; the database keeps only the metadata."""
     conn = db.get_connection()
     try:
         _customer_ticket_or_error(conn, ticket_id, customer_id)
@@ -930,16 +945,15 @@ def upload_attachments(
                 )
             validated.append((filename, ext, content_type, data))
 
-        directory = db.uploads_dir()
-        written: list[Path] = []
+        store = storage.get_storage()
+        written: list[str] = []
         created = []
         try:
             for filename, ext, content_type, data in validated:
                 attachment_id = f"ATT-{uuid.uuid4().hex[:12]}"
                 stored_name = f"{uuid.uuid4().hex}{ext}"
-                path = directory / stored_name
-                path.write_bytes(data)
-                written.append(path)
+                store.put(stored_name, data, content_type)
+                written.append(stored_name)
                 conn.execute(
                     "INSERT INTO attachments (attachment_id, ticket_id, message_id, filename, "
                     "stored_name, content_type, size_bytes, uploaded_by, created_at) "
@@ -954,8 +968,11 @@ def upload_attachments(
             conn.commit()
         except Exception:
             conn.rollback()
-            for path in written:
-                path.unlink(missing_ok=True)
+            for stored_name in written:
+                try:
+                    store.delete(stored_name)
+                except storage.StorageError:
+                    logger.warning("Could not remove an orphaned attachment after a failed upload")
             raise
         return created
     finally:
@@ -985,15 +1002,29 @@ def download_attachment(
         conn.close()
     if row is None:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    path = db.uploads_dir() / row["stored_name"]
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="Attachment file is missing")
-    return FileResponse(
-        path,
+    # The bytes are streamed from here after the access check above; the
+    # client never gets a storage link (no public or presigned URLs).
+    try:
+        data = storage.get_storage().read(row["stored_name"])
+    except storage.StorageNotFound:
+        raise HTTPException(status_code=404, detail="Attachment file is missing") from None
+    return Response(
+        content=data,
         media_type=row["content_type"],
-        filename=row["filename"],
-        headers={"X-Content-Type-Options": "nosniff"},
+        headers={
+            "Content-Disposition": _attachment_disposition(row["filename"]),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+        },
     )
+
+
+def _attachment_disposition(filename: str) -> str:
+    """Same header Starlette's FileResponse writes."""
+    quoted = quote(filename)
+    if quoted != filename:
+        return f"attachment; filename*=utf-8''{quoted}"
+    return f'attachment; filename="{filename}"'
 
 
 # ---------------------------------------------------------------------------
