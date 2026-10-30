@@ -343,6 +343,29 @@ BEDROCK_ERRORS = {
 TOOL_NAME_UNSAFE = re.compile(r"[^a-zA-Z0-9_-]")
 
 
+def converse_messages(turns) -> list[dict]:
+    """(role, text) turns -> a message list the Converse API accepts: no
+    blank text (rejected as a ValidationException), consecutive turns of
+    one role merged into one message (roles must alternate), and leading
+    assistant turns dropped (the first message must be from the user).
+    Raises BackendError if no user text is left."""
+    messages: list[dict] = []
+    for role, text in turns:
+        if role not in ("user", "assistant"):
+            raise BackendError(f"Unsupported message role {role!r}")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if not messages and role != "user":
+            continue
+        if messages and messages[-1]["role"] == role:
+            messages[-1]["content"].append({"text": text})
+        else:
+            messages.append({"role": role, "content": [{"text": text}]})
+    if not messages:
+        raise BackendError("Nothing to send to Bedrock: the request had no text")
+    return messages
+
+
 class BedrockBackend:
     """Amazon Bedrock Converse API via boto3. Credentials come from the
     default AWS chain only (AWS_PROFILE locally, the service role when
@@ -385,8 +408,10 @@ class BedrockBackend:
 
     @staticmethod
     def request(system_prompt, user_content, *, max_tokens, json_schema, extra_messages, model_id):
-        """Converse needs alternating roles, so correction notes are extra
-        text blocks in the one user turn.
+        """The whole prompt is one user turn: the conversation so far is
+        text inside the data blocks (never replayed as assistant turns),
+        and correction notes are extra text blocks in that turn.
+        converse_messages enforces the Converse rules either way.
 
         Structured output uses tool use: the operation's schema is the
         input schema of a single tool the model is forced to call. Asked
@@ -395,13 +420,14 @@ class BedrockBackend:
         itself) for 6 of 10 key prompts; validation and the retry stay as
         the backstop."""
         json_mode = json_schema is not None
-        blocks = [{"text": user_content}] + [{"text": note} for note in extra_messages]
+        messages = converse_messages([("user", user_content)] + [("user", note) for note in extra_messages])
+        blocks = messages[-1]["content"]
         request = {
             "modelId": model_id,
-            "messages": [{"role": "user", "content": blocks}],
+            "messages": messages,
             "inferenceConfig": {"maxTokens": max_tokens, "temperature": 0.0 if json_mode else 0.3},
         }
-        if system_prompt:
+        if system_prompt and system_prompt.strip():
             request["system"] = [{"text": system_prompt}]
         if json_mode and json_schema.get("properties"):
             name = TOOL_NAME_UNSAFE.sub("_", json_schema.get("title") or "")[:64] or "respond"
