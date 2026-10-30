@@ -6,10 +6,14 @@
 
 Email-format replies (ticket-type requests) are body-only from the model
 and wrapped here with the fixed greeting/closing/signature, so every
-email has the same frame.
+email has the same frame. Chat replies are a live conversation: no
+greeting, sign-off or signature, and clean_chat_reply removes any the
+model writes anyway.
 """
 
 from __future__ import annotations
+
+import re
 
 from backend import email_utils
 from backend.ai_service import provider
@@ -28,9 +32,60 @@ _EMAIL_BODY_NOTE = (
 )
 
 
+_CHAT_STYLE = (
+    "This is a live chat, not an email. Write the way a support engineer types "
+    "in chat: conversational, short (usually two to five sentences), straight to "
+    "the point. No greeting, no sign-off, no signature, no subject line. Never "
+    "write placeholder text in square brackets such as [Your Name] or [Customer "
+    "Name], and never sign with a name or team."
+)
+
+# Chat output filter. A greeting line: "Hello," / "Hi Dana!" / "Dear customer,".
+_GREETING_LINE = re.compile(
+    r"^\s*(hello|hi|hey|dear|greetings|good (morning|afternoon|evening))\b\s*,?"
+    r"(\s+[\w'.-]+){0,3}\s*[,!.:]?\s*$",
+    re.IGNORECASE)
+# A sign-off line; it and everything after it (the signature) is dropped.
+_SIGN_OFF_LINE = re.compile(
+    r"^\s*((best|kind|warm|warmest)( regards)?|regards|sincerely|cheers|"
+    r"thanks|thank you|many thanks|all the best)\s*[,!.]?\s*$",
+    re.IGNORECASE)
+# A signature line on its own: "Site24x7 Support Team", "Customer Support".
+_SIGNATURE_LINE = re.compile(
+    r"^\s*(the )?(site24x7 )?(customer )?(support|technical support|help ?desk)( team)?\s*$",
+    re.IGNORECASE)
+# [Your Name], [Customer's Name], [insert link]: words only, so a UI path
+# like [Admin > Monitors] or a markdown link [docs](url) is kept.
+_PLACEHOLDER = re.compile(r"\[[A-Za-z][A-Za-z' -]{0,40}\](?!\()")
+
+
+def clean_chat_reply(text: str) -> str:
+    """Strip greeting lines, the sign-off and signature, and [Placeholder]
+    text from a chat reply. A reply with nothing left (only placeholders
+    and pleasantries) is an AI failure."""
+    lines = _PLACEHOLDER.sub("", text).splitlines()
+    while lines and (not lines[0].strip() or _GREETING_LINE.match(lines[0])):
+        lines.pop(0)
+    for i, line in enumerate(lines):
+        if _SIGN_OFF_LINE.match(line) and i > 0:
+            lines = lines[:i]
+            break
+    while lines and (not lines[-1].strip() or _SIGNATURE_LINE.match(lines[-1])):
+        lines.pop()
+    cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(line.rstrip() for line in lines)).strip()
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    pleasantries = (_GREETING_LINE, _SIGN_OFF_LINE, _SIGNATURE_LINE)
+    if not any(re.search(r"[A-Za-z0-9]", line) and not any(p.match(line) for p in pleasantries)
+               for line in cleaned.splitlines()):
+        raise provider.AIError("AI chat reply was only placeholder text")
+    return cleaned
+
+
 def _frame(text: str, reply_format: str, customer_name: str | None) -> ChatReply:
     if reply_format == "email":
         text = email_utils.format_email_reply(customer_name, text)
+    else:
+        text = clean_chat_reply(text)
     return ChatReply(text=text)
 
 
@@ -43,11 +98,23 @@ def answer(data: AnswerInput) -> ChatReply:
         if data.continuation
         else ""
     )
+    if data.reply_format == "email":
+        role = (
+            "You are a helpful customer support agent for Site24x7 (an infrastructure "
+            "monitoring product). Write a clear, concise, friendly reply that resolves "
+            f"the customer's request.{continuation_note}{_EMAIL_BODY_NOTE}"
+        )
+    else:
+        role = (
+            "You are the Site24x7 support assistant (Site24x7 is an infrastructure "
+            "monitoring product), chatting live with a customer. "
+            f"{_CHAT_STYLE} Give numbered steps only when the customer has to do "
+            "something, and keep each step to one line. If the request is too vague "
+            "to answer well, ask exactly one short clarifying question instead of "
+            f"guessing.{continuation_note}"
+        )
     text = provider.complete_text(
-        "You are a helpful customer support agent for Site24x7 (an infrastructure "
-        "monitoring product). Write a clear, concise, friendly reply that resolves "
-        f"the customer's request.{continuation_note}"
-        f"{_EMAIL_BODY_NOTE if data.reply_format == 'email' else ''}\n\n"
+        f"{role}\n\n"
         "Base the answer on the kb_guidance block, personalised to the customer's "
         "own wording; don't contradict it. Use the order_record block as the only "
         "source of truth for order facts. If answering would need a specific fact "
@@ -92,7 +159,7 @@ def clarify(data: ClarifyInput) -> ChatReply:
         f"product) is too ambiguous to classify confidently. {grounding} Do not "
         "answer the ticket, do not ask a generic 'can you tell me more?', and do "
         "not assume details the customer hasn't given you."
-        f"{_EMAIL_BODY_NOTE if data.reply_format == 'email' else ''}",
+        f"{_EMAIL_BODY_NOTE if data.reply_format == 'email' else ' ' + _CHAT_STYLE}",
         {
             "best_guess": f"{data.category or 'unknown'} (confidence {data.confidence:.2f})",
             "candidate_topics": topics,

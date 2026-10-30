@@ -38,7 +38,7 @@ class _ScriptedModel:
         if "You classify support tickets" in system:
             self.calls.append("categorize")
             return json.dumps({"category": "SERVER_MONITORING", "confidence": 0.92})
-        if "helpful customer support agent" in system:
+        if "helpful customer support agent" in system or "Site24x7 support assistant" in system:
             self.calls.append("answer")
             return "Please restart the Site24x7 agent service and check that it can reach the data collector."
         if "Decide whether the customer's new message is a CONTINUATION" in system:
