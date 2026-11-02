@@ -31,7 +31,8 @@ NEW_ENTRIES_PATH = Path(__file__).resolve().parent.parent / "data" / "kb" / "new
 
 ID_PATTERN = re.compile(r"^KB-N\d{4}$")
 REQUIRED = ("kb_entry_id", "category", "intent", "questions", "status")
-OPTIONAL = ("example", "notes", "answer", "source_url", "area", "monitor_type", "handling", "collect")
+OPTIONAL = ("example", "notes", "answer", "source_url", "area", "monitor_type", "handling", "collect",
+            "reviewed_at", "retagged_at")
 STATUSES = ("draft", "approved")
 HANDLING = ("answer", "escalate_with_info")
 # Official Site24x7 documentation: the help site and the support knowledge base.

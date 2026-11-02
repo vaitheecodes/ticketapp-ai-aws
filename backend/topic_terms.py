@@ -103,7 +103,11 @@ def _merged() -> tuple[dict[str, re.Pattern], dict[str, set[str]]]:
     change."""
     registry = kb_registry.load()
     compiled = dict(_COMPILED)
+    built_in = {label.lower() for label in _COMPILED}
     for label, pattern in registry["terms"].items():
+        if label.lower() in built_in:
+            logger.warning("kb_registry: term %s repeats a built-in term; the built-in pattern is kept", label)
+            continue
         compiled[label] = re.compile(pattern, re.IGNORECASE)
     intents = {intent: set(labels) for intent, labels in INTENT_TERMS.items()}
     for intent, labels in registry["intent_terms"].items():

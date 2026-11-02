@@ -2,11 +2,15 @@
 data/kb/kb_registry.json.
 
 - categories: extra categories for KB entries, beyond the classifier's 17
-  (ai_service.schemas.CATEGORIES). They label KB entries only: the
+  (ai_service.schemas.CATEGORIES; repeating one of them, in any case, is
+  invalid). They label KB entries only: the
   classifier never returns them and routing never uses them, until they
   are added to the code (schemas.CATEGORIES, departments, frontend).
 - terms: extra specific terms (label -> regex matched case-insensitively
-  against the customer's own words), beyond topic_terms.TERMS.
+  against the customer's own words), beyond topic_terms.TERMS. A regex
+  must be non-empty and must not match an empty message (it would count
+  as "mentioned" in every message). A label that repeats a built-in term
+  is skipped by topic_terms (the built-in pattern stays).
 - intent_terms: which terms an approved entry's intent depends on
   (intent -> [labels]); an empty list registers the intent as generic.
   backend/topic_terms.py merges these with its built-in INTENT_TERMS.
@@ -36,8 +40,23 @@ def empty() -> dict:
     return {"categories": [], "terms": {}, "intent_terms": {}}
 
 
+def regex_problem(pattern) -> str | None:
+    """Why `pattern` can't be a term's regex (None: it can)."""
+    if not isinstance(pattern, str) or not pattern.strip():
+        return "is empty"
+    try:
+        compiled = re.compile(pattern, re.IGNORECASE)
+    except re.error:
+        return "is not a valid regex"
+    if compiled.search(""):
+        return "matches an empty message, so it would match every message"
+    return None
+
+
 def problems(data) -> list[str]:
     """What is wrong with a registry (empty list: valid)."""
+    from backend.ai_service.schemas import CATEGORIES  # lazy: no import cycle
+
     if not isinstance(data, dict):
         return ["registry must be a JSON object"]
     out = []
@@ -45,17 +64,28 @@ def problems(data) -> list[str]:
     if not isinstance(categories, list) or not all(isinstance(c, str) and CATEGORY_PATTERN.match(c)
                                                     for c in categories):
         out.append("categories must be a list of UPPER_SNAKE_CASE names")
+    else:
+        seen: set[str] = set()
+        for name in categories:
+            if name.upper() in CATEGORIES:
+                out.append(f"category {name} is already one of the 17 categories")
+            elif name.upper() in seen:
+                out.append(f"category {name} is listed twice")
+            seen.add(name.upper())
     terms = data.get("terms", {})
     if not isinstance(terms, dict):
         out.append("terms must be an object of label -> regex")
     else:
+        seen = set()
         for label, pattern in terms.items():
             if not LABEL_PATTERN.match(str(label)):
                 out.append(f"term label {label!r} is not a short plain label")
-            try:
-                re.compile(pattern)
-            except (re.error, TypeError):
-                out.append(f"term {label!r} has an invalid regex")
+            if str(label).lower() in seen:
+                out.append(f"term label {label!r} is listed twice")
+            seen.add(str(label).lower())
+            problem = regex_problem(pattern)
+            if problem:
+                out.append(f"term {label!r}: the regex {problem}")
     intent_terms = data.get("intent_terms", {})
     if not isinstance(intent_terms, dict):
         out.append("intent_terms must be an object of intent -> [labels]")
