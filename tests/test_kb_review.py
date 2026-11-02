@@ -357,3 +357,15 @@ def test_the_har_entry_is_approved_and_live():
     finally:
         kb_retrieval._load_index.cache_clear()
         topic_terms.reload()
+
+
+def test_the_ping_entry_is_retagged_to_ping():
+    data = json.loads(kb_new_entries.NEW_ENTRIES_PATH.read_text(encoding="utf-8"))
+    entry = next(e for e in data["entries"] if e["kb_entry_id"] == "KB-N0103")
+    assert entry["status"] == "approved" and entry["reviewed_at"] and entry["retagged_at"]
+    assert entry["category"] == "MONITORING"
+    topic_terms.reload()
+    assert topic_terms.intent_terms("ping_monitoring") == {"ping"}
+    candidate = {"intent": "ping_monitoring", "response": entry["answer"]}
+    assert topic_terms.missing_terms(candidate, "my monitor shows down") == {"ping"}
+    assert topic_terms.missing_terms(candidate, "my ping monitor shows down") == set()

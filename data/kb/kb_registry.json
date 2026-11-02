@@ -9,6 +9,8 @@
     "alert_sms_delivery": [],
     "agent_firewall_ports": [],
     "user_roles": [],
-    "ping_monitoring": []
+    "ping_monitoring": [
+      "ping"
+    ]
   }
 }
