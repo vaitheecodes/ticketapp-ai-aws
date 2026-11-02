@@ -59,8 +59,10 @@ _RESOLVED_REPLY = "Glad that's sorted. I've closed this chat — start a new one
 # ---------------------------------------------------------------------------
 class StartChatRequest(BaseModel):
     issue: str = Field(min_length=1, max_length=500)
-    # Shown back to the customer only; routing uses the classifier's own
-    # category so a customer can't pick their way past the high-risk bar.
+    # Shown back to the customer, and context for the AI's answer (it
+    # narrows the KB search for grounding). Never used to classify or
+    # route: routing uses the classifier's own category so a customer
+    # can't pick their way past the high-risk bar.
     category: str | None = None
     contact_name: str | None = Field(default=None, max_length=120)
 
@@ -179,6 +181,7 @@ def _pipeline_state(session, transcript: str, **extra) -> dict:
         "ticket_text": transcript,
         "reply_format": "chat",
         "customer_name": session["contact_name"],
+        "requested_category": session["requested_category"],
     }
     state.update(extra)
     return state

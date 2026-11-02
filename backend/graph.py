@@ -47,7 +47,7 @@ from typing import Literal, TypedDict
 from langgraph.graph import END, StateGraph
 from typing_extensions import NotRequired
 
-from backend import app_settings, db, kb_retrieval
+from backend import app_settings, db, kb_retrieval, topic_terms
 from backend.ai_service import categorize_ticket as categorize_op
 from backend.ai_service import chat_response
 from backend.ai_service.schemas import CATEGORIES as _CATEGORIES
@@ -136,6 +136,12 @@ class TicketState(TypedDict):
     # Absent/"chat" keeps the conversational chat reply.
     reply_format: NotRequired[Literal["chat", "email"]]
     customer_name: NotRequired[str]
+
+    # The category the customer picked when starting the chat or raising
+    # the ticket (optional). Context for the answer and a narrower KB
+    # search for its grounding only: never used to classify or route, so
+    # picking a category can't get a request past the high-risk bar.
+    requested_category: NotRequired[str | None]
 
     route: NotRequired[Literal["ai", "human", "clarify"]]
     route_reason: NotRequired[str]
@@ -253,10 +259,10 @@ def retrieve_kb_candidates(state: TicketState) -> dict:
     return {"kb_candidates": _kb_candidates_to_dicts(candidates)}
 
 
-def kb_candidates_for(text: str, top_k: int = 3) -> list[dict]:
+def kb_candidates_for(text: str, top_k: int = 3, category: str | None = None) -> list[dict]:
     """KB retrieval for arbitrary text (e.g. grounding a technician's
     suggested next steps in the hand-off brief)."""
-    return _kb_candidates_to_dicts(kb_retrieval.retrieve_candidates(text, top_k=top_k))
+    return _kb_candidates_to_dicts(kb_retrieval.retrieve_candidates(text, top_k=top_k, category=category))
 
 
 def retrieve_kb_candidates_for_continuation(transcript: str, top_k: int = 3) -> list[dict]:
@@ -307,6 +313,10 @@ def classify_ticket(state: TicketState) -> dict:
 
     category, confidence = llm_category, llm_confidence
     top = candidates[0] if candidates else None
+    # A match specific to something the customer never mentioned (e.g. a
+    # PagerDuty entry for "api error") is no evidence for its category.
+    if top and topic_terms.missing_terms(top, _customer_authored_text(state["ticket_text"])):
+        top = None
     if top and top["score"] >= kb_retrieval.STRONG_MATCH_SCORE:
         grounded_confidence = _kb_grounded_confidence(top["score"])
         if top["category"] == llm_category:
@@ -462,17 +472,62 @@ def _format_order_context(order_lookup: dict | None) -> str:
     )
 
 
+def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dict, set[str]]]]:
+    """The KB candidates an answer or clarifying question may rely on, and
+    the ones it may not: (usable, [(candidate, terms the customer hasn't
+    mentioned)]). With a customer-picked category the search is narrowed
+    to that category when it has a close match there, and an entry of the
+    picked category counts as confirmed (the customer chose that topic)."""
+    customer_text = _customer_authored_text(state["ticket_text"])
+    candidates = state.get("kb_candidates", [])
+    requested = state.get("requested_category")
+    if requested in CATEGORIES:
+        narrowed = kb_candidates_for(customer_text, category=requested)
+        if narrowed:
+            candidates = narrowed
+    usable, unconfirmed = [], []
+    for c in candidates:
+        missing = topic_terms.missing_terms(c, customer_text)
+        if missing and c["category"] != requested:
+            unconfirmed.append((c, missing))
+        else:
+            usable.append(c)
+    return usable, unconfirmed
+
+
+def _reply_context(state: TicketState) -> dict:
+    """What the answer and clarify prompts get beyond the transcript."""
+    usable, unconfirmed = grounding_candidates(state)
+    customer_text = _customer_authored_text(state["ticket_text"])
+    requested = state.get("requested_category")
+    types = topic_terms.monitor_types(customer_text, requested)
+    details = [f"Monitor type: {', '.join(types)} (stated by the customer)" if types
+               else "Monitor type: not stated yet"]
+    if requested:
+        details.append(f"Category the customer picked: {requested}")
+    return {
+        "kb_candidates": [KBCandidate(**c) for c in usable],
+        "unconfirmed_topics": [
+            f'[{c["category"]} / {c["intent"]}] "{c["instruction"]}": specific to '
+            f'{", ".join(sorted(missing))}, which the customer has not mentioned'
+            for c, missing in unconfirmed
+        ],
+        "customer_details": "\n".join(details),
+        "monitor_type_known": bool(types),
+    }
+
+
 def generate_response(state: TicketState) -> dict:
     reply = chat_response.answer(
         AnswerInput(
             ticket_text=state["ticket_text"],
             category=state.get("category"),
             history=_history(state),
-            kb_candidates=_candidates(state),
             order_context=_format_order_context(state.get("order_lookup")),
             continuation=bool(state.get("continuation")),
             reply_format=state.get("reply_format", "chat"),
             customer_name=state.get("customer_name"),
+            **_reply_context(state),
         )
     )
     return {"ai_response": reply.text}
@@ -490,9 +545,9 @@ def ask_clarifying_question(state: TicketState) -> dict:
             ticket_text=state["ticket_text"],
             category=state.get("category"),
             confidence=state.get("confidence", 0.0),
-            kb_candidates=_candidates(state),
             reply_format=state.get("reply_format", "chat"),
             customer_name=state.get("customer_name"),
+            **_reply_context(state),
         )
     )
     return {"ai_response": reply.text}

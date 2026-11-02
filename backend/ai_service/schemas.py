@@ -80,6 +80,13 @@ class AnswerInput(BaseModel):
     continuation: bool = False
     reply_format: Literal["chat", "email"] = "chat"
     customer_name: str | None = None
+    # Set by graph._reply_context: KB topics that matched words but are
+    # specific to something the customer hasn't mentioned (never grounding),
+    # what the customer has told us (monitor type, picked category), and
+    # whether the monitor type is known (chat filter's fallback question).
+    unconfirmed_topics: list[str] = []
+    customer_details: str = ""
+    monitor_type_known: bool = True
 
 
 class ClarifyInput(BaseModel):
@@ -89,6 +96,13 @@ class ClarifyInput(BaseModel):
     kb_candidates: list[KBCandidate] = []
     reply_format: Literal["chat", "email"] = "chat"
     customer_name: str | None = None
+    # Set by graph._reply_context: KB topics that matched words but are
+    # specific to something the customer hasn't mentioned (never grounding),
+    # what the customer has told us (monitor type, picked category), and
+    # whether the monitor type is known (chat filter's fallback question).
+    unconfirmed_topics: list[str] = []
+    customer_details: str = ""
+    monitor_type_known: bool = True
 
 
 class ChatReply(BaseModel):

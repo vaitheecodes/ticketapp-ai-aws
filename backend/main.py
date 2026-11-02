@@ -324,6 +324,7 @@ def _pipeline_state(ticket, ticket_text: str, customer_name: str, **extra) -> di
         "ticket_text": ticket_text,
         "reply_format": "email",
         "customer_name": customer_name,
+        "requested_category": ticket["requested_category"],
     }
     state.update(extra)
     return state
@@ -661,6 +662,7 @@ def tickets_create(
                 "ticket_text": ticket_text,
                 "reply_format": "email",
                 "customer_name": contact_name,
+                "requested_category": body.category,
             }
         )
     except Exception:  # noqa: BLE001 — any pipeline failure falls back to a human

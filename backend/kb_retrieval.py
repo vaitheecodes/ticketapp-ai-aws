@@ -162,9 +162,10 @@ class _KBIndex:
         tf = Counter(tokens)
         return Counter({t: c * self._idf.get(t, 1.0) for t, c in tf.items()})
 
-    def search(self, text: str, top_k: int = 3, min_score: float = 0.0) -> list[KBCandidate]:
+    def search(self, text: str, top_k: int = 3, min_score: float = 0.0,
+               category: str | None = None) -> list[KBCandidate]:
         """Up to top_k distinct topics scoring at least min_score, each as
-        its best-matching entry."""
+        its best-matching entry; only entries of `category` when given."""
         query_vec = self._vectorize(_tokenize(text))
         if not query_vec:
             return []
@@ -176,7 +177,7 @@ class _KBIndex:
         for entry, topic, doc_vec, doc_norm in zip(
             self.entries, self.topics, self._doc_vectors, self._doc_norms
         ):
-            if doc_norm == 0:
+            if doc_norm == 0 or (category is not None and entry.category != category):
                 continue
             dot = sum(w * doc_vec.get(t, 0.0) for t, w in query_vec.items())
             score = dot / (query_norm * doc_norm)
@@ -210,15 +211,16 @@ def _load_index() -> "_KBIndex | None":
     return build_index(entries + new.entries)
 
 
-def retrieve_candidates(ticket_text: str, top_k: int = 3,
-                        min_score: float | None = None) -> list[KBCandidate]:
+def retrieve_candidates(ticket_text: str, top_k: int = 3, min_score: float | None = None,
+                        category: str | None = None) -> list[KBCandidate]:
     """Top-k distinct KB topics (by TF-IDF cosine similarity) for
     `ticket_text`, none scoring below `min_score` (default KB_MIN_SCORE).
     Returns [] if data/kb/kb_entries.json hasn't been exported yet or
     nothing matches closely enough — callers must treat an empty list as
-    "no close KB match": no grounding, not an error."""
+    "no close KB match": no grounding, not an error. `category` limits the
+    search to that category's entries."""
     index = _load_index()
     if index is None:
         return []
     floor = kb_min_score() if min_score is None else min_score
-    return index.search(ticket_text, top_k=top_k, min_score=floor)
+    return index.search(ticket_text, top_k=top_k, min_score=floor, category=category)
