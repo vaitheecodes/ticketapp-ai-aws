@@ -28,9 +28,10 @@ EXISTING = [
                  "rights and enter the device key. The server appears under Server Monitors within minutes."},
 ]
 GOOD = {
-    "kb_entry_id": "KB-N0002", "category": "AGENT", "intent": "agent_installation",
+    "kb_entry_id": "KB-N0002", "status": "approved", "category": "AGENT", "intent": "agent_installation",
     "questions": ["my agent stopped reporting", "Agent not sending data", "agent offline"],
     "answer": "Test answer text that is long enough to pass the minimum length check.",
+    "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/linux-server-monitoring.html",
 }
 
 
@@ -58,7 +59,9 @@ def test_a_valid_entry_is_flattened_per_question():
 
 @pytest.mark.parametrize("changes, problem", [
     ({"kb_entry_id": None}, "missing required field 'kb_entry_id'"),
-    ({"answer": None}, "missing required field 'answer'"),
+    ({"answer": None}, "an approved entry needs an answer"),
+    ({"status": None}, "missing required field 'status'"),
+    ({"status": "published"}, 'status must be "draft" or "approved"'),
     ({"questions": None}, "missing required field 'questions'"),
     ({"kb_entry_id": "KB-0002"}, 'kb_entry_id must look like "KB-N0001"'),
     ({"kb_entry_id": "KB-N12"}, 'kb_entry_id must look like "KB-N0001"'),
@@ -151,14 +154,6 @@ def test_missing_file_is_no_entries(tmp_path):
 # ---------------------------------------------------------------------------
 # The shipped file and retrieval
 # ---------------------------------------------------------------------------
-def test_shipped_file_has_only_the_example():
-    data = json.loads(kb_new_entries.NEW_ENTRIES_PATH.read_text(encoding="utf-8"))
-    assert [e.get("example") for e in data["entries"]] == [True]
-    existing = json.loads(kb_retrieval.KB_PATH.read_text(encoding="utf-8"))["entries"]
-    report = kb_new_entries.validate(data, existing)
-    assert report.errors == [] and report.entries == [] and report.examples == 1
-
-
 def test_retrieval_loads_valid_entries_and_skips_examples_and_errors(monkeypatch, tmp_path):
     path = tmp_path / "new_entries.json"
     entry = _with(kb_entry_id="KB-N0042", category="SNMP", intent="snmp_monitoring",
@@ -181,9 +176,92 @@ def test_validator_script_exit_codes(tmp_path):
     script = [sys.executable, str(ROOT / "scripts" / "validate_kb.py")]
     shipped = subprocess.run(script, capture_output=True, text=True, cwd=ROOT)
     assert shipped.returncode == 0, shipped.stdout + shipped.stderr
-    assert "1 example(s) skipped, 0 usable" in shipped.stdout
+    assert "1 example(s) skipped" in shipped.stdout and "0 approved and usable" in shipped.stdout
 
     bad = tmp_path / "bad.json"
     bad.write_text(json.dumps({"entries": [_with(category="BILLING")]}), encoding="utf-8")
     result = subprocess.run(script + [str(bad)], capture_output=True, text=True, cwd=ROOT)
     assert result.returncode == 1 and "ERROR" in result.stdout and "category must be one of" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Drafts: never used; a draft answer needs an official source
+# ---------------------------------------------------------------------------
+DRAFT = {
+    "kb_entry_id": "KB-N0050", "status": "draft", "area": "Databases", "category": "APPLICATION_MONITORING",
+    "intent": "mysql_monitoring", "monitor_type": "MySQL", "handling": "answer",
+    "questions": ["how do I monitor mysql", "mysql monitor no data", "mysql privileges for monitoring"],
+    "collect": ["MySQL version", "Agent version"],
+    "answer": "Paraphrased test answer that is long enough for the minimum length.",
+    "source_url": "https://www.site24x7.com/help/database-monitoring/mysql-monitor.html",
+}
+
+
+def _draft(**changes):
+    entry = copy.deepcopy(DRAFT)
+    for key, value in changes.items():
+        if value is None:
+            entry.pop(key)
+        else:
+            entry[key] = value
+    return entry
+
+
+def test_a_draft_is_reported_but_never_usable():
+    report = _validate(_draft(), _draft(kb_entry_id="KB-N0051", answer="", source_url="",
+                                        handling="escalate_with_info", area="Add-monitor errors",
+                                        questions=["error adding a database monitor"]))
+    assert report.errors == [] and report.entries == []
+    assert [(d["kb_entry_id"], d["area"], d["has_answer"], d["source_url"] is not None) for d in report.drafts] == [
+        ("KB-N0050", "Databases", True, True), ("KB-N0051", "Add-monitor errors", False, False)]
+
+
+@pytest.mark.parametrize("changes, problem", [
+    ({"source_url": None}, "a draft with an answer needs a source_url"),
+    ({"source_url": ""}, "a draft with an answer needs a source_url"),
+    ({"source_url": "http://www.site24x7.com/help/x.html"}, "official Site24x7 page"),
+    ({"source_url": "https://example.com/help/x.html"}, "official Site24x7 page"),
+    ({"source_url": "https://www.site24x7.com/"}, "official Site24x7 page"),
+    ({"area": None}, "a draft needs an area"),
+    ({"handling": "maybe"}, 'handling must be "answer" or "escalate_with_info"'),
+    ({"collect": []}, "collect must be a non-empty list"),
+    ({"collect": ["ok", " "]}, "collect must be a non-empty list"),
+    ({"answer": "too short"}, "at least 40 characters"),
+])
+def test_invalid_drafts_are_errors(changes, problem):
+    report = _validate(_draft(**changes))
+    assert any(problem in e for e in report.errors), report.errors
+    assert report.drafts == []
+
+
+def test_a_draft_without_an_answer_needs_no_source():
+    report = _validate(_draft(answer="", source_url=None))
+    assert report.errors == [] and report.drafts[0]["has_answer"] is False
+
+
+def test_support_kb_is_an_official_source():
+    assert kb_new_entries.official_source("https://support.site24x7.com/portal/en/kb/articles/x")
+    assert not kb_new_entries.official_source("https://support.site24x7.com.evil.example/x")
+
+
+def test_an_approved_entry_without_a_source_gets_a_warning():
+    report = _validate(_with(source_url=None))
+    assert report.errors == [] and report.entries
+    assert any("no source_url" in w for w in report.warnings)
+
+
+def test_retrieval_never_loads_drafts(monkeypatch, tmp_path):
+    path = tmp_path / "new_entries.json"
+    path.write_text(json.dumps({"entries": [
+        _draft(questions=["zebracorn database flaps", "zebracorn db flapping", "zebracorn db down"]),
+        _draft(kb_entry_id="KB-N0052", status="approved",
+               questions=["quokkatron replication lag", "quokkatron lag", "quokkatron replica slow"]),
+    ]}), encoding="utf-8")
+    monkeypatch.setattr(kb_new_entries, "NEW_ENTRIES_PATH", path)
+    kb_retrieval._load_index.cache_clear()
+    try:
+        assert kb_retrieval.retrieve_candidates("zebracorn database flaps") == []
+        hits = kb_retrieval.retrieve_candidates("quokkatron replication lag")
+        assert hits and hits[0].entry.kb_entry_id == "KB-N0052"
+    finally:
+        kb_retrieval._load_index.cache_clear()

@@ -8,15 +8,23 @@ pipeline. Don't edit it by hand: `scripts/export_kb.py` regenerates it.
 
 ## Workflow
 
-1. Add an entry to `data/kb/new_entries.json`. Copy the example entry, then
-   set `"example"` to `false` or remove that field.
-2. Run the validator and fix every `ERROR`:
+Every entry has a `status`. A `draft` is never used by the app. Only an
+`approved` entry is used, and only once it passes the validator. The drafts
+listed in `docs/KB_COVERAGE.md` were prepared from Site24x7's official
+documentation. Each one waits for a person to review it, write or correct the
+answer, and approve it.
+
+1. Review a draft, or add a new entry by copying the example and removing
+   `"example"`.
+2. Write or check the answer against the page in `source_url`, then set
+   `"status": "approved"`.
+3. Run the validator and fix every `ERROR`. It also lists the drafts by area:
 
    ```bash
    .venv/bin/python scripts/validate_kb.py
    ```
 
-3. Restart the backend. The KB is loaded once per process.
+4. Restart the backend. The KB is loaded once per process.
 
 The app skips any entry with an error, so a broken entry never reaches a
 customer. It logs one warning that points you to the validator.
@@ -28,14 +36,20 @@ customer. It logs one warning that points you to the validator.
   "entries": [
     {
       "kb_entry_id": "KB-N0002",
+      "status": "approved",
+      "area": "Network access and connectivity",
       "category": "AGENT",
       "intent": "agent_not_reporting",
+      "monitor_type": "Server agent",
+      "handling": "answer",
       "questions": [
         "first way a customer asks it",
         "second way",
         "third way"
       ],
+      "collect": ["what to ask the customer for"],
       "answer": "the support answer",
+      "source_url": "https://www.site24x7.com/help/...",
       "notes": "optional, internal"
     }
   ]
@@ -48,7 +62,13 @@ customer. It logs one warning that points you to the validator.
 | `category` | yes | One of the 17 categories: ACCOUNT, AGENT, ALERTS, APM, APPLICATION_MONITORING, CLOUD, CONTAINERS, DATA, INTEGRATION, LOGS, MONITORING, NETFLOW, REPORTING, SERVER_MONITORING, SNMP, SUPPORT, WEB_MONITORING. |
 | `intent` | yes | `lower_snake_case`. Reuse an existing intent of that category where one fits. A new intent is allowed, and the validator warns so you can confirm it. |
 | `questions` | yes | A list of non-empty phrasings of the same question. Use 3 or more, because retrieval matches on question wording: include a formal one, a casual one and a short one. Don't repeat a phrasing, and don't reuse a question from another entry. |
-| `answer` | yes | At least 40 characters, written in plain text. It must contain no `EXAMPLE` text and no `[placeholders]`. |
+| `status` | yes | `draft` (never used) or `approved` (used once valid). The example entry doesn't need one. |
+| `answer` | approved: yes; draft: optional | At least 40 characters, written in plain text. It must contain no `EXAMPLE` text and no `[placeholders]`. A draft may leave it empty, to be written. |
+| `source_url` | on a draft with an answer: yes | The official page the answer paraphrases: an https link on `www.site24x7.com` or `support.site24x7.com`. An approved entry without one gets a warning. |
+| `area` | draft: yes | The group the drafts report uses, such as "Databases". |
+| `monitor_type` | no | The monitor or product the entry is about. |
+| `handling` | no | `answer` (the answer resolves the question) or `escalate_with_info` (it needs someone with account access: collect the details, then hand over). |
+| `collect` | no | A list of what to ask the customer for. These are details the customer can give, never account identifiers. |
 | `example` | no | `true` marks a sample entry. It's checked for shape only and never used. |
 | `notes` | no | Internal notes, such as the source or reviewer. Customers and the AI never see them. |
 
