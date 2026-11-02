@@ -32,6 +32,7 @@ data/silver/*
 # Ticket resolution agent backend
 .env
 backend/*.db
+backend/*.db.*
 backend/*.db-journal
 backend/*.db-wal
 backend/*.db-shm
