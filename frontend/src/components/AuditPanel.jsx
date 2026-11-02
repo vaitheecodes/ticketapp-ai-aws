@@ -1,6 +1,7 @@
 /* Admin: system-wide activity and audit log (backend/audit.py). Ticket
  * status/owner changes and claims, incident reviews, account, department
- * and settings changes, and failed sign-ins — filterable. Details are ids,
+ * and settings changes, failed sign-ins and AI failures on chats/tickets
+ * (kind, error code, attempts, latency) — filterable. Details are ids,
  * statuses and field names, never message bodies or passwords. */
 
 import { useCallback, useEffect, useId, useState } from "react";
@@ -17,6 +18,7 @@ const ENTITIES = [
   ["settings", "Settings"],
   ["account", "Sign-ins & passwords"],
   ["chat_review", "Chat reviews"],
+  ["chat", "Chat AI failures"],
 ];
 const PAGE = 50;
 

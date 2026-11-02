@@ -18,4 +18,4 @@ data, outputs are validated before use, and failures raise AIError for
 the caller to handle without changing ticket or chat state.
 """
 
-from backend.ai_service.provider import AIError  # noqa: F401
+from backend.ai_service.provider import AIError, AIFailure  # noqa: F401

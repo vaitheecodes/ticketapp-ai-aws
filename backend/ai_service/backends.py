@@ -43,14 +43,39 @@ from typing import Any, Protocol
 logger = logging.getLogger(__name__)
 
 
+FAILURE_KINDS = ("throttling", "timeout", "access_denied", "validation", "parse_schema",
+                 "filter_rejected", "config", "unknown")
+_SAFE_CODE = re.compile(r"^[A-Za-z][A-Za-z0-9_.]{0,63}$")
+
+
+def safe_code(value) -> str | None:
+    """An error code *name* (ThrottlingException, ReadTimeoutError, HTTP_429)
+    or None: never free text from a provider."""
+    value = str(value or "")
+    return value if _SAFE_CODE.match(value) else None
+
+
 class BackendError(Exception):
     """Any provider/network/config failure. The message is written by us
-    and must never contain secrets, tokens or prompt content."""
+    and must never contain secrets, tokens or prompt content. `kind` (one
+    of FAILURE_KINDS), `code` (an error code name) and `attempts` describe
+    it for the AI failure record (provider.AIFailure)."""
+
+    default_kind = "unknown"
+
+    def __init__(self, message: str = "", *, kind: str | None = None, code: str | None = None,
+                 attempts: int = 1):
+        super().__init__(message)
+        self.kind = kind if kind in FAILURE_KINDS else self.default_kind
+        self.code = safe_code(code)
+        self.attempts = attempts
 
 
 class ConfigError(BackendError):
     """A setup problem (missing/invalid key, org id, endpoint name). Retrying
     can't help; provider.py logs it at ERROR so an operator notices."""
+
+    default_kind = "config"
 
 
 class Backend(Protocol):
@@ -171,7 +196,7 @@ def _httpx_post(url: str, *, json_body: dict, headers: dict) -> tuple[int, Any]:
     try:
         response = httpx.post(url, json=json_body, headers=headers, timeout=timeout_seconds())
     except httpx.TimeoutException:
-        raise BackendError(f"QuickML timed out after {timeout_seconds():.0f}s") from None
+        raise BackendError(f"QuickML timed out after {timeout_seconds():.0f}s", kind="timeout") from None
     except httpx.HTTPError as exc:
         raise BackendError(f"QuickML request failed ({type(exc).__name__})") from None
     try:
@@ -250,7 +275,7 @@ class QuickMLAppSailBackend:
         if status in (401, 403):
             raise BackendError(f"QuickML refused the AppSail credential (HTTP {status})")
         if status == 429:
-            raise BackendError("QuickML rate limit reached (HTTP 429)")
+            raise BackendError("QuickML rate limit reached (HTTP 429)", kind="throttling", code="HTTP_429")
         raise BackendError(f"QuickML HTTP {status}" + (f" ({code})" if code else ""))
 
 
@@ -347,6 +372,15 @@ TOOL_NAME_UNSAFE = re.compile(r"[^a-zA-Z0-9_-]")
 # Transient Bedrock errors get one retry after a short backoff: throttling
 # and timeouts only. Access, validation and configuration errors never do.
 BEDROCK_RETRY_CODES = frozenset({"ThrottlingException", "ModelTimeoutException"})
+# AWS error code -> failure kind (anything else: config if BEDROCK_ERRORS
+# says so, else unknown).
+BEDROCK_KINDS = {
+    "ThrottlingException": "throttling",
+    "ServiceQuotaExceededException": "throttling",
+    "ModelTimeoutException": "timeout",
+    "AccessDeniedException": "access_denied",
+    "ValidationException": "validation",
+}
 BEDROCK_RETRY_DELAY = 1.0   # seconds, plus up to BEDROCK_RETRY_JITTER
 BEDROCK_RETRY_JITTER = 0.5
 
@@ -461,6 +495,7 @@ class BedrockBackend:
                                json_schema=json_schema, extra_messages=extra_messages,
                                model_id=self.model_id())
         client = self.client()
+        attempts = 1
         try:
             try:
                 response = client.converse(**request)
@@ -472,20 +507,26 @@ class BedrockBackend:
                     raise
                 logger.warning("Bedrock call failed (%s); retrying once", type(exc).__name__)
                 _sleep(BEDROCK_RETRY_DELAY + random.uniform(0, BEDROCK_RETRY_JITTER))
+                attempts = 2
                 response = client.converse(**request)
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "")
             is_config, message = BEDROCK_ERRORS.get(code, (False, f"Bedrock error ({code or 'unknown'})"))
-            raise (ConfigError if is_config else BackendError)(message) from None
-        except (ReadTimeoutError, ConnectTimeoutError):
-            raise BackendError(f"Bedrock timed out after {timeout_seconds():.0f}s") from None
+            kind = BEDROCK_KINDS.get(code, "config" if is_config else "unknown")
+            raise (ConfigError if is_config else BackendError)(
+                message, kind=kind, code=code, attempts=attempts) from None
+        except (ReadTimeoutError, ConnectTimeoutError) as exc:
+            raise BackendError(f"Bedrock timed out after {timeout_seconds():.0f}s", kind="timeout",
+                               code=type(exc).__name__, attempts=attempts) from None
         except NoCredentialsError:
             raise ConfigError("No AWS credentials found: set AWS_PROFILE locally, or give the "
-                              "service an IAM role") from None
+                              "service an IAM role", code="NoCredentialsError", attempts=attempts) from None
         except EndpointConnectionError:
-            raise BackendError(f"Could not reach Bedrock in {self.region()}") from None
+            raise BackendError(f"Could not reach Bedrock in {self.region()}", code="EndpointConnectionError",
+                               attempts=attempts) from None
         except BotoCoreError as exc:
-            raise BackendError(f"Bedrock request failed ({type(exc).__name__})") from None
+            raise BackendError(f"Bedrock request failed ({type(exc).__name__})", code=type(exc).__name__,
+                               attempts=attempts) from None
         if self.on_usage:
             self.on_usage({**response.get("usage", {}), "latencyMs": response.get("metrics", {}).get("latencyMs"),
                            "stopReason": response.get("stopReason")})
@@ -500,14 +541,14 @@ def extract_bedrock_text(response: Any) -> str:
     try:
         blocks = response["output"]["message"]["content"]
     except (KeyError, TypeError):
-        raise BackendError("Unrecognised Bedrock response shape") from None
+        raise BackendError("Unrecognised Bedrock response shape", kind="parse_schema") from None
     for block in blocks:
         tool_use = block.get("toolUse") if isinstance(block, dict) else None
         if isinstance(tool_use, dict) and isinstance(tool_use.get("input"), dict):
             return json.dumps(tool_use["input"])
     texts = [b["text"] for b in blocks if isinstance(b, dict) and isinstance(b.get("text"), str)]
     if not texts:
-        raise BackendError("Bedrock response had no text")
+        raise BackendError("Bedrock response had no text", kind="parse_schema")
     return "".join(texts)
 
 

@@ -23,7 +23,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError
 
-from backend import app_settings, audit, auth, db, graph, runtime
+from backend import ai_failures, app_settings, audit, auth, db, graph, runtime
 from backend import ticket_lifecycle as lifecycle
 from backend.ai_service import AIError
 from backend.ai_service import backends as ai_backends
@@ -652,6 +652,29 @@ def admin_reset_settings(section: Literal["routing", "incidents", "statuses"], a
     finally:
         conn.close()
     return _settings_payload()
+
+
+# ---------------------------------------------------------------------------
+# Chat detail: AI failures (admin only)
+# ---------------------------------------------------------------------------
+@router.get("/api/admin/chats/{session_id}")
+def admin_chat_detail(session_id: str, admin_id: str = Depends(_admin)):
+    """A chat's state and every AI failure recorded on it (kind, error
+    code name, attempts, latency, operation, outcome). No message text."""
+    conn = db.get_connection()
+    try:
+        session = conn.execute(
+            "SELECT session_id, customer_id, status, requested_category, category, confidence, "
+            "last_route, clarification_attempts, escalated_ticket_id, created_at, updated_at "
+            "FROM chat_sessions WHERE session_id = ?", (session_id,)).fetchone()
+        if session is None:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        counts = {r["role"]: r["n"] for r in conn.execute(
+            "SELECT role, COUNT(*) AS n FROM chat_messages WHERE session_id = ? GROUP BY role", (session_id,))}
+        return {**dict(session), "message_counts": counts,
+                "ai_failures": ai_failures.for_entity(conn, "chat", session_id)}
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------

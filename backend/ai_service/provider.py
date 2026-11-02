@@ -17,10 +17,13 @@ Nothing here logs keys, tokens or prompt content.
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import re
+import time
 from collections.abc import Callable
+from dataclasses import asdict, dataclass
 
 from pydantic import BaseModel, ValidationError
 
@@ -44,9 +47,58 @@ _backend_name: str | None = None
 _pinned = None
 
 
+@dataclass
+class AIFailure:
+    """Why an AI call failed, safe to store and show to the admin: a kind
+    (backends.FAILURE_KINDS), an error code name, attempts, latency, the
+    operation, and what happened next ("failed": the caller saw an
+    AIError; "regenerated"/"fallback": our own check rejected a reply and
+    the chat recovered). Never provider message text or customer text."""
+
+    kind: str
+    operation: str
+    code: str | None = None
+    attempts: int = 1
+    latency_ms: int = 0
+    outcome: str = "failed"
+
+    def detail(self) -> dict:
+        return asdict(self)
+
+
 class AIError(Exception):
     """The provider failed or returned unusable output. Callers must
-    degrade gracefully and never treat this as a successful outcome."""
+    degrade gracefully and never treat this as a successful outcome.
+    `failure` says why (stored for the admin; see AIFailure)."""
+
+    def __init__(self, message: str = "", failure: AIFailure | None = None):
+        super().__init__(message)
+        self.failure = failure
+        if failure is not None:
+            note_failure(failure)
+
+
+# Every AIFailure of the current request (one chat turn), for the caller
+# to record: start_failure_log() at the start, read the list at the end.
+# The list is shared by reference, so graph nodes run in copied contexts
+# still add to it.
+_failure_log: contextvars.ContextVar[list | None] = contextvars.ContextVar("ai_failure_log", default=None)
+
+
+def start_failure_log() -> list:
+    log: list[AIFailure] = []
+    _failure_log.set(log)
+    return log
+
+
+def note_failure(failure: AIFailure) -> None:
+    log = _failure_log.get()
+    if log is not None and not any(f is failure for f in log):
+        log.append(failure)
+
+
+def _ms(start: float) -> int:
+    return int((time.monotonic() - start) * 1000)
 
 
 # ---------------------------------------------------------------------------
@@ -106,11 +158,12 @@ def _messages(instructions: str, data: dict[str, str]) -> list[dict]:
 
 
 def complete(messages: list[dict], *, temperature: float = 0.2, json_mode: bool = False,
-             json_schema: dict | None = None) -> str:
+             json_schema: dict | None = None, operation: str = "text") -> str:
     """messages: [system, user, *correction notes]. Temperature is a hint:
     QuickML endpoints have it fixed in the console."""
     backend = get_backend()
     schema = json_schema if json_schema is not None else ({} if json_mode else None)
+    start = time.monotonic()
     try:
         content = backend.generate(
             messages[0]["content"] if len(messages) > 1 else "",
@@ -127,9 +180,17 @@ def complete(messages: list[dict], *, temperature: float = 0.2, json_mode: bool 
         detail = f" ({exc})" if isinstance(exc, BackendError) else ""
         level = logging.ERROR if isinstance(exc, ConfigError) else logging.WARNING
         logger.log(level, "AI provider call failed: %s%s", type(exc).__name__, detail)
-        raise AIError("AI provider unavailable") from None
+        if isinstance(exc, BackendError):
+            failure = AIFailure(kind=exc.kind, operation=operation, code=exc.code, attempts=exc.attempts,
+                                latency_ms=_ms(start))
+        else:
+            failure = AIFailure(kind="unknown", operation=operation, code=backends.safe_code(type(exc).__name__),
+                                latency_ms=_ms(start))
+        raise AIError("AI provider unavailable", failure) from None
     if not content or not content.strip():
-        raise AIError("AI provider returned an empty response")
+        raise AIError("AI provider returned an empty response",
+                      AIFailure(kind="parse_schema", operation=operation, code="empty_reply",
+                                latency_ms=_ms(start)))
     return content
 
 
@@ -215,7 +276,7 @@ def _describe(exc: Exception) -> str:
 # ---------------------------------------------------------------------------
 def complete_json(instructions: str, data: dict[str, str], schema: type[BaseModel],
                   *, check: Callable[[BaseModel], None] | None = None,
-                  temperature: float = 0.0, attempts: int = 2) -> BaseModel:
+                  temperature: float = 0.0, attempts: int = 2, operation: str | None = None) -> BaseModel:
     """`check` may raise ValueError for output that is well-formed but
     wrong (e.g. ticket ids that weren't in the input); that counts as
     invalid output and is retried like a schema failure."""
@@ -225,8 +286,11 @@ def complete_json(instructions: str, data: dict[str, str], schema: type[BaseMode
         f"and nothing else (no explanations, no markdown):\n{json.dumps(json_schema)}",
         data,
     )
+    operation = operation or schema.__name__
+    start = time.monotonic()
     for attempt in range(attempts):
-        raw = complete(messages, temperature=temperature, json_mode=True, json_schema=json_schema)
+        raw = complete(messages, temperature=temperature, json_mode=True, json_schema=json_schema,
+                       operation=operation)
         try:
             result = schema.model_validate_json(extract_json(raw))
             if check:
@@ -241,22 +305,29 @@ def complete_json(instructions: str, data: dict[str, str], schema: type[BaseMode
                 f"Your previous reply was rejected: {_describe(exc)}. Reply again with only "
                 "a corrected JSON object that matches the schema exactly."
             )}]
-    raise AIError(f"AI output did not match {schema.__name__}")
+    raise AIError(f"AI output did not match {schema.__name__}",
+                  AIFailure(kind="parse_schema", operation=operation, code="schema_mismatch",
+                            attempts=attempts, latency_ms=_ms(start)))
 
 
 def complete_text(instructions: str, data: dict[str, str], *, temperature: float = 0.3,
-                  max_length: int = 8000) -> str:
+                  max_length: int = 8000, operation: str = "text") -> str:
     """Free-text reply (chat answers, clarifying questions). Reasoning is
     stripped and a {"response": ...} wrapper unwrapped; validated as
     non-empty and bounded; retried once (only for an empty/oversized reply —
     a provider error is never retried here)."""
     messages = _messages(instructions, data)
+    start = time.monotonic()
+    code = "empty_reply"
     for _ in range(2):
-        text = unwrap_text(strip_reasoning(complete(messages, temperature=temperature)))
+        text = unwrap_text(strip_reasoning(complete(messages, temperature=temperature, operation=operation)))
         if text and len(text) <= max_length:
             return text
+        code = "reply_too_long" if text else "empty_reply"
         logger.warning("AI text reply empty or too long (%d chars)", len(text))
-    raise AIError("AI reply was empty or too long")
+    raise AIError("AI reply was empty or too long",
+                  AIFailure(kind="parse_schema", operation=operation, code=code, attempts=2,
+                            latency_ms=_ms(start)))
 
 
 # ---------------------------------------------------------------------------
