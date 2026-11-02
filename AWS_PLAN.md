@@ -82,9 +82,10 @@ Pro $0.94 / $3.76 per 1M input / output tokens. Pro is ~13x the cost and
 ~25% slower for the same pass rate here.
 
 Decision: keep `BEDROCK_MODEL_ID` = Nova Lite as the single default.
-A per-task model setting (e.g. a stronger model only for incident
-correlation / summaries) is an option if a review of real outputs shows
-Lite's wording is weaker; not built.
+Per-task model: `BEDROCK_MODEL_ID_CHAT` (optional) overrides it for the
+customer-facing chat answer only; everything else (categorisation,
+follow-up check, clarifying questions, summaries, email replies) keeps
+`BEDROCK_MODEL_ID`. Unset by default.
 
 ## Stage A2: SQLite -> PostgreSQL (Oct 2026)
 

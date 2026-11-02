@@ -140,6 +140,7 @@ deploy steps are in [docs/appsail-deploy.md](docs/appsail-deploy.md).
 | `AI_MAX_TOKENS`, `AI_TIMEOUT_SECONDS` | 2048, 90 | Per-call limits |
 | `QUICKML_ENDPOINT_KEY`, `QUICKML_ENDPOINT_NAME`, `QUICKML_ORG_ID` | — | Catalyst QuickML LLM Serving endpoint, called from AppSail with the credential AppSail injects per request ([docs/quickml-appsail-call.md](docs/quickml-appsail-call.md)) |
 | `QUICKML_ENVIRONMENT`, `QUICKML_API_BASE` | `Development`, `https://api.catalyst.zoho.in` | Fallbacks when AppSail doesn't inject `X-ZC-Environment` / `X_ZOHO_CATALYST_CONSOLE_URL` |
+| `BEDROCK_MODEL_ID_CHAT` | — (uses `BEDROCK_MODEL_ID`) | Optional model for the customer-facing chat answer only; every other AI call keeps `BEDROCK_MODEL_ID` |
 | `BEDROCK_MODEL_ID`, `AWS_REGION` | `apac.amazon.nova-lite-v1:0`, `ap-south-1` | `bedrock` provider (Converse API); credentials from the default AWS chain only (`AWS_PROFILE` locally, the IAM role when deployed) |
 | `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_EMBEDDING_MODEL` | — | `openai_compatible` provider |
 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION`, `AZURE_OPENAI_DEPLOYMENT` | — | `azure` provider (removed in Phase 4 C6) |

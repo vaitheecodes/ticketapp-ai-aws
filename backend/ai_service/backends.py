@@ -31,6 +31,7 @@ blocked for this account, so there is no SDK or OAuth path.
 from __future__ import annotations
 
 import contextvars
+from contextlib import contextmanager
 import json
 import logging
 import os
@@ -412,6 +413,22 @@ def converse_messages(turns) -> list[dict]:
     return messages
 
 
+# Per-task model: inside `with model_task("chat")`, BedrockBackend uses
+# BEDROCK_MODEL_ID_CHAT when it is set, else BEDROCK_MODEL_ID. Only the
+# customer-facing chat answer runs under a task (chat_response.answer).
+_model_task: contextvars.ContextVar[str | None] = contextvars.ContextVar("bedrock_model_task", default=None)
+TASK_MODEL_ENV = {"chat": "BEDROCK_MODEL_ID_CHAT"}
+
+
+@contextmanager
+def model_task(task: str | None):
+    token = _model_task.set(task)
+    try:
+        yield
+    finally:
+        _model_task.reset(token)
+
+
 class BedrockBackend:
     """Amazon Bedrock Converse API via boto3. Credentials come from the
     default AWS chain only (AWS_PROFILE locally, the service role when
@@ -433,7 +450,10 @@ class BedrockBackend:
 
     @classmethod
     def model_id(cls) -> str:
-        return env("BEDROCK_MODEL_ID", cls.DEFAULT_MODEL)
+        """BEDROCK_MODEL_ID (default Nova Lite), or the current task's
+        override (BEDROCK_MODEL_ID_CHAT for the chat answer) when set."""
+        task_env = TASK_MODEL_ENV.get(_model_task.get())
+        return (task_env and env(task_env)) or env("BEDROCK_MODEL_ID", cls.DEFAULT_MODEL)
 
     @classmethod
     def region(cls) -> str:

@@ -14,9 +14,10 @@ model writes anyway.
 from __future__ import annotations
 
 import re
+from contextlib import nullcontext
 
 from backend import email_utils
-from backend.ai_service import provider
+from backend.ai_service import backends, provider
 from backend.ai_service._format import GROUNDING_RULES, history_text, kb_guidance_text
 from backend.ai_service.schemas import (
     AnswerInput,
@@ -324,6 +325,13 @@ def answer(data: AnswerInput) -> ChatReply:
             "troubleshooting steps. Either ask exactly one short question that would "
             f"help identify the problem, or {offer}."
         )
+    # The customer-facing chat answer may use its own model
+    # (BEDROCK_MODEL_ID_CHAT); every other call keeps BEDROCK_MODEL_ID.
+    with backends.model_task("chat") if data.reply_format == "chat" else nullcontext():
+        return _answer_reply(data, role, no_match_note)
+
+
+def _answer_reply(data: AnswerInput, role: str, no_match_note: str) -> ChatReply:
     return _reply(
         f"{role}{no_match_note}\n\n"
         "When the customer's latest message (the customer_latest_message block) "
