@@ -169,6 +169,13 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   anomalously high-IDF, unless stripped before scoring. The top 2-3
   candidates ground three things that used to guess independently:
   `classify_ticket`'s prompt (shown as few-shot category evidence, and
+  near-duplicate entries (same category/intent, answers >= 85% the same)
+  collapse into one topic so the top results are distinct (386 entries ->
+  27 topics), a best match below `KB_MIN_SCORE` (default 0.35) is no match
+  (the answer prompt then asks one question or offers a ticket), and
+  hand-written entries in `data/kb/new_entries.json` are loaded when valid
+  (`backend/kb_new_entries.py`, `scripts/validate_kb.py`,
+  `docs/KB_ENTRY_TEMPLATE.md`; `"example": true` entries never are);
   a strong match — `kb_retrieval.STRONG_MATCH_SCORE` — raises its
   returned confidence past a conservative raw LLM score, logged for
   comparison); `ask_clarifying_question`'s prompt (names the *specific*
@@ -424,7 +431,8 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   validated (+ semantic `check`, e.g. correlation ids must be
   from the input), retried once with a note giving the validation error
   paths (never the rejected values), then `AIError`. Provider errors are
-  never retried; QuickML codes are mapped (`INVALID_ENDPOINT_KEY` — an
+  never retried, except Bedrock throttling/timeouts (one retry after ~1 s
+  plus jitter, in `BedrockBackend.generate`); QuickML codes are mapped (`INVALID_ENDPOINT_KEY` — an
   HTTP 500 — and `ORGID_HEADER_UNAVAILABLE` are `ConfigError`s logged at
   ERROR). No embeddings with
   QuickML: incident grouping uses lexical TF-IDF (`incidents._lexical_vectors`,

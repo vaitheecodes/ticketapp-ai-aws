@@ -154,6 +154,7 @@ deploy steps are in [docs/appsail-deploy.md](docs/appsail-deploy.md).
 | `DATABASE_URL`, or `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` `DB_SSLMODE` | — | Postgres connection (never logged; only host:port/db appears in logs) |
 | `DB_POOL_MAX`, `DB_POOL_MIN`, `DB_POOL_TIMEOUT` | 10, 1, 10 s | Postgres pool size and how long a request waits for a connection before a 503 |
 | `ALLOWED_ORIGINS` | localhost dev ports | CORS origins, comma-separated |
+| `KB_MIN_SCORE` | 0.35 | A knowledge-base match below this score is no match: the AI asks one question or offers a ticket instead of answering (see `docs/KB_ENTRY_TEMPLATE.md`) |
 | `INCIDENT_WINDOW_HOURS` | 12 | Reports considered together |
 | `INCIDENT_MIN_TICKETS` | 3 | Group size before asking the AI (from 2+ customers) |
 | `INCIDENT_SIMILARITY` | 0.15 | Similarity bar for splitting candidate groups (lexical TF-IDF; ~0.80 with embeddings) |
@@ -257,6 +258,9 @@ incident summary, post-incident summary draft, incident-question parsing):
   checked (plus semantic checks, e.g. correlated ticket ids must be from
   the input) and retried once, then the caller treats the AI as
   unavailable.
+- **Transient Bedrock errors**: throttling and timeouts get one retry after
+  about 1 s plus jitter; access, validation and configuration errors are
+  never retried.
 - **AI failures never change state**: a chat or ticket is never resolved,
   closed or escalated because a call failed; the customer's message is
   kept, and raising a ticket always works.
@@ -377,7 +381,8 @@ tests script the model's replies). Highlights:
 | `test_ai_service.py` | schema validation and retry, provider failure, injection containment, no secrets in logs |
 | `test_storage_s3.py` | S3 attachments with a fake client: only metadata in the DB, validation before any upload, cleanup on failure, downloads only through the authorised endpoint (no links), S3 errors → 503 without AWS text, bad settings stop startup |
 | `test_postgres_backend.py` | SQL translation, rows, settings never leak the password, 20 concurrent claims with exactly one winner (SQLite and Postgres), more chat turns than pool connections without deadlock, exhausted pool answers 503 |
-| `test_ai_providers.py`, `test_bedrock_provider.py` | each provider's request, response parsing, retry note, error mapping (never retried, nothing secret logged), AI failure changes nothing; boto3 is always faked |
+| `test_ai_providers.py`, `test_bedrock_provider.py` | each provider's request, response parsing, retry note, error mapping (only throttling/timeouts retried, once; nothing secret logged), AI failure changes nothing; boto3 is always faked |
+| `test_kb_retrieval.py`, `test_kb_new_entries.py` | KB retrieval: near-duplicates collapse to one topic, `KB_MIN_SCORE` floor, only the customer's own words searched; the hand-written entry validator and that example entries are never used |
 | `test_incidents.py` | clustering, time window, pre-filters, dedupe, routing, review, banner |
 | `test_incident_resolution.py` | resolve only when confirmed, facts-only draft (invented times/causes rejected), idempotent fan-out, per-ticket failure isolation, email gate, "was there an outage?" answers (linked / unlinked / public / expired, no cross-customer leakage), AI failure sends nothing |
 | `test_admin_console.py` | account administration, settings, audit log, email gate, attachment access |
