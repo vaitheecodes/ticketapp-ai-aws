@@ -59,7 +59,7 @@
     },
     {
       "kb_entry_id": "KB-N0103",
-      "status": "draft",
+      "status": "approved",
       "area": "Web and internet services",
       "category": "MONITORING",
       "intent": "ping_monitoring",
@@ -77,7 +77,8 @@
         "IPv4 or IPv6"
       ],
       "answer": "A Ping monitor sends three ICMP echo requests per poll and is marked down only when none of them get a reply, so the host and any firewall in between must allow ICMP from the monitoring locations. An IPv6 check does not fall back to IPv4; add a separate check if you need both.",
-      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/ping-monitor.html"
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/ping-monitor.html",
+      "reviewed_at": "2026-11-02T09:27:35+00:00"
     },
     {
       "kb_entry_id": "KB-N0104",
@@ -189,9 +190,9 @@
     },
     {
       "kb_entry_id": "KB-N0109",
-      "status": "draft",
+      "status": "approved",
       "area": "Network access and connectivity",
-      "category": "AGENT",
+      "category": "SERVER_MONITORING",
       "intent": "agent_firewall_ports",
       "monitor_type": "Server agent",
       "handling": "answer",
@@ -207,7 +208,8 @@
         "Agent log error, if any"
       ],
       "answer": "The server monitoring agent only makes outbound HTTPS connections on port 443. Allow the Site24x7 hostnames for your data center: for the US data center that is plus.site24x7.com (plus2 and plus3 for disaster recovery), dms.zoho.com and logu.site24x7.com for logs. Accounts in other regions use other domain suffixes such as .eu or .in, and published IP ranges per data center are an alternative to hostnames.",
-      "source_url": "https://support.site24x7.com/portal/en/kb/articles/which-ports-do-i-need-to-allow-access-in-my-firewall-to-use-site24x7-agent"
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/which-ports-do-i-need-to-allow-access-in-my-firewall-to-use-site24x7-agent",
+      "reviewed_at": "2026-11-02T09:19:31+00:00"
     },
     {
       "kb_entry_id": "KB-N0110",
@@ -508,7 +510,7 @@
     },
     {
       "kb_entry_id": "KB-N0124",
-      "status": "draft",
+      "status": "approved",
       "area": "Alerts and integrations",
       "category": "ALERTS",
       "intent": "alert_email_delivery",
@@ -526,11 +528,12 @@
         "Mail filtering in use"
       ],
       "answer": "Check the spam or junk folder and add no-reply@site24x7.com and noreply@zohoaccounts.com to your allow list, and make sure your mail servers are working. Each address can receive up to 500 alert emails a day; after that, alerts pause until the count resets at midnight.",
-      "source_url": "https://support.site24x7.com/portal/en/kb/articles/i-am-not-receiving-alert-emails-from-site24x7-what-should-i-do"
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/i-am-not-receiving-alert-emails-from-site24x7-what-should-i-do",
+      "reviewed_at": "2026-11-02T09:14:38+00:00"
     },
     {
       "kb_entry_id": "KB-N0125",
-      "status": "draft",
+      "status": "approved",
       "area": "Alerts and integrations",
       "category": "ALERTS",
       "intent": "alert_sms_delivery",
@@ -547,7 +550,8 @@
         "Whether the number is on a Do Not Disturb list"
       ],
       "answer": "Make sure the user's mobile number is linked to the right user alert group under Admin > User & Alert Management, and enter it without a zero after the country code. SMS goes through bulk providers, so a number on a Do Not Disturb list may not receive it.",
-      "source_url": "https://support.site24x7.com/portal/en/kb/articles/i-ve-added-mobile-number-to-my-account-but-i-m-not-receiving-sms-alerts-what-could-be-the-reason"
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/i-ve-added-mobile-number-to-my-account-but-i-m-not-receiving-sms-alerts-what-could-be-the-reason",
+      "reviewed_at": "2026-11-02T09:16:17+00:00"
     },
     {
       "kb_entry_id": "KB-N0126",
@@ -636,7 +640,7 @@
     },
     {
       "kb_entry_id": "KB-N0130",
-      "status": "draft",
+      "status": "approved",
       "area": "Account and access",
       "category": "ACCOUNT",
       "intent": "user_roles",
@@ -653,7 +657,8 @@
         "Whether they accepted the invitation"
       ],
       "answer": "Super Admins have full control including billing; Admins have the same except billing. Operators manage their own maintenance windows and reports, Read Only users can view most modules, and Alert Contacts only receive alerts. Choose the role when adding a user; you can change it only after they accept the invitation.",
-      "source_url": "https://www.site24x7.com/help/admin/user-management/role-based-access-permissions.html"
+      "source_url": "https://www.site24x7.com/help/admin/user-management/role-based-access-permissions.html",
+      "reviewed_at": "2026-11-02T09:22:27+00:00"
     },
     {
       "kb_entry_id": "KB-N0131",
