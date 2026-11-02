@@ -1,0 +1,51 @@
+"""Check data/kb/new_entries.json before the app uses it.
+
+    .venv/bin/python scripts/validate_kb.py [path]
+
+Checks every entry against docs/KB_ENTRY_TEMPLATE.md: required fields,
+id format and uniqueness, category, intent, question variants, answer
+length, leftover EXAMPLE/[placeholder] text, and duplicates (ids,
+questions, near-identical answers) within the file and against
+data/kb/kb_entries.json. Entries marked "example": true are checked for
+shape only and never used.
+
+Exit code 0 when there are no errors (warnings are fine), 1 otherwise.
+The app skips entries with errors, so a broken entry never reaches a
+customer; restart the backend to load new entries.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from backend import kb_new_entries, kb_retrieval  # noqa: E402
+
+
+def main(argv: list[str]) -> int:
+    path = Path(argv[1]) if len(argv) > 1 else kb_new_entries.NEW_ENTRIES_PATH
+    if not path.exists():
+        print(f"{path}: not found")
+        return 1
+    existing = json.loads(kb_retrieval.KB_PATH.read_text(encoding="utf-8"))["entries"]
+    report = kb_new_entries.load(existing, path)
+
+    usable_ids = sorted({e["kb_entry_id"] for e in report.entries})
+    print(f"{path.name}: {report.checked} entr{'y' if report.checked == 1 else 'ies'} checked, "
+          f"{report.examples} example(s) skipped, {len(usable_ids)} usable "
+          f"({len(report.entries)} question variants)")
+    for line in report.errors:
+        print(f"  ERROR    {line}")
+    for line in report.warnings:
+        print(f"  warning  {line}")
+    if not report.errors and not report.warnings:
+        print("  no problems found")
+    return 1 if report.errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

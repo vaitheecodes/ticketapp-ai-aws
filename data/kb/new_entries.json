@@ -1,0 +1,18 @@
+{
+  "_readme": "New KB entries, written by hand. Format and rules: docs/KB_ENTRY_TEMPLATE.md. Check with: .venv/bin/python scripts/validate_kb.py. The entry below is an example (\"example\": true): retrieval never uses it. Copy it, set \"example\" to false (or remove it), and replace every EXAMPLE text.",
+  "entries": [
+    {
+      "example": true,
+      "kb_entry_id": "KB-N0001",
+      "category": "MONITORING",
+      "intent": "monitor_status",
+      "questions": [
+        "EXAMPLE: the question as a customer would type it",
+        "EXAMPLE: the same question, worded another way",
+        "EXAMPLE: a short or casual version of the same question"
+      ],
+      "answer": "EXAMPLE: write the support answer here. Plain text, no greeting or sign-off; numbered steps only when the customer has to do something.",
+      "notes": "Optional: source or reviewer notes. Never shown to customers or the AI."
+    }
+  ]
+}

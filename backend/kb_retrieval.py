@@ -196,9 +196,18 @@ def build_index(entries: list[dict]) -> "_KBIndex":
 
 @lru_cache(maxsize=1)
 def _load_index() -> "_KBIndex | None":
+    """kb_entries.json plus the valid, non-example entries of
+    data/kb/new_entries.json (see backend/kb_new_entries.py)."""
     if not KB_PATH.exists():
         return None
-    return build_index(json.loads(KB_PATH.read_text(encoding="utf-8"))["entries"])
+    from backend import kb_new_entries
+
+    entries = json.loads(KB_PATH.read_text(encoding="utf-8"))["entries"]
+    new = kb_new_entries.load(entries)
+    if new.errors:
+        logger.warning("data/kb/new_entries.json: %d problem(s), those entries are not used; "
+                       "run scripts/validate_kb.py", len(new.errors))
+    return build_index(entries + new.entries)
 
 
 def retrieve_candidates(ticket_text: str, top_k: int = 3,
