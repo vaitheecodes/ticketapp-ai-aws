@@ -28,6 +28,7 @@ from backend.graph import (  # noqa: E402
     _ORDER_RELATED_CATEGORIES,
     _customer_authored_text,
     lookup_order,
+    retrieve_kb_candidates,
 )
 
 
@@ -174,3 +175,101 @@ def test_lookup_order_still_fires_on_explicit_order_number_regardless_of_categor
     )
     assert result["order_lookup"]["not_found"] is True
     assert result["order_lookup"]["order_id"] == "ORD-999999"
+
+
+# ---------------------------------------------------------------------------
+# Near-duplicate KB entries collapse into one topic
+# ---------------------------------------------------------------------------
+def _entry(kb_id, question, answer, category="AGENT", intent="agent_installation"):
+    return {"kb_entry_id": kb_id, "category": category, "intent": intent,
+            "instruction": question, "response": answer}
+
+
+_INSTALL = ("Download the agent installer from the Admin page, copy it to the server, run it with "
+            "administrator rights and enter the device key when asked. When the installation finishes "
+            "the agent registers itself, and the server appears under Server Monitors within a few "
+            "minutes. If it does not, check that outbound port 443 is open.")
+
+
+def test_variants_of_one_answer_are_one_topic():
+    index = kb_retrieval.build_index([
+        _entry("KB-1", "how do I install the agent", _INSTALL),
+        _entry("KB-2", "How Do I Install The Agent please", "I understand you're looking for help. " + _INSTALL),
+        _entry("KB-3", "install agent on Prod-WebServer-01", _INSTALL.replace("the server", "Prod-WebServer-01")),
+        _entry("KB-4", "how do I uninstall the agent", "Stop the agent service, then remove the package.",
+               intent="agent_uninstall"),
+        _entry("KB-5", "my agent is not reporting", "Restart the agent service and check outbound port 443.",
+               intent="agent_not_reporting"),
+    ])
+    assert len(set(index.topics)) == 3
+    hits = index.search("how do I install the agent", top_k=3)
+    assert [h.entry.intent for h in hits][0] == "agent_installation"
+    assert len({h.entry.intent for h in hits}) == len(hits)
+    assert hits[0].entry.kb_entry_id == "KB-1"  # the best-matching phrasing
+
+
+def test_same_answer_in_another_intent_is_not_merged():
+    index = kb_retrieval.build_index([
+        _entry("KB-1", "install the agent", _INSTALL),
+        _entry("KB-2", "install the agent", _INSTALL, category="SERVER_MONITORING", intent="server_setup"),
+    ])
+    assert len(set(index.topics)) == 2
+
+
+def test_real_kb_top_results_are_distinct_topics():
+    """The real KB: 386 entries, one answer per intent in many phrasings."""
+    index = kb_retrieval._load_index()
+    assert len(set(index.topics)) < len(index.entries) / 5
+    for query in ("why was my device not discovered", "how do I install the Site24x7 agent",
+                  "I want you to help on the website monitor", "monitor down alert"):
+        hits = kb_retrieval.retrieve_candidates(query, top_k=3, min_score=0)
+        topics = [index.topics[index.entries.index(h.entry)] for h in hits]
+        assert len(topics) == len(set(topics)), query
+
+
+# ---------------------------------------------------------------------------
+# KB_MIN_SCORE: a weak best match is "no close match"
+# ---------------------------------------------------------------------------
+def test_weak_match_is_no_match_by_default(monkeypatch):
+    monkeypatch.delenv("KB_MIN_SCORE", raising=False)
+    query = "I see unable to connect to device error"
+    weak = kb_retrieval.retrieve_candidates(query, min_score=0)
+    assert weak and weak[0].score < kb_retrieval.DEFAULT_MIN_SCORE == 0.35
+    assert kb_retrieval.retrieve_candidates(query) == []
+
+
+def test_min_score_is_configurable(monkeypatch):
+    query = "I see unable to connect to device error"
+    monkeypatch.setenv("KB_MIN_SCORE", "0.2")
+    assert kb_retrieval.retrieve_candidates(query)
+    monkeypatch.setenv("KB_MIN_SCORE", "0.99")
+    assert kb_retrieval.retrieve_candidates("how do I install the Site24x7 agent") != []  # exact: 1.0
+    assert kb_retrieval.retrieve_candidates("I want you to help on the website monitor") == []
+
+
+@pytest.mark.parametrize("raw, expected", [("", 0.35), ("abc", 0.35), ("0.5", 0.5), ("-1", 0.0), ("7", 1.0)])
+def test_min_score_setting_is_parsed_safely(monkeypatch, raw, expected):
+    monkeypatch.setenv("KB_MIN_SCORE", raw)
+    assert kb_retrieval.kb_min_score() == expected
+
+
+def test_no_close_match_reaches_the_pipeline_as_no_candidates(monkeypatch):
+    monkeypatch.delenv("KB_MIN_SCORE", raising=False)
+    state = {"ticket_text": "Customer: I see unable to connect to device error"}
+    assert retrieve_kb_candidates(state) == {"kb_candidates": []}
+
+
+# ---------------------------------------------------------------------------
+# Only the customer's own words feed retrieval, every line of them
+# ---------------------------------------------------------------------------
+def test_customer_text_keeps_multi_line_messages_and_drops_ai_steps():
+    transcript = (
+        "Customer: my website monitor shows down\n"
+        "but the site loads fine in my browser\n"
+        "Agent (AI): Try these steps:\n"
+        "1. Check the monitor's location settings.\n"
+        "Customer: still down\n"
+        "staff: Looking into it.\n"
+    )
+    assert _customer_authored_text(transcript) == (
+        "my website monitor shows down\nbut the site loads fine in my browser\nstill down")

@@ -328,7 +328,7 @@ def _decide(turn: _Turn, message_text: str) -> _Outcome:
             session,
             turn.transcript,
             category=session["category"],
-            kb_candidates=graph.retrieve_kb_candidates_for_continuation(turn.prior_ai, message_text),
+            kb_candidates=graph.retrieve_kb_candidates_for_continuation(turn.transcript),
             continuation=True,
         )
         state.update(graph.fetch_customer_history(state))

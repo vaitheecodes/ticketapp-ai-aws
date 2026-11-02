@@ -391,7 +391,7 @@ def _decide_followup(f: _Followup, message_text: str) -> _FollowupOutcome:
             f.transcript,
             f.customer_name,
             category=ticket["category"],
-            kb_candidates=graph.retrieve_kb_candidates_for_continuation(f.prior_ai, message_text),
+            kb_candidates=graph.retrieve_kb_candidates_for_continuation(f.transcript),
             continuation=True,
         )
         state.update(graph.fetch_customer_history(state))

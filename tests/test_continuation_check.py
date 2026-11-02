@@ -112,27 +112,45 @@ def _require_silver_tables():
         pytest.skip("data/silver/*.parquet not found; run the pipeline first")
 
 
-def test_continuation_retrieval_uses_prior_reply_for_recall():
+def test_continuation_retrieval_uses_the_customers_earlier_messages():
     """A short fragment alone ("what is the differnce") has almost no
-    topic vocabulary; the prior AI reply carries the actual substance,
-    so retrieval must use both -- this is the same signal-to-noise fix
-    as retrieve_kb_candidates' stopword filtering, applied to a
-    different noise source (an uninformative short query)."""
-    prior_reply = (
-        "A Website Monitor checks that your website loads correctly, while an "
-        "API Monitor validates specific API responses in Site24x7."
+    topic vocabulary; the customer's earlier messages carry the topic."""
+    transcript = (
+        "Customer: I want to set up a website monitor\n"
+        "Agent (AI): A Website Monitor checks that your site loads.\n"
+        "Customer: what is the differnce"
     )
-    candidates = graph.retrieve_kb_candidates_for_continuation(
-        prior_reply, "what is the differnce"
-    )
+    candidates = graph.retrieve_kb_candidates_for_continuation(transcript)
     assert candidates
     assert candidates[0]["category"] == "WEB_MONITORING"
 
 
+def test_continuation_retrieval_never_searches_the_ai_reply():
+    """The AI's previous reply talks about installing the agent; the
+    customer only ever talked about website monitors. Retrieval follows
+    the customer, and the AI's wording can't raise any score."""
+    ai_reply = ("To install the Site24x7 agent, download the agent installer, run it "
+                "on the server and the agent starts reporting.")
+    customer_only = "Customer: I want to set up a website monitor\nCustomer: can you say more"
+    with_ai = ("Customer: I want to set up a website monitor\n"
+               f"Agent (AI): {ai_reply}\n1. Download the agent installer.\n2. Install the Site24x7 agent.\n"
+               "Customer: can you say more")
+    assert graph.retrieve_kb_candidates_for_continuation(with_ai) == \
+        graph.retrieve_kb_candidates_for_continuation(customer_only)
+    assert all(c["intent"] != "agent_installation"
+               for c in graph.retrieve_kb_candidates_for_continuation(with_ai))
+
+
+def test_continuation_retrieval_with_only_a_vague_fragment_finds_no_match():
+    transcript = ("Customer: hello\nAgent (AI): How do I install the Site24x7 agent? Download it.\n"
+                  "Customer: can you say more about that")
+    assert graph.retrieve_kb_candidates_for_continuation(transcript) == []
+
+
 def test_continuation_retrieval_returns_dicts_shaped_like_normal_retrieval():
     candidates = graph.retrieve_kb_candidates_for_continuation(
-        "how do I install the Site24x7 agent", "can you say more about that"
-    )
+        "Customer: how do I install the Site24x7 agent\nAgent (AI): Download it.\n"
+        "Customer: can you say more about that")
     assert candidates
     for key in ("kb_entry_id", "category", "intent", "instruction", "response", "score"):
         assert key in candidates[0]

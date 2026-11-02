@@ -27,8 +27,8 @@ fragment has almost no standalone content for classify_ticket to judge
 confidently, which used to collapse decide_route's confidence and
 escalate an on-topic question the conversation already answers. A
 continuation calls lookup_order + generate_response directly (with
-retrieve_kb_candidates_for_continuation grounding on the agent's prior
-reply plus the new message), skipping classify_ticket/decide_route for
+retrieve_kb_candidates_for_continuation grounding on the customer's own
+messages in the conversation, never the AI's replies), skipping classify_ticket/decide_route for
 that turn entirely. Only a genuinely new/different message falls
 through to the normal classify_ticket -> decide_route path below.
 
@@ -210,12 +210,23 @@ def fetch_customer_history(state: TicketState) -> dict:
 # customer's own words are useful as a KB search query — the AI's own
 # (possibly already off-track) questions are noise that measurably
 # drags retrieval toward the wrong candidates once concatenated in.
-_CUSTOMER_LINE_RE = re.compile(r"^Customer:\s*(.*)$", re.MULTILINE)
+# A speaker label starts a new message; lines without one continue the
+# current message (a multi-line customer message, or an AI reply's steps).
+_SPEAKER_RE = re.compile(r"^(Customer|Agent \(AI\)|ai|staff|system|technician|manager|admin):\s?(.*)$")
 
 
 def _customer_authored_text(ticket_text: str) -> str:
-    lines = _CUSTOMER_LINE_RE.findall(ticket_text)
-    return "\n".join(lines) if lines else ticket_text
+    """The customer's own messages of a transcript, every line of them;
+    nothing the AI or staff wrote. Plain ticket text (no speaker labels)
+    is returned as is."""
+    customer, speaker, labelled = [], None, False
+    for line in ticket_text.splitlines():
+        match = _SPEAKER_RE.match(line)
+        if match:
+            labelled, speaker, line = True, match.group(1), match.group(2)
+        if speaker == "Customer":
+            customer.append(line)
+    return "\n".join(customer).strip() if labelled else ticket_text
 
 
 def _kb_candidates_to_dicts(candidates: list[kb_retrieval.KBCandidate]) -> list[dict]:
@@ -248,18 +259,16 @@ def kb_candidates_for(text: str, top_k: int = 3) -> list[dict]:
     return _kb_candidates_to_dicts(kb_retrieval.retrieve_candidates(text, top_k=top_k))
 
 
-def retrieve_kb_candidates_for_continuation(
-    prior_ai_response: str, message_text: str, top_k: int = 3
-) -> list[dict]:
+def retrieve_kb_candidates_for_continuation(transcript: str, top_k: int = 3) -> list[dict]:
     """KB retrieval for a follow-up/continuation turn (see
-    is_continuation_of_prior_response below): searches on BOTH the
-    agent's own prior reply and the customer's new message, not just
-    the new message alone. A short follow-up fragment ("what is the
-    difference") has almost no standalone topic vocabulary, while the
-    prior reply carries the actual substance (e.g. the monitor types it
-    just explained) -- that's the "original KB match" this re-grounds
-    against for an elaboration/comparison answer."""
-    return kb_candidates_for(f"{prior_ai_response}\n{message_text}", top_k=top_k)
+    is_continuation_of_prior_response below): searches on all of the
+    customer's own messages in the conversation (the latest included),
+    never on the AI's replies. A short follow-up fragment ("what is the
+    difference") has almost no topic vocabulary of its own; the
+    customer's earlier messages carry the topic. Searching on the AI's
+    previous reply instead fed the AI's own wording back into retrieval
+    and inflated the score of whatever it had already said."""
+    return kb_candidates_for(_customer_authored_text(transcript), top_k=top_k)
 
 
 def is_continuation_of_prior_response(message_text: str, prior_ai_response: str) -> bool:

@@ -11,17 +11,31 @@ dependency-free, but it's enough to ground classify_ticket's confidence
 and ask_clarifying_question's prompt in the real intent taxonomy instead
 of asking an LLM to classify blind against a bare list of category
 names it has never seen an example of.
+
+Near-duplicates are collapsed into one topic: most of the 386 entries
+are the same answer with a different question phrasing, capitalisation,
+politeness preamble or filled-in monitor name (27 distinct topics). A
+search scores every phrasing and returns each topic once, as its
+best-matching entry, so the top results are distinct topics.
+
+A best score below KB_MIN_SCORE (default 0.35) is not a match: nothing
+is returned, and callers treat that as "no close KB match".
 """
 
 from __future__ import annotations
 
+import difflib
 import json
+import logging
 import math
+import os
 import re
 from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 KB_PATH = _PROJECT_ROOT / "data" / "kb" / "kb_entries.json"
@@ -33,6 +47,28 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 # resolve straight to generate_response, or to boost classify_ticket's
 # raw LLM confidence for a short/common phrasing it under-scored.
 STRONG_MATCH_SCORE = 0.40
+
+# Below this a candidate is not a match at all (KB_MIN_SCORE overrides).
+# "I see unable to connect to device error" scored 0.316 against "why was
+# my device not discovered" on the word "device" alone.
+DEFAULT_MIN_SCORE = 0.35
+
+# Two entries of one category/intent whose answers are at least this
+# similar (word-level) are one topic. Measured on the KB: variants differ
+# by a politeness preamble or a filled-in monitor name (0.85-0.99).
+DUPLICATE_ANSWER_SIMILARITY = 0.85
+
+
+def kb_min_score() -> float:
+    raw = os.environ.get("KB_MIN_SCORE", "").strip()
+    if not raw:
+        return DEFAULT_MIN_SCORE
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("KB_MIN_SCORE is not a number; using %.2f", DEFAULT_MIN_SCORE)
+        return DEFAULT_MIN_SCORE
+    return min(max(value, 0.0), 1.0)
 
 # The 386 KB instructions are formally phrased ("how do I...", "why is
 # X..."); real customer messages are casual ("I want...", "can you
@@ -81,9 +117,32 @@ class KBCandidate:
     score: float
 
 
+def _answer_words(text: str) -> list[str]:
+    return _TOKEN_RE.findall(text.lower())
+
+
+def topic_ids(entries: list[KBEntry]) -> list[int]:
+    """One topic number per entry: entries of the same category/intent
+    whose answers are near-identical share a topic."""
+    reps: list[tuple[tuple[str, str], list[str], int]] = []
+    out = []
+    for e in entries:
+        words, key = _answer_words(e.response), (e.category, e.intent)
+        for rep_key, rep_words, topic in reps:
+            if rep_key == key and difflib.SequenceMatcher(
+                    None, rep_words, words, autojunk=False).ratio() >= DUPLICATE_ANSWER_SIMILARITY:
+                out.append(topic)
+                break
+        else:
+            reps.append((key, words, len(reps)))
+            out.append(len(reps) - 1)
+    return out
+
+
 class _KBIndex:
     def __init__(self, entries: list[KBEntry]):
         self.entries = entries
+        self.topics = topic_ids(entries)
         self._doc_tokens = [_tokenize(e.instruction) for e in entries]
 
         doc_freq: Counter = Counter()
@@ -103,7 +162,9 @@ class _KBIndex:
         tf = Counter(tokens)
         return Counter({t: c * self._idf.get(t, 1.0) for t, c in tf.items()})
 
-    def search(self, text: str, top_k: int = 3) -> list[KBCandidate]:
+    def search(self, text: str, top_k: int = 3, min_score: float = 0.0) -> list[KBCandidate]:
+        """Up to top_k distinct topics scoring at least min_score, each as
+        its best-matching entry."""
         query_vec = self._vectorize(_tokenize(text))
         if not query_vec:
             return []
@@ -111,19 +172,18 @@ class _KBIndex:
         if query_norm == 0:
             return []
 
-        scored = []
-        for entry, doc_vec, doc_norm in zip(
-            self.entries, self._doc_vectors, self._doc_norms
+        best: dict[int, KBCandidate] = {}
+        for entry, topic, doc_vec, doc_norm in zip(
+            self.entries, self.topics, self._doc_vectors, self._doc_norms
         ):
             if doc_norm == 0:
                 continue
             dot = sum(w * doc_vec.get(t, 0.0) for t, w in query_vec.items())
             score = dot / (query_norm * doc_norm)
-            if score > 0:
-                scored.append(KBCandidate(entry=entry, score=score))
+            if score > 0 and score >= min_score and (topic not in best or score > best[topic].score):
+                best[topic] = KBCandidate(entry=entry, score=score)
 
-        scored.sort(key=lambda c: c.score, reverse=True)
-        return scored[:top_k]
+        return sorted(best.values(), key=lambda c: c.score, reverse=True)[:top_k]
 
 
 def build_index(entries: list[dict]) -> "_KBIndex":
@@ -141,12 +201,15 @@ def _load_index() -> "_KBIndex | None":
     return build_index(json.loads(KB_PATH.read_text(encoding="utf-8"))["entries"])
 
 
-def retrieve_candidates(ticket_text: str, top_k: int = 3) -> list[KBCandidate]:
-    """Top-k KB entries (by TF-IDF cosine similarity) for `ticket_text`.
-    Returns [] if data/kb/kb_entries.json hasn't been exported yet or no
-    token in the query matches anything in the KB — callers must treat
-    an empty list as "no grounding available", not as an error."""
+def retrieve_candidates(ticket_text: str, top_k: int = 3,
+                        min_score: float | None = None) -> list[KBCandidate]:
+    """Top-k distinct KB topics (by TF-IDF cosine similarity) for
+    `ticket_text`, none scoring below `min_score` (default KB_MIN_SCORE).
+    Returns [] if data/kb/kb_entries.json hasn't been exported yet or
+    nothing matches closely enough — callers must treat an empty list as
+    "no close KB match": no grounding, not an error."""
     index = _load_index()
     if index is None:
         return []
-    return index.search(ticket_text, top_k=top_k)
+    floor = kb_min_score() if min_score is None else min_score
+    return index.search(ticket_text, top_k=top_k, min_score=floor)
