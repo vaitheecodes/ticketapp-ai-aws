@@ -154,6 +154,34 @@ def test_missing_file_is_no_entries(tmp_path):
 # ---------------------------------------------------------------------------
 # The shipped file and retrieval
 # ---------------------------------------------------------------------------
+def test_shipped_file_holds_the_example_and_drafts_only():
+    """Nothing in the shipped file is used by the app: one example plus
+    drafts awaiting review. Every draft answer cites an official page."""
+    data = json.loads(kb_new_entries.NEW_ENTRIES_PATH.read_text(encoding="utf-8"))
+    existing = json.loads(kb_retrieval.KB_PATH.read_text(encoding="utf-8"))["entries"]
+    report = kb_new_entries.validate(data, existing)
+    assert report.errors == [] and report.entries == [] and report.examples == 1
+    assert {e.get("status") for e in data["entries"] if not e.get("example")} == {"draft"}
+    assert len(report.drafts) == len(data["entries"]) - 1 >= 30
+    for e in data["entries"]:
+        if e.get("example"):
+            continue
+        assert e["area"] and e["collect"] and e["handling"] in kb_new_entries.HANDLING
+        if e["answer"]:
+            assert kb_new_entries.official_source(e["source_url"]), e["kb_entry_id"]
+            assert len(e["answer"]) <= 600, f"{e['kb_entry_id']}: keep draft answers short"
+        else:
+            assert e["handling"] == "escalate_with_info", e["kb_entry_id"]
+
+
+def test_coverage_doc_lists_every_draft():
+    doc = (ROOT / "docs" / "KB_COVERAGE.md").read_text(encoding="utf-8")
+    data = json.loads(kb_new_entries.NEW_ENTRIES_PATH.read_text(encoding="utf-8"))
+    for e in data["entries"]:
+        if e.get("status") == "draft":
+            assert e["kb_entry_id"] in doc
+
+
 def test_retrieval_loads_valid_entries_and_skips_examples_and_errors(monkeypatch, tmp_path):
     path = tmp_path / "new_entries.json"
     entry = _with(kb_entry_id="KB-N0042", category="SNMP", intent="snmp_monitoring",
@@ -177,6 +205,7 @@ def test_validator_script_exit_codes(tmp_path):
     shipped = subprocess.run(script, capture_output=True, text=True, cwd=ROOT)
     assert shipped.returncode == 0, shipped.stdout + shipped.stderr
     assert "1 example(s) skipped" in shipped.stdout and "0 approved and usable" in shipped.stdout
+    assert "drafts by area" in shipped.stdout and "Databases:" in shipped.stdout
 
     bad = tmp_path / "bad.json"
     bad.write_text(json.dumps({"entries": [_with(category="BILLING")]}), encoding="utf-8")

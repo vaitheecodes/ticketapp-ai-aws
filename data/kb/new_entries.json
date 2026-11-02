@@ -1,5 +1,5 @@
 {
-  "_readme": "New KB entries, written by hand. Format and rules: docs/KB_ENTRY_TEMPLATE.md. Check with: .venv/bin/python scripts/validate_kb.py. The entry below is an example (\"example\": true): retrieval never uses it. Copy it, set \"example\" to false (or remove it), and replace every EXAMPLE text.",
+  "_readme": "New KB entries, written or reviewed by a person. Format and rules: docs/KB_ENTRY_TEMPLATE.md; topics: docs/KB_COVERAGE.md. Check with: .venv/bin/python scripts/validate_kb.py. Only entries with status \"approved\" are used by the app; \"draft\" entries and the example (\"example\": true) never are. Draft answers are short paraphrases of the official page in source_url; empty answers are to be written.",
   "entries": [
     {
       "example": true,
@@ -13,6 +13,859 @@
       ],
       "answer": "EXAMPLE: write the support answer here. Plain text, no greeting or sign-off; numbered steps only when the customer has to do something.",
       "notes": "Optional: source or reviewer notes. Never shown to customers or the AI."
+    },
+    {
+      "kb_entry_id": "KB-N0101",
+      "status": "draft",
+      "area": "Web and internet services",
+      "category": "WEB_MONITORING",
+      "intent": "ssl_certificate_monitoring",
+      "monitor_type": "SSL/TLS certificate",
+      "handling": "answer",
+      "questions": [
+        "How do I monitor SSL certificate expiry?",
+        "I did not get an alert before my SSL certificate expired",
+        "SSL monitor says the certificate is not trusted"
+      ],
+      "collect": [
+        "Host and port being checked",
+        "Exact status or error shown on the monitor",
+        "Whether the certificate is self-signed or uses intermediate certificates",
+        "Expiry threshold set (days)"
+      ],
+      "answer": "Add an SSL/TLS Certificate monitor with the host and port (443 by default) and set an expiry threshold in days; you are notified that many days before the certificate expires. If the trust check fails, the usual causes are a self-signed certificate or a missing or wrong intermediate chain. If you check by IP address or a hostname that differs from the certificate, turn on Skip hostname verification.",
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/ssl-certificate-monitor.html"
+    },
+    {
+      "kb_entry_id": "KB-N0102",
+      "status": "draft",
+      "area": "Web and internet services",
+      "category": "WEB_MONITORING",
+      "intent": "domain_expiry_monitoring",
+      "monitor_type": "Domain expiry",
+      "handling": "answer",
+      "questions": [
+        "How do I get alerted before my domain expires?",
+        "domain expiry monitor setup",
+        "domain expiry monitor shows the wrong expiry date"
+      ],
+      "collect": [
+        "Domain being monitored",
+        "Expiry date shown versus the registrar's date",
+        "WHOIS server, if set"
+      ],
+      "answer": "Add a Domain Expiry monitor with the registered domain (without subdomains) and an expiry threshold in days (30 by default). It checks about once a day from the primary location and alerts you that many days before the domain expires; Poll Now runs an immediate check.",
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/domain-expiry-monitor.html"
+    },
+    {
+      "kb_entry_id": "KB-N0103",
+      "status": "draft",
+      "area": "Web and internet services",
+      "category": "MONITORING",
+      "intent": "ping_monitoring",
+      "monitor_type": "Ping",
+      "handling": "answer",
+      "questions": [
+        "My ping monitor shows down but the server is up",
+        "How do I add a ping monitor?",
+        "ping monitor keeps timing out from some locations"
+      ],
+      "collect": [
+        "Host or IP",
+        "Locations reporting down",
+        "Whether ICMP is allowed by the host and firewalls",
+        "IPv4 or IPv6"
+      ],
+      "answer": "A Ping monitor sends three ICMP echo requests per poll and is marked down only when none of them get a reply, so the host and any firewall in between must allow ICMP from the monitoring locations. An IPv6 check does not fall back to IPv4; add a separate check if you need both.",
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/ping-monitor.html"
+    },
+    {
+      "kb_entry_id": "KB-N0104",
+      "status": "draft",
+      "area": "Web and internet services",
+      "category": "MONITORING",
+      "intent": "port_monitoring",
+      "monitor_type": "Port (custom protocol)",
+      "handling": "answer",
+      "questions": [
+        "How do I monitor whether a TCP port is open?",
+        "port monitor shows down but the service is running",
+        "alert me when a port is closed"
+      ],
+      "collect": [
+        "Host and port",
+        "Locations reporting down",
+        "Port status check setting (alert on closed or open)",
+        "Any keyword checks configured"
+      ],
+      "answer": "A Port monitor checks that a TCP port on your host is reachable from the chosen locations, and can also check the response for required or forbidden keywords. It goes down when the port is closed or not listening (or open, if you set it to alert on open), or when the response fails your keyword rules. 10- and 15-second checks need an On-Premise Poller.",
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/port-monitor.html"
+    },
+    {
+      "kb_entry_id": "KB-N0105",
+      "status": "draft",
+      "area": "Web and internet services",
+      "category": "MONITORING",
+      "intent": "dns_monitoring",
+      "monitor_type": "DNS",
+      "handling": "answer",
+      "questions": [
+        "How do I monitor DNS resolution for my domain?",
+        "DNS monitor shows answer mismatch",
+        "DNS monitor connection error"
+      ],
+      "collect": [
+        "DNS server, domain and record type checked",
+        "Exact error on the monitor",
+        "Expected values configured for answer validation"
+      ],
+      "answer": "A DNS monitor queries your DNS server for a domain and record type (A, AAAA, CNAME, MX, NS or TXT) over TCP or UDP. It alerts on failed lookups, connection timeouts, answers that don't match the values you expect, or a TTL above your limit; DNSSEC validation is optional.",
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/dns-monitor.html"
+    },
+    {
+      "kb_entry_id": "KB-N0106",
+      "status": "draft",
+      "area": "Digital experience",
+      "category": "WEB_MONITORING",
+      "intent": "web_transaction_monitoring",
+      "monitor_type": "Web transaction (browser)",
+      "handling": "answer",
+      "questions": [
+        "How do I monitor a login or checkout flow?",
+        "web transaction monitor fails at one step",
+        "how do I record a synthetic transaction?"
+      ],
+      "collect": [
+        "Monitor name and the step that fails",
+        "Error shown for that step",
+        "Whether the page changed recently",
+        "Location or On-Premise Poller used"
+      ],
+      "answer": "A Web Transaction (Browser) monitor replays a recorded user journey of up to 20 steps, such as a login or checkout, in a real browser from Site24x7 locations or an On-Premise Poller. Record the steps with the recorder, then set the browser, frequency, locations and alerts. Logins can use a credential profile, and TOTP-based multi-factor authentication is supported.",
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/webapplication-monitoring-realbrowser.html"
+    },
+    {
+      "kb_entry_id": "KB-N0107",
+      "status": "draft",
+      "area": "Digital experience",
+      "category": "APM",
+      "intent": "real_user_monitoring",
+      "monitor_type": "Real user monitoring (RUM)",
+      "handling": "answer",
+      "questions": [
+        "How do I set up real user monitoring?",
+        "RUM shows no data after adding the script",
+        "where do I put the RUM snippet?"
+      ],
+      "collect": [
+        "Website URL",
+        "Where the snippet was placed (header or footer)",
+        "Browser console errors, if any",
+        "When the snippet was added"
+      ],
+      "answer": "Real User Monitoring is added by pasting the JavaScript snippet Site24x7 gives you into the header or footer of your web application's pages. It supports Chrome, Firefox, Safari and Opera, and single page apps built with Angular, Ember or React.",
+      "source_url": "https://www.site24x7.com/help/apm/rum.html"
+    },
+    {
+      "kb_entry_id": "KB-N0108",
+      "status": "draft",
+      "area": "Digital experience",
+      "category": "REPORTING",
+      "intent": "status_page",
+      "monitor_type": "Status page (StatusIQ)",
+      "handling": "answer",
+      "questions": [
+        "How do I create a public status page?",
+        "status page setup",
+        "how do I show incidents on a status page?"
+      ],
+      "collect": [
+        "Status page name or URL",
+        "What should appear on it",
+        "Whether it should be public or private"
+      ],
+      "answer": "Status pages are created in StatusIQ: log in, click Add Status Page, enter a name (the other details are optional) and create it. A status page keeps your users informed about live incidents and scheduled maintenance; components are added separately.",
+      "source_url": "https://www.site24x7.com/help/statuspage/setup-status-page/status-page.html"
+    },
+    {
+      "kb_entry_id": "KB-N0109",
+      "status": "draft",
+      "area": "Network access and connectivity",
+      "category": "AGENT",
+      "intent": "agent_firewall_ports",
+      "monitor_type": "Server agent",
+      "handling": "answer",
+      "questions": [
+        "Which ports and domains does the agent need through our firewall?",
+        "agent cannot connect through firewall",
+        "what do I allowlist for the server agent?"
+      ],
+      "collect": [
+        "Operating system and agent version",
+        "Data center or region of the account",
+        "Firewall or proxy in use",
+        "Agent log error, if any"
+      ],
+      "answer": "The server monitoring agent only makes outbound HTTPS connections on port 443. Allow the Site24x7 hostnames for your data center: for the US data center that is plus.site24x7.com (plus2 and plus3 for disaster recovery), dms.zoho.com and logu.site24x7.com for logs. Accounts in other regions use other domain suffixes such as .eu or .in, and published IP ranges per data center are an alternative to hostnames.",
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/which-ports-do-i-need-to-allow-access-in-my-firewall-to-use-site24x7-agent"
+    },
+    {
+      "kb_entry_id": "KB-N0110",
+      "status": "draft",
+      "area": "Network access and connectivity",
+      "category": "MONITORING",
+      "intent": "monitoring_ip_allowlisting",
+      "monitor_type": "Monitoring locations",
+      "handling": "answer",
+      "questions": [
+        "Which Site24x7 IPs should I allowlist?",
+        "our firewall blocks Site24x7 checks",
+        "website monitor down because of IP blocking"
+      ],
+      "collect": [
+        "Which monitor and locations are affected",
+        "Firewall or WAF in front of the site",
+        "Whether allowlisting is by IP or by domain"
+      ],
+      "answer": "Resolve the domain site24x7.enduserexp.com, which maps to all monitoring locations, and build your firewall rules from it, or use the location IP list published in the help center. Allowlist all locations, because checks can come from another location while one is under maintenance; Site24x7 announces IP changes.",
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/automating-your-ip-whitelisting"
+    },
+    {
+      "kb_entry_id": "KB-N0111",
+      "status": "draft",
+      "area": "Network access and connectivity",
+      "category": "AGENT",
+      "intent": "agent_proxy_linux",
+      "monitor_type": "Server agent (Linux)",
+      "handling": "answer",
+      "questions": [
+        "How do I set a proxy for the Linux agent?",
+        "Linux agent behind a proxy is not reporting",
+        "change proxy settings on an installed Linux agent"
+      ],
+      "collect": [
+        "Agent install path (root or non-root)",
+        "Proxy host and port, and whether it needs authentication",
+        "Agent log error, if any"
+      ],
+      "answer": "For an installed Linux agent, add the proxy details to the PROXY_INFO section of monagent.cfg in the agent's conf directory (under /opt/site24x7 for root installs, or the installing user's home for non-root installs), save it, and restart the agent with its monagent utility.",
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/how-do-i-configure-proxy-for-already-installed-site24x7-agent"
+    },
+    {
+      "kb_entry_id": "KB-N0112",
+      "status": "draft",
+      "area": "Network access and connectivity",
+      "category": "AGENT",
+      "intent": "agent_proxy_windows",
+      "monitor_type": "Server agent (Windows)",
+      "handling": "answer",
+      "questions": [
+        "How do I set a proxy for the Windows agent?",
+        "Windows agent not reporting behind a proxy",
+        "where are the proxy settings for the Windows agent?"
+      ],
+      "collect": [
+        "Agent version",
+        "Proxy host and port, and whether it needs authentication",
+        "Agent log error, if any"
+      ],
+      "answer": "Right-click the agent's tray icon in the Windows taskbar, choose Proxy Configuration, enter the proxy server, port and (if needed) username and password, then restart the agent.",
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/how-do-i-set-the-porxy-for-my-windows-agent"
+    },
+    {
+      "kb_entry_id": "KB-N0113",
+      "status": "draft",
+      "area": "Network access and connectivity",
+      "category": "MONITORING",
+      "intent": "on_premise_poller",
+      "monitor_type": "On-Premise Poller",
+      "handling": "answer",
+      "questions": [
+        "How do I monitor servers inside my private network?",
+        "On-Premise Poller is not sending data",
+        "what is the On-Premise Poller for?"
+      ],
+      "collect": [
+        "Poller OS, version and 32/64-bit",
+        "Poller status in the console",
+        "Firewall or proxy between the poller and Site24x7",
+        "Poller log error, if any"
+      ],
+      "answer": "The On-Premise Poller monitors resources inside your network, behind a firewall or VPN, and sends the data to Site24x7. Browser-based web transaction and page speed monitors need the Linux poller, and network device monitoring needs the 64-bit version. Keep the poller on the latest version.",
+      "source_url": "https://www.site24x7.com/help/getting-started/on-premise-poller.html"
+    },
+    {
+      "kb_entry_id": "KB-N0114",
+      "status": "draft",
+      "area": "Databases",
+      "category": "APPLICATION_MONITORING",
+      "intent": "mysql_monitoring",
+      "monitor_type": "MySQL / MariaDB",
+      "handling": "answer",
+      "questions": [
+        "How do I monitor MySQL?",
+        "MySQL monitor shows no data",
+        "what privileges does the MySQL monitoring user need?"
+      ],
+      "collect": [
+        "MySQL or MariaDB version",
+        "Agent version",
+        "Exact error from the add-instance step or the monitor"
+      ],
+      "answer": "MySQL is monitored by the Site24x7 Linux server agent, which discovers instances on the host; you then add the instance with the agent's add-instance command and a dedicated MySQL user. That user needs replication client, process and show databases rights, plus select and execute on performance_schema and sys. It needs MySQL 5.6 or later with agent 19.0.0 or later (MariaDB: agent 19.4.0 or later).",
+      "source_url": "https://www.site24x7.com/help/database-monitoring/mysql-monitor.html"
+    },
+    {
+      "kb_entry_id": "KB-N0115",
+      "status": "draft",
+      "area": "Databases",
+      "category": "APPLICATION_MONITORING",
+      "intent": "sql_server_monitoring",
+      "monitor_type": "Microsoft SQL Server",
+      "handling": "answer",
+      "questions": [
+        "How do I monitor SQL Server?",
+        "SQL Server monitor missing after installing the agent",
+        "does SQL Server monitoring need a login?"
+      ],
+      "collect": [
+        "SQL Server version",
+        "Windows agent version",
+        "Whether the instance appears under the server monitor"
+      ],
+      "answer": "Install the Site24x7 Windows server agent on the SQL Server host; it discovers and adds SQL Server automatically. No SQL Server login is needed: the agent reads performance counters (read-only). It needs SQL Server 2008 or later and .NET 3.0 or later. If the monitor is missing, run Discover Applications from the Windows server monitor.",
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/sql-server-monitor.html"
+    },
+    {
+      "kb_entry_id": "KB-N0116",
+      "status": "draft",
+      "area": "Databases",
+      "category": "APPLICATION_MONITORING",
+      "intent": "oracle_monitoring",
+      "monitor_type": "Oracle Database",
+      "handling": "answer",
+      "questions": [
+        "How do I monitor an Oracle database?",
+        "Oracle monitor add instance fails",
+        "which privileges does the Oracle monitoring user need?"
+      ],
+      "collect": [
+        "Oracle version and whether it is multi-tenant",
+        "Agent version",
+        "Exact error from the add-instance step"
+      ],
+      "answer": "Oracle is monitored by the Site24x7 Linux server agent: create a read-only Oracle user with CREATE SESSION, CONNECT and SELECT_CATALOG_ROLE, then add each instance with the agent's add-instance command (host, port, service name, credentials). It supports Oracle 11g and later with agent 19.8.0 or later; the Instant Client is optional.",
+      "source_url": "https://www.site24x7.com/help/database-monitoring/oracle-monitor.html"
+    },
+    {
+      "kb_entry_id": "KB-N0117",
+      "status": "draft",
+      "area": "Databases",
+      "category": "APPLICATION_MONITORING",
+      "intent": "postgresql_monitoring",
+      "monitor_type": "PostgreSQL",
+      "handling": "answer",
+      "questions": [
+        "How do I monitor PostgreSQL?",
+        "PostgreSQL monitor shows no data",
+        "which roles does the PostgreSQL monitoring user need?"
+      ],
+      "collect": [
+        "PostgreSQL version",
+        "Agent version",
+        "Exact error from the add-instance step"
+      ],
+      "answer": "PostgreSQL is monitored by the Site24x7 Linux server agent, which discovers instances; add each one with the agent's add-instance command and a dedicated user. Grant that user execute on pg_ls_waldir and the pg_read_all_stats and pg_read_all_settings roles (plus CONNECT on restricted databases). It needs PostgreSQL 10.23 or later and agent 19.4.0 or later.",
+      "source_url": "https://www.site24x7.com/help/database-monitoring/postgresql-monitor.html"
+    },
+    {
+      "kb_entry_id": "KB-N0118",
+      "status": "draft",
+      "area": "Virtualization and server credentials",
+      "category": "SERVER_MONITORING",
+      "intent": "vmware_monitoring",
+      "monitor_type": "VMware ESX/ESXi / vCenter",
+      "handling": "answer",
+      "questions": [
+        "How do I monitor VMware ESXi?",
+        "VMware monitor cannot connect to vCenter",
+        "what permissions does the VMware account need?"
+      ],
+      "collect": [
+        "vCenter or ESXi host and port",
+        "On-Premise Poller version",
+        "Role of the VMware account",
+        "Exact error when adding the monitor"
+      ],
+      "answer": "Install an On-Premise Poller first, then add a VMware ESX/ESXi monitor with the host and port and choose the poller as the location. Poll through a linked vCenter monitor or with the host's own credentials (a stored credential profile works). The VMware account needs a read-only or administrator role and access to the Managed Object Browser.",
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/vmware-esx-esxi-monitor.html"
+    },
+    {
+      "kb_entry_id": "KB-N0119",
+      "status": "draft",
+      "area": "Virtualization and server credentials",
+      "category": "SERVER_MONITORING",
+      "intent": "hyperv_monitoring",
+      "monitor_type": "Hyper-V",
+      "handling": "answer",
+      "questions": [
+        "How do I monitor Hyper-V?",
+        "Hyper-V VMs show only partial details",
+        "Hyper-V not discovered"
+      ],
+      "collect": [
+        "Windows Server version of the host",
+        "Windows agent version",
+        "What is missing in the console"
+      ],
+      "answer": "Install the Site24x7 Windows agent on the Hyper-V host; Hyper-V is discovered automatically. Full VM details need Windows Server 2012 or later (2008 and 2008 R2 show only state, health and CPU). Only admins or super admins can start, stop or restart VMs from the console.",
+      "source_url": "https://www.site24x7.com/help/server-metrics/hyper-v-monitoring.html"
+    },
+    {
+      "kb_entry_id": "KB-N0120",
+      "status": "draft",
+      "area": "Virtualization and server credentials",
+      "category": "SERVER_MONITORING",
+      "intent": "ssh_credentials",
+      "monitor_type": "Credential profile (SSH)",
+      "handling": "answer",
+      "questions": [
+        "How do I store SSH credentials for monitoring?",
+        "use an SSH private key for a monitor",
+        "update a password used by several monitors"
+      ],
+      "collect": [
+        "Which monitors use the credentials",
+        "Credential type (password, private key, certificate)",
+        "Exact error when testing or polling"
+      ],
+      "answer": "Store login details in a credential profile (Admin > Configuration Profiles > Credential Profile > Add Credential) and pick it when adding or editing a monitor, so a password change applies everywhere. SSH can use a private key (with an optional key password) or a certificate.",
+      "source_url": "https://www.site24x7.com/help/admin/configuration-profiles/credential-profile.html"
+    },
+    {
+      "kb_entry_id": "KB-N0121",
+      "status": "draft",
+      "area": "Virtualization and server credentials",
+      "category": "SERVER_MONITORING",
+      "intent": "wmi_credentials",
+      "monitor_type": "Agentless Windows (WMI)",
+      "handling": "escalate_with_info",
+      "questions": [
+        "WMI credentials fail for agentless Windows monitoring",
+        "which account do I use for WMI monitoring?",
+        "agentless Windows server shows access denied"
+      ],
+      "collect": [
+        "Whether the server is in a domain or a workgroup",
+        "Account type used (domain user, local user)",
+        "On-Premise Poller version",
+        "Exact error text"
+      ],
+      "answer": "",
+      "source_url": ""
+    },
+    {
+      "kb_entry_id": "KB-N0122",
+      "status": "draft",
+      "area": "Cloud",
+      "category": "CLOUD",
+      "intent": "aws_monitoring",
+      "monitor_type": "AWS",
+      "handling": "answer",
+      "questions": [
+        "How do I connect my AWS account?",
+        "AWS integration not discovering resources",
+        "do I need access keys for AWS monitoring?"
+      ],
+      "collect": [
+        "Connection method used (IAM role / CloudFormation)",
+        "AWS services expected",
+        "Exact error shown"
+      ],
+      "answer": "Site24x7 connects to AWS mainly through a cross-account IAM role (Role ARN), which gives it temporary access; a CloudFormation template can create the role and link it for you. Control Tower, IAM Identity Center and delegated admin are options for connecting many accounts.",
+      "source_url": "https://www.site24x7.com/help/aws/deployment-methods.html"
+    },
+    {
+      "kb_entry_id": "KB-N0123",
+      "status": "draft",
+      "area": "Cloud",
+      "category": "CLOUD",
+      "intent": "gcp_monitoring",
+      "monitor_type": "Google Cloud",
+      "handling": "answer",
+      "questions": [
+        "How do I connect Google Cloud?",
+        "GCP monitor shows permission error",
+        "which roles does the GCP service account need?"
+      ],
+      "collect": [
+        "Project ID",
+        "Roles granted to the service account",
+        "Exact error shown"
+      ],
+      "answer": "Create a Google Cloud service account, grant it the Viewer role (plus Browser for organization-level monitoring), export its JSON key and upload it with the project ID under Cloud > Add GCP Monitor. Resources are polled every five minutes; starting or stopping VMs needs the compute instance start/stop permissions.",
+      "source_url": "https://www.site24x7.com/help/gcp/getting-started.html"
+    },
+    {
+      "kb_entry_id": "KB-N0124",
+      "status": "draft",
+      "area": "Alerts and integrations",
+      "category": "ALERTS",
+      "intent": "alert_email_delivery",
+      "monitor_type": "Email alerts",
+      "handling": "answer",
+      "questions": [
+        "I am not receiving alert emails",
+        "Site24x7 alert emails go to spam",
+        "alert emails stopped arriving"
+      ],
+      "collect": [
+        "Recipient address",
+        "When the last alert email arrived",
+        "Whether other users receive them",
+        "Mail filtering in use"
+      ],
+      "answer": "Check the spam or junk folder and add no-reply@site24x7.com and noreply@zohoaccounts.com to your allow list, and make sure your mail servers are working. Each address can receive up to 500 alert emails a day; after that, alerts pause until the count resets at midnight.",
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/i-am-not-receiving-alert-emails-from-site24x7-what-should-i-do"
+    },
+    {
+      "kb_entry_id": "KB-N0125",
+      "status": "draft",
+      "area": "Alerts and integrations",
+      "category": "ALERTS",
+      "intent": "alert_sms_delivery",
+      "monitor_type": "SMS alerts",
+      "handling": "answer",
+      "questions": [
+        "I am not receiving SMS alerts",
+        "SMS alerts stopped",
+        "added my mobile number but get no SMS"
+      ],
+      "collect": [
+        "Mobile number as entered (country code)",
+        "User alert group the user belongs to",
+        "Whether the number is on a Do Not Disturb list"
+      ],
+      "answer": "Make sure the user's mobile number is linked to the right user alert group under Admin > User & Alert Management, and enter it without a zero after the country code. SMS goes through bulk providers, so a number on a Do Not Disturb list may not receive it.",
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/i-ve-added-mobile-number-to-my-account-but-i-m-not-receiving-sms-alerts-what-could-be-the-reason"
+    },
+    {
+      "kb_entry_id": "KB-N0126",
+      "status": "draft",
+      "area": "Alerts and integrations",
+      "category": "INTEGRATION",
+      "intent": "webhook_integration",
+      "monitor_type": "Webhook",
+      "handling": "answer",
+      "questions": [
+        "How do I send alerts to a webhook?",
+        "webhook integration not receiving alerts",
+        "can a webhook call an internal URL?"
+      ],
+      "collect": [
+        "Hook URL host (no secrets)",
+        "HTTP method and body format",
+        "Result of Save and Test",
+        "Whether the endpoint is internal"
+      ],
+      "answer": "Add a Webhooks integration under Admin > Third-Party Integration with the hook URL, HTTP method and body format (headers and authentication are optional) and pick which statuses trigger it. Use Save and Test to send a test alert. For an endpoint reachable only inside your network, set it to Internal and route it through an On-Premise Poller.",
+      "source_url": "https://www.site24x7.com/help/admin/third-party-integration/webhooks.html"
+    },
+    {
+      "kb_entry_id": "KB-N0127",
+      "status": "draft",
+      "area": "Alerts and integrations",
+      "category": "INTEGRATION",
+      "intent": "teams_integration",
+      "monitor_type": "Microsoft Teams",
+      "handling": "answer",
+      "questions": [
+        "How do I send alerts to Microsoft Teams?",
+        "Teams integration stopped posting",
+        "Teams connector deprecated"
+      ],
+      "collect": [
+        "Channel used",
+        "Result of the test alert",
+        "Whether the old connector-based setup was used"
+      ],
+      "answer": "In the Teams channel, tag the Site24x7 Bot and use its Configure Integration card, then name the integration, choose the monitors, triggers and alert groups, and use Save and Test. Alerts and root cause details are posted to the channel. The old connector-based integration is deprecated.",
+      "source_url": "https://www.site24x7.com/help/admin/third-party-integration/microsoft-teams.html"
+    },
+    {
+      "kb_entry_id": "KB-N0128",
+      "status": "draft",
+      "area": "Alerts and integrations",
+      "category": "INTEGRATION",
+      "intent": "slack_integration",
+      "monitor_type": "Slack",
+      "handling": "answer",
+      "questions": [
+        "How do I send alerts to Slack?",
+        "Slack integration not posting alerts",
+        "test Slack alerts"
+      ],
+      "collect": [
+        "Connection type (webhook URL or OAuth token)",
+        "Channel",
+        "Result of Save and Test"
+      ],
+      "answer": "Create a Slack app with the needed permissions, then connect it under Admin > Third-Party Integration with a webhook URL or an OAuth token and channel ID. Down, up and trouble alerts are posted with RCA links; use Save and Test to check it.",
+      "source_url": "https://www.site24x7.com/help/admin/third-party-integration/slack.html"
+    },
+    {
+      "kb_entry_id": "KB-N0129",
+      "status": "draft",
+      "area": "Alerts and integrations",
+      "category": "ALERTS",
+      "intent": "maintenance_window",
+      "monitor_type": "Scheduled maintenance",
+      "handling": "answer",
+      "questions": [
+        "How do I stop alerts during maintenance?",
+        "schedule a recurring maintenance window",
+        "got alerts during a maintenance window"
+      ],
+      "collect": [
+        "Window schedule and time zone",
+        "Monitors or groups included",
+        "Time of the unexpected alert"
+      ],
+      "answer": "Create a window under Admin > Operations > Scheduled Maintenance: name, time zone, frequency (once, daily, weekly, monthly or yearly), timing, and the monitors or groups. Alerts are suppressed during the window. Recurring windows must be shorter than 24 hours, and an active window's timing can't be changed until it ends.",
+      "source_url": "https://www.site24x7.com/help/admin/operations/scheduled-maintenance.html"
+    },
+    {
+      "kb_entry_id": "KB-N0130",
+      "status": "draft",
+      "area": "Account and access",
+      "category": "ACCOUNT",
+      "intent": "user_roles",
+      "monitor_type": "User roles",
+      "handling": "answer",
+      "questions": [
+        "What can each user role do?",
+        "change a user's role",
+        "read only user cannot edit monitors"
+      ],
+      "collect": [
+        "Current role of the user",
+        "What they need to do",
+        "Whether they accepted the invitation"
+      ],
+      "answer": "Super Admins have full control including billing; Admins have the same except billing. Operators manage their own maintenance windows and reports, Read Only users can view most modules, and Alert Contacts only receive alerts. Choose the role when adding a user; you can change it only after they accept the invitation.",
+      "source_url": "https://www.site24x7.com/help/admin/user-management/role-based-access-permissions.html"
+    },
+    {
+      "kb_entry_id": "KB-N0131",
+      "status": "draft",
+      "area": "Account and access",
+      "category": "ACCOUNT",
+      "intent": "two_factor_authentication",
+      "monitor_type": "Account security (2FA/MFA)",
+      "handling": "answer",
+      "questions": [
+        "How do I enable two-factor authentication?",
+        "turn on MFA for my organization",
+        "2FA for Site24x7 login"
+      ],
+      "collect": [
+        "Whether it is for one user or the whole organization",
+        "Role of the person enabling it"
+      ],
+      "answer": "Go to Admin > My Account and turn on multi-factor authentication; you are taken to Zoho Directory, where you open Multi-Factor Authentication in the side menu and choose an MFA mode.",
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/how-do-i-secure-my-site24x7-account-using-two-factor-authentication"
+    },
+    {
+      "kb_entry_id": "KB-N0132",
+      "status": "draft",
+      "area": "Account and access",
+      "category": "ACCOUNT",
+      "intent": "saml_sso",
+      "monitor_type": "Single sign-on (SAML)",
+      "handling": "answer",
+      "questions": [
+        "How do I set up SSO with SAML?",
+        "SAML login not working",
+        "can I use Okta or Azure AD to sign in?"
+      ],
+      "collect": [
+        "Identity provider used",
+        "Whether the person is the Super Admin",
+        "Exact error at sign-in"
+      ],
+      "answer": "Only the account's Super Admin can set up SAML SSO, in Zoho Accounts under Preferences > Settings > SAML Authentication. You need your identity provider's login, logout and password-change URLs and its signing certificate (Base64 .cer, .crt, .cert or .pem). The Super Admin keeps a password login for recovery.",
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/saml-based-sso"
+    },
+    {
+      "kb_entry_id": "KB-N0133",
+      "status": "draft",
+      "area": "Account and access",
+      "category": "ACCOUNT",
+      "intent": "msp_customer_account",
+      "monitor_type": "MSP",
+      "handling": "answer",
+      "questions": [
+        "How do I add a customer to my MSP account?",
+        "MSP customer did not get the invitation",
+        "MSP user cannot see a customer account"
+      ],
+      "collect": [
+        "MSP account and customer name",
+        "Whether the customer verified their mobile number",
+        "Which MSP users are associated with the customer"
+      ],
+      "answer": "In the MSP account, add the customer from the Customers page with their company and contact details. The customer gets an invitation email and joins as a sub-user with the MSP Customer role; their data appears after they verify their mobile number. Only MSP users associated with that customer can access it.",
+      "source_url": "https://www.site24x7.com/help/msp/customer-management/customer-account.html"
+    },
+    {
+      "kb_entry_id": "KB-N0134",
+      "status": "draft",
+      "area": "AI assistant",
+      "category": "INTEGRATION",
+      "intent": "zia_assistant",
+      "monitor_type": "Zia",
+      "handling": "answer",
+      "questions": [
+        "What is Zia in Site24x7?",
+        "how do I enable Zia?",
+        "Zia not available in my account"
+      ],
+      "collect": [
+        "Which integration method is set up (BYOK, ZKS, Azure OpenAI)",
+        "Role of the user",
+        "What Zia shows"
+      ],
+      "answer": "Zia is Zoho's AI assistant in Site24x7: it can summarize alarms, investigate outages, compare root cause analyses and explain error codes. Enable it with one of three methods (Bring Your Own Key, Zoho Key Services or Microsoft Azure OpenAI), accept the data privacy notice, then pick a provider and model.",
+      "source_url": "https://www.site24x7.com/help/admin/third-party-integration/zia-integration.html"
+    },
+    {
+      "kb_entry_id": "KB-N0135",
+      "status": "draft",
+      "area": "Add-monitor errors",
+      "category": "WEB_MONITORING",
+      "intent": "add_website_monitor_error",
+      "monitor_type": "Website",
+      "handling": "escalate_with_info",
+      "questions": [
+        "I get an error when adding a website monitor",
+        "website monitor will not save",
+        "add monitor fails for my URL"
+      ],
+      "collect": [
+        "The URL being added (no credentials)",
+        "Exact error text",
+        "Screenshot of the form",
+        "Whether the site needs a login"
+      ],
+      "answer": "",
+      "source_url": ""
+    },
+    {
+      "kb_entry_id": "KB-N0136",
+      "status": "draft",
+      "area": "Add-monitor errors",
+      "category": "AGENT",
+      "intent": "add_server_agent_error",
+      "monitor_type": "Server agent",
+      "handling": "escalate_with_info",
+      "questions": [
+        "The agent installs but the server never appears",
+        "server agent registration fails",
+        "error while installing the Site24x7 agent"
+      ],
+      "collect": [
+        "Operating system and version",
+        "Agent version and install method",
+        "Exact error text or agent log lines",
+        "Proxy or firewall in use"
+      ],
+      "answer": "",
+      "source_url": ""
+    },
+    {
+      "kb_entry_id": "KB-N0137",
+      "status": "draft",
+      "area": "Add-monitor errors",
+      "category": "SNMP",
+      "intent": "add_network_device_error",
+      "monitor_type": "Network device (SNMP)",
+      "handling": "escalate_with_info",
+      "questions": [
+        "Network device cannot be added",
+        "SNMP device discovery fails",
+        "error adding a router or switch"
+      ],
+      "collect": [
+        "Device vendor and model",
+        "SNMP version and whether credentials were tested",
+        "On-Premise Poller version",
+        "Exact error text"
+      ],
+      "answer": "",
+      "source_url": ""
+    },
+    {
+      "kb_entry_id": "KB-N0138",
+      "status": "draft",
+      "area": "Add-monitor errors",
+      "category": "CLOUD",
+      "intent": "add_cloud_account_error",
+      "monitor_type": "Cloud (AWS/Azure/GCP)",
+      "handling": "escalate_with_info",
+      "questions": [
+        "Error when connecting my cloud account",
+        "cloud integration fails with permission error",
+        "cloud resources not discovered after connecting"
+      ],
+      "collect": [
+        "Cloud provider and connection method",
+        "Exact error text",
+        "Roles or policies granted"
+      ],
+      "answer": "",
+      "source_url": ""
+    },
+    {
+      "kb_entry_id": "KB-N0139",
+      "status": "draft",
+      "area": "Add-monitor errors",
+      "category": "APPLICATION_MONITORING",
+      "intent": "add_database_monitor_error",
+      "monitor_type": "Database",
+      "handling": "escalate_with_info",
+      "questions": [
+        "Error when adding a database monitor",
+        "database instance add fails",
+        "database monitor shows no data"
+      ],
+      "collect": [
+        "Database type and version",
+        "Agent version",
+        "Exact error from the add-instance step or the monitor"
+      ],
+      "answer": "",
+      "source_url": ""
+    },
+    {
+      "kb_entry_id": "KB-N0140",
+      "status": "draft",
+      "area": "Add-monitor errors",
+      "category": "WEB_MONITORING",
+      "intent": "add_api_monitor_error_har",
+      "monitor_type": "REST API",
+      "handling": "escalate_with_info",
+      "questions": [
+        "Error when adding a REST API monitor",
+        "API monitor will not save",
+        "invalid data provided error for an API monitor"
+      ],
+      "collect": [
+        "Exact error text",
+        "Endpoint host and method (no tokens)",
+        "A HAR file of the failing add-monitor attempt, with cookies and tokens removed"
+      ],
+      "answer": "Support may ask for a HAR file, which records every request the browser makes. Open the page where the problem happens, open developer tools (F12, or Cmd+Option+I on Mac), turn on log preservation in the Network tab, repeat the failing action, then export all requests as a HAR file. Remove cookies and tokens before sharing it.",
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/how-to-generate-a-har-file"
     }
   ]
 }
