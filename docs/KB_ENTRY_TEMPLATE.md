@@ -119,8 +119,27 @@ When you approve an entry, the reviewer records two things in
   mentioned one of these terms. Until then it asks whether the entry
   applies. `none` registers the entry as generic.
 
+A new category or term must not repeat an existing name, in any case: pick
+the existing one from the list instead (the reviewer says which number it
+is). A new term's pattern must not be empty and must not match an empty
+message, since such a pattern would count as "mentioned" in every message.
+A registry term that repeats a built-in name is ignored, and the built-in
+pattern is kept.
+
+To change an approved entry's category or terms later, without approving
+it again:
+
+```bash
+.venv/bin/python scripts/kb_review.py --retag KB-N0103
+```
+
+It offers the same choices and asks you to type `yes`. The entry stays
+approved, keeps its `reviewed_at`, and gets a `retagged_at`. "Specific to"
+is recorded per intent, so it applies to every entry with that intent (the
+reviewer lists them).
+
 `backend/topic_terms.py` merges the registry with its built-in terms. Restart
-the backend after approving.
+the backend after approving or retagging.
 
 ## How retrieval uses entries
 

@@ -7,6 +7,9 @@
   decision atomically, and stops cleanly on end of input.
 - topic_terms merges the registry; a KB-only category is accepted by the
   validator but never becomes a classifier category.
+- A new category or term never repeats an existing name (any case) and a
+  term's regex is never empty or match-everything; --retag changes an
+  approved entry's category and terms without re-approving it.
 - KB-N0140 (the "invalid data provided for api" HAR entry) is live.
 """
 
@@ -58,7 +61,7 @@ def _entry(path, kb_id):
     return next(e for e in _load(path)["entries"] if e["kb_entry_id"] == kb_id)
 
 
-def _run(files, answers, **kwargs):
+def _run(files, answers, method="run", **kwargs):
     entries, registry, rejected = files
     script = iter(answers)
     said = []
@@ -71,8 +74,18 @@ def _run(files, answers, **kwargs):
             raise EOFError from None
 
     reviewer = kb_review.Reviewer(entries, registry, rejected, ask=ask, say=lambda *a: said.append(" ".join(map(str, a))))
-    assert reviewer.run(**kwargs) == 0
+    assert getattr(reviewer, method)(**kwargs) == 0
     return "\n".join(said)
+
+
+def _approved(files, **kwargs):
+    """files[0] with KB-N0901 approved (generic, APPLICATION_MONITORING)."""
+    data, registry = kb_review.approve(_load(files[0]), kb_registry.empty(), "KB-N0901",
+                                       category="APPLICATION_MONITORING", specific_to=[],
+                                       reviewed_at="2026-11-02T08:00:00+00:00")
+    kb_registry.write_json_atomic(files[0], data)
+    kb_registry.save(registry, files[1])
+    return data, registry
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +113,16 @@ def test_approve_with_a_new_category_and_a_new_term(files):
     ({"category": "NOPE", "specific_to": []}, "unknown category"),
     ({"category": "bad name", "specific_to": [], "new_category": True}, "UPPER_SNAKE_CASE"),
     ({"category": "APPLICATION_MONITORING", "specific_to": ["Not A Term"]}, "unknown term"),
-    ({"category": "APPLICATION_MONITORING", "specific_to": [], "new_terms": {"Bad": "("}}, "invalid regex"),
+    ({"category": "APPLICATION_MONITORING", "specific_to": [], "new_terms": {"Bad": "("}}, "not a valid regex"),
+    ({"category": "SERVER_MONITORING", "specific_to": [], "new_category": True}, "already exists"),
+    ({"category": "APPLICATION_MONITORING", "specific_to": [], "new_terms": {"server": r"\bsrv\b"}},
+     "'server' already exists"),
+    ({"category": "APPLICATION_MONITORING", "specific_to": [], "new_terms": {"Server": r"\bsrv\b"}},
+     "'server' already exists"),
+    ({"category": "APPLICATION_MONITORING", "specific_to": [], "new_terms": {"ZebraDB": ""}}, "is empty"),
+    ({"category": "APPLICATION_MONITORING", "specific_to": [], "new_terms": {"ZebraDB": "   "}}, "is empty"),
+    ({"category": "APPLICATION_MONITORING", "specific_to": [], "new_terms": {"ZebraDB": "z*"}},
+     "match every message"),
 ])
 def test_approve_refuses_bad_choices(files, kwargs, message):
     with pytest.raises(kb_review.ReviewError, match=message):
@@ -159,6 +181,21 @@ def test_interactive_new_category_and_generic_terms(files):
     assert _load(files[1]) == {"categories": ["DATABASES"], "terms": {}, "intent_terms": {"zebradb_monitoring": []}}
 
 
+def test_interactive_new_category_refuses_an_existing_name(files):
+    out = _run(files, ["a", "new", "server_monitoring", "SERVER_MONITORING", "none", "yes", "q"])
+    assert "category SERVER_MONITORING already exists (number" in out
+    assert _entry(files[0], "KB-N0901")["category"] == "SERVER_MONITORING"
+    assert _load(files[1])["categories"] == []
+
+
+def test_interactive_new_term_refuses_an_existing_name_and_an_empty_regex(files):
+    out = _run(files, ["a", "", "new", "Server", r"\bsrv\b", "new", "ZebraDB", "", "new", "ZebraDB", "z*",
+                       "none", "yes", "q"])
+    assert "term 'server' already exists (number" in out
+    assert "the regex is empty" in out and "would match every message" in out
+    assert _load(files[1])["terms"] == {}
+
+
 def test_an_empty_draft_cannot_be_approved_until_edited(files):
     out = _run(files, ["a", "e",
                        "A written answer that is long enough to pass the length check.", ".",
@@ -188,8 +225,82 @@ def test_filters_by_area_and_id(files):
 
 
 # ---------------------------------------------------------------------------
+# Re-tagging approved entries
+# ---------------------------------------------------------------------------
+def test_retag_keeps_the_approval_and_records_the_new_tags(files):
+    data, registry = _approved(files)
+    data, registry = kb_review.retag(data, registry, "KB-N0901", category="SERVER_MONITORING",
+                                     specific_to=["server"], retagged_at="2026-11-02T10:00:00+00:00")
+    entry = next(e for e in data["entries"] if e["kb_entry_id"] == "KB-N0901")
+    assert (entry["status"], entry["reviewed_at"], entry["category"], entry["retagged_at"]) == (
+        "approved", "2026-11-02T08:00:00+00:00", "SERVER_MONITORING", "2026-11-02T10:00:00+00:00")
+    assert registry["intent_terms"] == {"zebradb_monitoring": ["server"]}
+
+
+def test_retag_refuses_drafts_and_bad_choices(files):
+    with pytest.raises(kb_review.ReviewError, match="not approved"):
+        kb_review.retag(_load(files[0]), kb_registry.empty(), "KB-N0902", category="AGENT", specific_to=[])
+    data, registry = _approved(files)
+    with pytest.raises(kb_review.ReviewError, match="already exists"):
+        kb_review.retag(data, registry, "KB-N0901", category="AGENT", new_category=True, specific_to=[])
+    with pytest.raises(kb_review.ReviewError, match="is empty"):
+        kb_review.retag(data, registry, "KB-N0901", category="AGENT", specific_to=[], new_terms={"ZebraDB": ""})
+
+
+def test_interactive_retag_needs_a_typed_yes_and_saves(files):
+    _approved(files)
+    before = files[0].read_text(encoding="utf-8")
+    out = _run(files, ["", "ping", "y"], method="retag", kb_id="KB-N0901")
+    assert "Nothing was changed." in out and files[0].read_text(encoding="utf-8") == before
+    out = _run(files, ["", "ping", "yes"], method="retag", kb_id="KB-N0901")
+    assert "Retagged KB-N0901 and saved." in out
+    entry = _entry(files[0], "KB-N0901")
+    assert entry["status"] == "approved" and entry["reviewed_at"] == "2026-11-02T08:00:00+00:00"
+    assert entry["category"] == "APPLICATION_MONITORING" and entry["retagged_at"]
+    assert _load(files[1])["intent_terms"] == {"zebradb_monitoring": ["ping"]}
+    assert not list(files[0].parent.glob(".*.tmp"))
+
+
+def test_interactive_retag_refuses_a_draft_and_stops_on_end_of_input(files):
+    entries, registry, rejected = files
+    said = []
+    reviewer = kb_review.Reviewer(entries, registry, rejected, ask=lambda p="": (_ for _ in ()).throw(EOFError),
+                                  say=lambda *a: said.append(" ".join(map(str, a))))
+    assert reviewer.retag("KB-N0902") == 1 and "not approved" in said[-1]
+    _approved(files)
+    before = entries.read_text(encoding="utf-8")
+    assert reviewer.retag("KB-N0901") == 0 and entries.read_text(encoding="utf-8") == before
+
+
+# ---------------------------------------------------------------------------
 # Registry in the specificity check and the validator
 # ---------------------------------------------------------------------------
+@pytest.mark.parametrize("registry, message", [
+    ({"terms": {"server": ""}}, "is empty"),
+    ({"terms": {"Nagios": ".*"}}, "match every message"),
+    ({"terms": {"Nagios": r"\bnagios\b", "nagios": r"\bnag\b"}}, "listed twice"),
+    ({"categories": ["SERVER_MONITORING"]}, "already one of the 17"),
+    ({"categories": ["DATABASES", "DATABASES"]}, "listed twice"),
+])
+def test_registry_refuses_duplicates_and_empty_regexes(registry, message):
+    assert any(message in p for p in kb_registry.problems(registry))
+    with pytest.raises(ValueError, match=message):
+        kb_registry.save(registry, Path("/nonexistent/never-written.json"))
+
+
+def test_a_registry_term_never_overrides_a_built_in_one(files):
+    kb_registry.save({"categories": [], "terms": {"Server": r"\bzzz\b"}, "intent_terms": {}}, files[1])
+    topic_terms.reload()
+    assert "server" in topic_terms.mentioned("my linux box") and "Server" not in topic_terms.mentioned("zzz")
+
+
+def test_the_shipped_registry_is_valid_and_repeats_no_built_in_name():
+    raw = json.loads(kb_registry.REGISTRY_PATH.read_text(encoding="utf-8"))
+    assert kb_registry.problems(raw) == []
+    built_in = {label.lower() for label in topic_terms.TERMS}
+    assert not [label for label in raw["terms"] if label.lower() in built_in]
+    topic_terms.reload()
+    assert topic_terms.mentioned("hello, I need help") == set()
 def test_topic_terms_use_the_registry(files):
     kb_registry.save({"categories": [], "terms": {"ZebraDB": r"\bzebra ?db\b"},
                       "intent_terms": {"zebradb_monitoring": ["ZebraDB"], "api_monitoring": []}}, files[1])

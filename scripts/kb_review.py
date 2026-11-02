@@ -1,6 +1,7 @@
 """Review the draft KB entries in data/kb/new_entries.json, one at a time.
 
     .venv/bin/python scripts/kb_review.py [--area AREA] [--id KB-N0101] [--list]
+    .venv/bin/python scripts/kb_review.py --retag KB-N0103
 
 For each draft it shows the area, category, intent, question wordings,
 answer, source_url and "collect" list, then asks what to do:
@@ -15,6 +16,14 @@ answer, source_url and "collect" list, then asks what to do:
   r  reject   move the entry to data/kb/rejected_entries.json.
   s  skip     leave it as a draft.
   q  quit
+
+--retag changes an approved entry's category and "specific to" terms
+(same choices as approve, confirmed by typing "yes"); it stays approved,
+keeps its reviewed_at and gets retagged_at. "Specific to" is recorded per
+intent, so it applies to every entry with that intent.
+
+A new category or term must not repeat an existing name (any case), and
+a new term's regex must not be empty or match an empty message.
 
 Nothing is ever approved without that typed confirmation. Every decision
 is saved atomically straight away, so you can stop at any point. Restart
@@ -98,6 +107,58 @@ def card(entry: dict, registry: dict) -> str:
     return "\n".join(lines)
 
 
+def known_labels(registry: dict) -> list[str]:
+    return sorted(set(topic_terms.TERMS) | set(registry["terms"]))
+
+
+def new_category_problem(name: str, registry: dict) -> str | None:
+    """Why `name` can't be added as a new category (None: it can)."""
+    if not kb_registry.CATEGORY_PATTERN.match(name):
+        return "a new category must be UPPER_SNAKE_CASE, e.g. DATABASES"
+    existing = kb_new_entries.allowed_categories(registry)
+    for i, other in enumerate(existing, start=1):
+        if other.upper() == name.upper():
+            return f"category {other} already exists (number {i}): pick it instead of adding it"
+    return None
+
+
+def new_term_problem(label: str, pattern: str, known: list[str]) -> str | None:
+    """Why a new term can't be added (None: it can)."""
+    if not kb_registry.LABEL_PATTERN.match(label):
+        return f"{label!r} is not a short plain label"
+    for i, other in enumerate(known, start=1):
+        if other.lower() == label.lower():
+            return f"term {other!r} already exists (number {i}): pick it instead of adding it"
+    problem = kb_registry.regex_problem(pattern)
+    return f"the regex {problem}" if problem else None
+
+
+def _tag(entry: dict, registry: dict, *, category: str, specific_to: list[str], new_category: bool,
+         new_terms: dict[str, str] | None) -> None:
+    """Record the category / terms in `registry` (in place); raises
+    ReviewError for a duplicate name, an empty regex or an unknown term."""
+    if new_category:
+        problem = new_category_problem(category, registry)
+        if problem:
+            raise ReviewError(problem)
+        registry["categories"].append(category)
+    elif category not in kb_new_entries.allowed_categories(registry):
+        raise ReviewError(f"unknown category {category!r}")
+    for label, pattern in (new_terms or {}).items():
+        problem = new_term_problem(label, pattern, known_labels(registry))
+        if problem:
+            raise ReviewError(problem)
+        registry["terms"][label] = pattern
+    known = set(known_labels(registry))
+    unknown = [label for label in specific_to if label not in known]
+    if unknown:
+        raise ReviewError(f"unknown term(s): {', '.join(unknown)}")
+    registry["intent_terms"][entry["intent"]] = sorted(set(specific_to))
+    found = kb_registry.problems(registry)
+    if found:
+        raise ReviewError("; ".join(found))
+
+
 # ---------------------------------------------------------------------------
 # Decisions (pure: return the new file contents; the caller saves them)
 # ---------------------------------------------------------------------------
@@ -113,29 +174,40 @@ def approve(data: dict, registry: dict, kb_id: str, *, category: str, specific_t
         raise ReviewError(f"{kb_id} is not a draft")
     if not (entry.get("answer") or "").strip():
         raise ReviewError(f"{kb_id} has no answer: edit it before approving")
-    if new_category:
-        if not kb_registry.CATEGORY_PATTERN.match(category):
-            raise ReviewError("a new category must be UPPER_SNAKE_CASE, e.g. DATABASES")
-        if category not in CATEGORIES and category not in registry["categories"]:
-            registry["categories"].append(category)
-    elif category not in kb_new_entries.allowed_categories(registry):
-        raise ReviewError(f"unknown category {category!r}")
-    for label, pattern in (new_terms or {}).items():
-        registry["terms"][label] = pattern
-    known = set(topic_terms.TERMS) | set(registry["terms"])
-    unknown = [label for label in specific_to if label not in known]
-    if unknown:
-        raise ReviewError(f"unknown term(s): {', '.join(unknown)}")
-    registry["intent_terms"][entry["intent"]] = sorted(set(specific_to))
-    found = kb_registry.problems(registry)
-    if found:
-        raise ReviewError("; ".join(found))
+    _tag(entry, registry, category=category, specific_to=specific_to, new_category=new_category,
+         new_terms=new_terms)
     entry = {**entry, "status": "approved", "category": category, "reviewed_at": reviewed_at or _now()}
     data["entries"][index] = entry
     errors = entry_errors(data, kb_id, registry)
     if errors:
         raise ReviewError("\n".join(errors))
     return data, registry
+
+
+def retag(data: dict, registry: dict, kb_id: str, *, category: str, specific_to: list[str],
+          new_category: bool = False, new_terms: dict[str, str] | None = None,
+          retagged_at: str | None = None) -> tuple[dict, dict]:
+    """An approved entry with a new category and "specific to" terms. It
+    stays approved and keeps reviewed_at; retagged_at is recorded."""
+    data, registry = copy.deepcopy(data), copy.deepcopy(registry)
+    index, entry = find(data, kb_id)
+    if entry.get("status") != "approved":
+        raise ReviewError(f"{kb_id} is not approved: review it with the normal flow instead")
+    _tag(entry, registry, category=category, specific_to=specific_to, new_category=new_category,
+         new_terms=new_terms)
+    entry = {**entry, "category": category, "retagged_at": retagged_at or _now()}
+    data["entries"][index] = entry
+    errors = entry_errors(data, kb_id, registry)
+    if errors:
+        raise ReviewError("\n".join(errors))
+    return data, registry
+
+
+def sharing_intent(data: dict, entry: dict) -> list[str]:
+    """Other new entries with the same intent (they share its terms)."""
+    return [e["kb_entry_id"] for e in data["entries"]
+            if e.get("intent") == entry.get("intent") and e.get("kb_entry_id") != entry.get("kb_entry_id")
+            and not e.get("example")]
 
 
 def edit(data: dict, registry: dict, kb_id: str, answer: str, source_url: str | None = None) -> dict:
@@ -188,8 +260,9 @@ class Reviewer:
                 return None
             if answer.lower() == "new":
                 name = self.ask("New category name (UPPER_SNAKE_CASE): ").strip().upper()
-                if not kb_registry.CATEGORY_PATTERN.match(name):
-                    self.say("  Not a valid name.")
+                problem = new_category_problem(name, registry)
+                if problem:
+                    self.say(f"  Not added: {problem}.")
                     continue
                 self.say("  Note: a new category labels KB entries only. The classifier keeps its 17 "
                          "categories until this one is added to the code.")
@@ -207,7 +280,7 @@ class Reviewer:
         current = registry["intent_terms"].get(intent)
         if current is None and intent in topic_terms.INTENT_TERMS:
             current = sorted(topic_terms.INTENT_TERMS[intent])
-        known = sorted(set(topic_terms.TERMS) | set(registry["terms"]))
+        known = known_labels(registry)
         self.say(f"Which monitor type / integration / product is {intent} specific to?")
         self.say("  The AI only grounds a reply on this entry once the customer has mentioned one of them.")
         for i, label in enumerate(known, start=1):
@@ -228,9 +301,9 @@ class Reviewer:
             if answer.lower() == "new":
                 label = self.ask("  New term label (e.g. 'Nagios'): ").strip()
                 pattern = self.ask("  Regex matched against the customer's words (e.g. \\bnagios\\b): ").strip()
-                if not kb_registry.LABEL_PATTERN.match(label) or kb_registry.problems(
-                        {"terms": {label: pattern}}):
-                    self.say("  Not a valid label or regex.")
+                problem = new_term_problem(label, pattern, known)
+                if problem:
+                    self.say(f"  Not added: {problem}.")
                     continue
                 new_terms[label] = pattern
                 known = sorted(set(known) | {label})
@@ -276,6 +349,53 @@ class Reviewer:
         kb_registry.save(registry, self.registry_path)
         kb_registry.write_json_atomic(self.entries_path, data)
         self.say(f"Approved {entry['kb_entry_id']} and saved.")
+
+    def retag(self, kb_id: str) -> int:
+        try:
+            return self._retag(kb_id)
+        except EOFError:
+            self.say("\nStopped. Nothing was changed.")
+            return 0
+
+    def _retag(self, kb_id: str) -> int:
+        data, registry = self._load()
+        try:
+            _, entry = find(data, kb_id)
+        except ReviewError as exc:
+            self.say(str(exc))
+            return 1
+        if entry.get("status") != "approved":
+            self.say(f"{kb_id} is not approved: review it without --retag.")
+            return 1
+        self.say(card(entry, registry))
+        others = sharing_intent(data, entry)
+        if others:
+            self.say(f"Note: \"specific to\" is recorded per intent; {', '.join(others)} "
+                     f"share {entry['intent']} and get the same terms.")
+        category = self._choose_category(entry, registry)
+        if category is None:
+            self.say("Nothing was changed.")
+            return 0
+        terms = self._choose_terms(entry, registry)
+        if terms is None:
+            self.say("Nothing was changed.")
+            return 0
+        (name, is_new), (specific, new_terms) = category, terms
+        self.say(f"About to retag {kb_id}: category {name}{' (new, KB-only)' if is_new else ''}, "
+                 f"specific to {', '.join(specific) or 'nothing (generic)'}. It stays approved.")
+        if self.ask("Type 'yes' to save: ").strip().lower() != "yes":
+            self.say("Nothing was changed.")
+            return 0
+        try:
+            data, registry = retag(data, registry, kb_id, category=name, specific_to=specific,
+                                   new_category=is_new, new_terms=new_terms)
+        except ReviewError as exc:
+            self.say(f"Not saved:\n{exc}")
+            return 1
+        kb_registry.save(registry, self.registry_path)
+        kb_registry.write_json_atomic(self.entries_path, data)
+        self.say(f"Retagged {kb_id} and saved. Restart the backend to use it.")
+        return 0
 
     def _edit(self, entry: dict) -> None:
         data, registry = self._load()
@@ -357,8 +477,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--area", help="only drafts of this area")
     parser.add_argument("--id", dest="kb_id", help="only this draft, e.g. KB-N0101")
     parser.add_argument("--list", action="store_true", help="list the drafts and exit")
+    parser.add_argument("--retag", metavar="ID", help="change an approved entry's category and terms")
     args = parser.parse_args(argv)
     reviewer = Reviewer(kb_new_entries.NEW_ENTRIES_PATH, kb_registry.REGISTRY_PATH, REJECTED_PATH)
+    if args.retag:
+        try:
+            return reviewer.retag(args.retag)
+        except KeyboardInterrupt:
+            print("\nStopped. Nothing was changed.")
+            return 0
     if args.list:
         data, _ = reviewer._load()
         for e in drafts(data, args.area, args.kb_id):
