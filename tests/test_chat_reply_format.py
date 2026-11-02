@@ -184,3 +184,98 @@ def test_a_kb_match_grounds_the_answer_as_before(monkeypatch):
     _answer("chat", kb_candidates=[_CANDIDATE])
     assert "no close knowledge-base match" not in seen["instructions"]
     assert "Download the agent installer and run it." in seen["data"]["kb_guidance"]
+
+
+# ---------------------------------------------------------------------------
+# Useful questions: never ask for identifiers; monitor type first
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("raw, known, expected", [
+    ("Can you provide the monitor name and the specific error message you're encountering?", False,
+     chat_response.MONITOR_TYPE_QUESTION),
+    ("Can you provide the monitor name and the specific error message you're encountering?", True,
+     chat_response.DETAIL_QUESTION),
+    ("Can you confirm if the API key used for the PagerDuty integration is correct?", False,
+     chat_response.MONITOR_TYPE_QUESTION),
+    ("Please share your account ID. What is the exact error text?", True, "What is the exact error text?"),
+    ("Thanks for the details. What's the name of your monitor?", False,
+     "Thanks for the details.\n" + chat_response.MONITOR_TYPE_QUESTION),
+    ("Could you please specify which service or monitor is not working?", False,
+     chat_response.MONITOR_TYPE_QUESTION),
+])
+def test_identifier_requests_are_replaced_by_a_useful_question(raw, known, expected):
+    assert clean_chat_reply(raw, monitor_type_known=known) == expected
+
+
+@pytest.mark.parametrize("text", [
+    "Check that the API key in the integration settings is still valid, then save the monitor again.",
+    "Open Admin > Monitors and edit the monitor name if it contains special characters.",
+    "What type of monitor are you adding: website, server, API or something else?",
+])
+def test_advice_that_only_mentions_an_identifier_is_kept(text):
+    assert clean_chat_reply(text, monitor_type_known=False) == text
+
+
+def _prompt_and_data(monkeypatch, call, **fields):
+    seen = _capture(monkeypatch, "What type of monitor is it?")
+    call(**fields)
+    return seen["instructions"], seen["data"]
+
+
+def _call_answer(**fields):
+    chat_response.answer(AnswerInput(ticket_text="Customer: I am facing issue in adding monitor", **fields))
+
+
+def _call_clarify(**fields):
+    chat_response.clarify(ClarifyInput(ticket_text="Customer: I am facing issue in adding monitor", **fields))
+
+
+@pytest.mark.parametrize("call", [_call_answer, _call_clarify])
+@pytest.mark.parametrize("reply_format", ["chat", "email"])
+def test_prompts_carry_the_asking_and_assumption_rules(monkeypatch, call, reply_format):
+    instructions, data = _prompt_and_data(
+        monkeypatch, call, reply_format=reply_format,
+        unconfirmed_topics=['[INTEGRATION / pagerduty_integration] "rate limit error": specific to PagerDuty'],
+        customer_details="Monitor type: not stated yet", monitor_type_known=False)
+    for phrase in ("never ask for a monitor name, monitor ID, account ID", "the monitor type (website, server, API",
+                   "the exact error text", "the screen or step", "what they have already tried",
+                   "ask for the monitor type first", "never which monitor", "never ask the customer to confirm",
+                   "when it covers what the customer asked, answer", "Never assume a product, integration, monitor type",
+                   "never answer as if one of them applies"):
+        assert phrase in instructions, phrase
+    assert data["customer_details"] == "Monitor type: not stated yet"
+    assert "PagerDuty" in data["unconfirmed_topics"] and "PagerDuty" not in instructions
+
+
+def test_context_blocks_default_to_none(monkeypatch):
+    _, data = _prompt_and_data(monkeypatch, _call_answer)
+    assert data["customer_details"] == "(none)" and data["unconfirmed_topics"] == "(none)"
+
+
+def test_chat_answer_filter_uses_the_monitor_type_flag(monkeypatch):
+    _capture(monkeypatch, "Could you share the monitor name?")
+    reply = chat_response.answer(AnswerInput(ticket_text="Customer: adding monitor fails", monitor_type_known=False))
+    assert reply.text == chat_response.MONITOR_TYPE_QUESTION
+
+
+def test_monitor_type_first_only_when_unknown_and_nothing_to_answer_from(monkeypatch):
+    rule = "ask for the monitor type first"
+    instructions, _ = _prompt_and_data(monkeypatch, _call_answer, monitor_type_known=False)
+    assert rule in instructions                      # unknown, no KB guidance
+    instructions, _ = _prompt_and_data(monkeypatch, _call_answer, monitor_type_known=False,
+                                       kb_candidates=[_CANDIDATE])
+    assert rule not in instructions                  # KB guidance covers it: answer
+    instructions, _ = _prompt_and_data(monkeypatch, _call_answer, monitor_type_known=True)
+    assert rule not in instructions                  # already known
+    instructions, _ = _prompt_and_data(monkeypatch, _call_clarify, monitor_type_known=False,
+                                       kb_candidates=[_CANDIDATE])
+    assert rule in instructions                      # a clarifying question: always when unknown
+
+
+def test_answer_first_when_the_kb_guidance_covers_the_request(monkeypatch):
+    rule = "If the kb_guidance block covers the request, answer it now"
+    instructions, _ = _prompt_and_data(monkeypatch, _call_answer, kb_candidates=[_CANDIDATE])
+    assert rule in instructions
+    instructions, _ = _prompt_and_data(monkeypatch, _call_answer)
+    assert rule not in instructions
+    instructions, _ = _prompt_and_data(monkeypatch, _call_clarify, kb_candidates=[_CANDIDATE])
+    assert rule not in instructions

@@ -41,6 +41,43 @@ _CHAT_STYLE = (
     "reply."
 )
 
+# What to ask for. The AI has no account access, so an identifier helps
+# nobody; these details are what the customer can give and the AI can use.
+_ASKING_RULES = (
+    "When you do need more information: you cannot look up the customer's "
+    "account, monitors or settings, so never ask for a monitor name, monitor ID, "
+    "account ID, email address, API key or any other identifier (only someone "
+    "with account access could use it, even if the kb_guidance block lists it as "
+    "a detail to provide). Ask instead for something the customer can tell you "
+    "and you can use: the monitor type (website, server, API, ping, port, DNS, "
+    "SSL, cloud, network device, ...), the exact error text, the screen or step "
+    "where it happens, or what they have already tried. Ask which type of "
+    "monitor it is, never which monitor, and never ask the customer to confirm "
+    "something they have already told you."
+)
+# The answer op only: the asking rules above made Nova Lite ask before
+# answering requests the KB guidance fully covered.
+_ANSWER_FIRST = (
+    "If the kb_guidance block covers the request, answer it now: don't ask a "
+    "question first. "
+)
+# Added only when the monitor type is unknown and there is nothing to
+# answer from yet (always for a clarifying question): with KB guidance
+# that covers the request, the model should answer, not ask.
+_MONITOR_TYPE_FIRST = (
+    " The customer hasn't said what type of monitor it is: ask for the monitor "
+    "type first."
+)
+_ASSUMPTION_RULES = (
+    "Never assume a product, integration, monitor type or feature the customer "
+    "has not mentioned. The unconfirmed_topics block lists knowledge-base topics "
+    "that matched some of the customer's words but are specific to something "
+    "they have not mentioned: never answer as if one of them applies. Ask "
+    "whether it applies, or first ask for the missing detail. This is no reason "
+    "to hold back an answer the kb_guidance block does give: when it covers what "
+    "the customer asked, answer."
+)
+
 # Chat output filter. A greeting line: "Hello," / "Hi Dana!" / "Dear customer,".
 _GREETING_LINE = re.compile(
     r"^\s*(hello|hi|hey|dear|greetings|good (morning|afternoon|evening))\b\s*,?"
@@ -60,6 +97,37 @@ _SIGNATURE_LINE = re.compile(
 _PLACEHOLDER = re.compile(r"\[[A-Za-z][A-Za-z' -]{0,40}\](?!\()")
 _SENTENCE_END = re.compile(r"(?<=[.?!])\s+")
 _LIST_MARKER_ONLY = re.compile(r"^\s*([-*•]|\d+[.)])?\s*$")
+# A request for an identifier: "Can you share the monitor name?",
+# "Please confirm the API key ...". Advice that only mentions one ("check
+# the API key in the integration settings") has no asking verb and stays.
+_IDENTIFIER = re.compile(
+    r"\b(monitor|account|customer|device|resource|licen[cs]e|user|integration|api|access)"
+    r"[ -]?(name|id|identifier|number|key|email)s?\b|\bname of (the|your) (monitor|device|account)\b"
+    r"|\bemail address\b"
+    r"|\bwhich (specific |particular )?(service|monitor|server|device|resource|integration)s?\b",
+    re.IGNORECASE)
+_ASKING = re.compile(r"\b(provide|share|send|give|tell|confirm|let (me|us) know)\b|^\s*(what|which)\b",
+                     re.IGNORECASE)
+MONITOR_TYPE_QUESTION = ("What type of monitor is it: website, server, API, ping, port, DNS, "
+                         "cloud or network device?")
+DETAIL_QUESTION = "What is the exact error message, and at which screen or step does it appear?"
+
+
+def _drop_identifier_requests(lines: list[str]) -> tuple[list[str], bool]:
+    """Drop sentences asking for an identifier; True if any were dropped."""
+    out, dropped = [], False
+    for line in lines:
+        kept = []
+        for sentence in _SENTENCE_END.split(line):
+            if _IDENTIFIER.search(sentence) and (sentence.rstrip().endswith("?") or _ASKING.search(sentence)):
+                dropped = True
+                continue
+            kept.append(sentence)
+        new = " ".join(kept)
+        if new != line and _LIST_MARKER_ONLY.match(new):
+            continue
+        out.append(new)
+    return out, dropped
 
 
 def _first_question_only(lines: list[str]) -> list[str]:
@@ -81,12 +149,18 @@ def _first_question_only(lines: list[str]) -> list[str]:
     return out
 
 
-def clean_chat_reply(text: str) -> str:
+def clean_chat_reply(text: str, monitor_type_known: bool = True) -> str:
     """Strip greeting lines, the sign-off and signature, [Placeholder]
-    text, and every question after the first from a chat reply. A reply
+    text, requests for identifiers, and every question after the first
+    from a chat reply. A dropped identifier request is replaced by a
+    useful question (the monitor type when it isn't known, else the exact
+    error and where it appears) unless the reply still asks one. A reply
     with nothing left (only placeholders and pleasantries) is an AI
     failure."""
-    lines = _first_question_only(_PLACEHOLDER.sub("", text).splitlines())
+    lines, dropped = _drop_identifier_requests(_PLACEHOLDER.sub("", text).splitlines())
+    if dropped and not any("?" in line for line in lines):
+        lines.append(DETAIL_QUESTION if monitor_type_known else MONITOR_TYPE_QUESTION)
+    lines = _first_question_only(lines)
     while lines and (not lines[0].strip() or _GREETING_LINE.match(lines[0])):
         lines.pop(0)
     for i, line in enumerate(lines):
@@ -104,12 +178,25 @@ def clean_chat_reply(text: str) -> str:
     return cleaned
 
 
-def _frame(text: str, reply_format: str, customer_name: str | None) -> ChatReply:
-    if reply_format == "email":
-        text = email_utils.format_email_reply(customer_name, text)
+def _frame(text: str, data: AnswerInput | ClarifyInput) -> ChatReply:
+    if data.reply_format == "email":
+        text = email_utils.format_email_reply(data.customer_name, text)
     else:
-        text = clean_chat_reply(text)
+        text = clean_chat_reply(text, monitor_type_known=data.monitor_type_known)
     return ChatReply(text=text)
+
+
+def _asking_rules(data: AnswerInput | ClarifyInput, answering: bool) -> str:
+    ask_type_first = not data.monitor_type_known and not (answering and data.kb_candidates)
+    return ((_ANSWER_FIRST if answering and data.kb_candidates else "") + _ASKING_RULES
+            + (_MONITOR_TYPE_FIRST if ask_type_first else ""))
+
+
+def _context_blocks(data: AnswerInput | ClarifyInput) -> dict[str, str]:
+    return {
+        "customer_details": data.customer_details or "(none)",
+        "unconfirmed_topics": "\n".join(f"- {t}" for t in data.unconfirmed_topics) or "(none)",
+    }
 
 
 def answer(data: AnswerInput) -> ChatReply:
@@ -153,16 +240,18 @@ def answer(data: AnswerInput) -> ChatReply:
         "source of truth for order facts. If answering would need a specific fact "
         "you weren't given (an order status, account detail, setting value), say "
         "plainly that you don't have access to it and ask for it, or say a person "
-        f"will need to check — never guess. {GROUNDING_RULES}",
+        f"will need to check — never guess. {GROUNDING_RULES}\n\n"
+        f"{_asking_rules(data, answering=True)}\n\n{_ASSUMPTION_RULES}",
         {
             "category": data.category or "unknown",
             "customer_history": history_text(data.history),
+            **_context_blocks(data),
             "kb_guidance": kb_guidance_text(data.kb_candidates),
             "order_record": data.order_context or "(none)",
             "ticket": data.ticket_text,
         },
     )
-    return _frame(text, data.reply_format, data.customer_name)
+    return _frame(text, data)
 
 
 def clarify(data: ClarifyInput) -> ChatReply:
@@ -192,14 +281,16 @@ def clarify(data: ClarifyInput) -> ChatReply:
         f"product) is too ambiguous to classify confidently. {grounding} Do not "
         "answer the ticket, do not ask a generic 'can you tell me more?', and do "
         "not assume details the customer hasn't given you."
-        f"{_EMAIL_BODY_NOTE if data.reply_format == 'email' else ' ' + _CHAT_STYLE}",
+        f"{_EMAIL_BODY_NOTE if data.reply_format == 'email' else ' ' + _CHAT_STYLE}\n\n"
+        f"{_asking_rules(data, answering=False)}\n\n{_ASSUMPTION_RULES}",
         {
             "best_guess": f"{data.category or 'unknown'} (confidence {data.confidence:.2f})",
+            **_context_blocks(data),
             "candidate_topics": topics,
             "ticket": data.ticket_text,
         },
     )
-    return _frame(text, data.reply_format, data.customer_name)
+    return _frame(text, data)
 
 
 def is_continuation(data: ContinuationInput) -> ContinuationVerdict:
