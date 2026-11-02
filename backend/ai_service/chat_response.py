@@ -174,7 +174,9 @@ def clean_chat_reply(text: str, monitor_type_known: bool = True) -> str:
     pleasantries = (_GREETING_LINE, _SIGN_OFF_LINE, _SIGNATURE_LINE)
     if not any(re.search(r"[A-Za-z0-9]", line) and not any(p.match(line) for p in pleasantries)
                for line in cleaned.splitlines()):
-        raise provider.AIError("AI chat reply was only placeholder text")
+        raise provider.AIError("AI chat reply was only placeholder text",
+                               provider.AIFailure(kind="filter_rejected", operation="chat_filter",
+                                                  code="only_placeholders"))
     return cleaned
 
 
@@ -199,7 +201,96 @@ def _context_blocks(data: AnswerInput | ClarifyInput) -> dict[str, str]:
     }
 
 
+# ---------------------------------------------------------------------------
+# One reply: regenerate or fall back instead of failing on our own checks
+# ---------------------------------------------------------------------------
+REPEAT_OVERLAP = 0.8
+TRIED_QUESTION = "What have you already tried so far?"
+OFFER_TICKET_CHAT = ("I can't narrow this down any further here. Use Raise a ticket below and our "
+                     "support team will pick it up with this whole conversation.")
+OFFER_TICKET_EMAIL = "Our support team will look into this and reply here."
+_REGENERATE_NOTE = (
+    "\n\nYour previous reply was empty once greetings, sign-offs and placeholder "
+    "text were removed. Write the actual reply: an answer, or one useful question."
+)
+_MOVE_ON_NOTE = (
+    "\n\nYour reply repeated one of your previous replies (the "
+    "your_previous_replies block). Don't repeat them: move the conversation "
+    "forward. Answer the customer's latest message using what they have said "
+    "since, or ask a different question."
+)
+
+
+def _words(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9']+", text.lower()))
+
+
+def repeats(text: str, previous: list[str]) -> bool:
+    """Identical or near-identical (>= 80% word overlap) to any previous reply."""
+    words = _words(text)
+    for prior in previous:
+        other = _words(prior)
+        if words and other and len(words & other) / max(len(words), len(other)) >= REPEAT_OVERLAP:
+            return True
+    return False
+
+
+def open_question(monitor_type: str | None) -> str:
+    """For a customer who hasn't described a problem yet ("I have an issue")."""
+    if monitor_type:
+        subject = f"your {monitor_type}" if monitor_type.endswith("monitoring") else f"your {monitor_type} monitor"
+    else:
+        subject = "Site24x7"
+    return (f"What are you seeing, or trying to do, with {subject}? For example: no data, a wrong "
+            "status, alerts, the agent, or setup.")
+
+
+def _fallback_reply(data: AnswerInput | ClarifyInput) -> ChatReply:
+    """A useful question that doesn't repeat a recent reply, else an offer
+    of a ticket (chat) or a note that the team will look into it (email)."""
+    options = ([open_question(data.monitor_type)] if data.vague else []) + (
+        [MONITOR_TYPE_QUESTION] if not data.monitor_type_known else []) + [DETAIL_QUESTION, TRIED_QUESTION]
+    for question in options:
+        reply = _frame(question, data)
+        if not repeats(reply.text, data.recent_ai_replies):
+            return reply
+    return _frame(OFFER_TICKET_CHAT if data.reply_format == "chat" else OFFER_TICKET_EMAIL, data)
+
+
+def _reply(instructions: str, blocks: dict[str, str], data: AnswerInput | ClarifyInput,
+           operation: str) -> ChatReply:
+    """Generate, clean and check one reply. A reply rejected by our own
+    checks (empty, only placeholders, a repeat of one of the last replies)
+    is regenerated once with a note, then replaced by a useful fallback
+    question: never an "AI unavailable" error. Provider errors (throttling,
+    timeouts, access...) still raise AIError."""
+    note, extra = "", {}
+    for attempt in (1, 2):
+        try:
+            reply = _frame(provider.complete_text(instructions + note, {**blocks, **extra},
+                                                  operation=operation), data)
+        except provider.AIError as exc:
+            if exc.failure is None or exc.failure.kind not in ("parse_schema", "filter_rejected"):
+                raise
+            exc.failure.outcome = "regenerated" if attempt == 1 else "fallback"
+            if exc.failure.kind == "parse_schema":  # complete_text already retried
+                exc.failure.outcome = "fallback"
+                break
+            note = _REGENERATE_NOTE
+            continue
+        if not repeats(reply.text, data.recent_ai_replies):
+            return reply
+        provider.note_failure(provider.AIFailure(
+            kind="filter_rejected", operation=operation, code="repeated_reply", attempts=attempt,
+            outcome="regenerated" if attempt == 1 else "fallback"))
+        note = _MOVE_ON_NOTE
+        extra = {"your_previous_replies": "\n---\n".join(data.recent_ai_replies)}
+    return _fallback_reply(data)
+
+
 def answer(data: AnswerInput) -> ChatReply:
+    if data.vague:
+        return _vague_reply(data)
     continuation_note = (
         " The ticket block is the conversation so far, and the customer's latest "
         "message follows up on your own most recent reply (asking you to elaborate, "
@@ -233,8 +324,11 @@ def answer(data: AnswerInput) -> ChatReply:
             "troubleshooting steps. Either ask exactly one short question that would "
             f"help identify the problem, or {offer}."
         )
-    text = provider.complete_text(
+    return _reply(
         f"{role}{no_match_note}\n\n"
+        "When the customer's latest message (the customer_latest_message block) "
+        "contains a clear question, answer that question first, even if earlier "
+        "messages were about something else.\n\n"
         "Base the answer on the kb_guidance block, personalised to the customer's "
         "own wording; don't contradict it. Use the order_record block as the only "
         "source of truth for order facts. If answering would need a specific fact "
@@ -248,13 +342,24 @@ def answer(data: AnswerInput) -> ChatReply:
             **_context_blocks(data),
             "kb_guidance": kb_guidance_text(data.kb_candidates),
             "order_record": data.order_context or "(none)",
+            "customer_latest_message": data.latest_message or "(see the ticket block)",
             "ticket": data.ticket_text,
         },
+        data,
+        "answer",
     )
-    return _frame(text, data)
+
+
+def _vague_reply(data: AnswerInput | ClarifyInput) -> ChatReply:
+    """No symptom described yet: one open question, no KB grounding and
+    no model call, so no scenario can be assumed."""
+    reply = _frame(open_question(data.monitor_type), data)
+    return _fallback_reply(data) if repeats(reply.text, data.recent_ai_replies) else reply
 
 
 def clarify(data: ClarifyInput) -> ChatReply:
+    if data.vague:
+        return _vague_reply(data)
     if data.kb_candidates:
         topics = "\n".join(
             f'{i + 1}. [{c.category} / {c.intent}]: e.g. "{c.instruction}"'
@@ -276,7 +381,7 @@ def clarify(data: ClarifyInput) -> ChatReply:
             "actually needs; do not guess at a specific feature or invent a "
             "distinction that may not apply."
         )
-    text = provider.complete_text(
+    return _reply(
         "A customer support ticket for Site24x7 (an infrastructure monitoring "
         f"product) is too ambiguous to classify confidently. {grounding} Do not "
         "answer the ticket, do not ask a generic 'can you tell me more?', and do "
@@ -289,8 +394,9 @@ def clarify(data: ClarifyInput) -> ChatReply:
             "candidate_topics": topics,
             "ticket": data.ticket_text,
         },
+        data,
+        "clarify",
     )
-    return _frame(text, data)
 
 
 def is_continuation(data: ContinuationInput) -> ContinuationVerdict:

@@ -113,10 +113,28 @@ def test_chat_clarify_prompt_and_filter(monkeypatch):
     assert "No greeting, no sign-off, no signature" in seen["instructions"]
 
 
-def test_chat_reply_of_only_placeholders_fails_the_turn(monkeypatch):
-    _capture(monkeypatch, "Hello [Customer Name],\n\n[Your answer here]\n\nBest regards,\n[Your Name]")
-    with pytest.raises(AIError):
-        _answer("chat")
+def test_chat_reply_of_only_placeholders_is_regenerated_then_falls_back(monkeypatch):
+    """Our own filter rejecting the reply is not "AI unavailable": the
+    model is asked once more, then a useful question is sent."""
+    calls = []
+
+    def fake_complete_text(instructions, data, **kwargs):
+        calls.append(instructions)
+        return "Hello [Customer Name],\n\n[Your answer here]\n\nBest regards,\n[Your Name]"
+
+    monkeypatch.setattr(provider, "complete_text", fake_complete_text)
+    log = provider.start_failure_log()
+    assert _answer("chat").text == chat_response.DETAIL_QUESTION
+    assert len(calls) == 2 and "empty once greetings, sign-offs and placeholder" in calls[1]
+    assert [(f.kind, f.code, f.outcome) for f in log] == [
+        ("filter_rejected", "only_placeholders", "regenerated"),
+        ("filter_rejected", "only_placeholders", "fallback")]
+
+
+def test_a_regenerated_reply_is_used(monkeypatch):
+    replies = iter(["[Your answer here]", "Restart the agent service."])
+    monkeypatch.setattr(provider, "complete_text", lambda *a, **k: next(replies))
+    assert _answer("chat").text == "Restart the agent service."
 
 
 # ---------------------------------------------------------------------------

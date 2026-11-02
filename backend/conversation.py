@@ -136,11 +136,15 @@ def followup_gate(message_text: str, prior_ai_response: str | None, answered: bo
         return "handoff"
     if answered and is_closing_acknowledgment(message_text):
         return "close"
-    if (
-        answered
-        and prior_ai_response
-        and not graph.has_escalation_language(message_text)
-        and graph.is_continuation_of_prior_response(message_text, prior_ai_response)
-    ):
-        return "continuation"
+    if answered and prior_ai_response and not graph.has_escalation_language(message_text):
+        try:
+            if graph.is_continuation_of_prior_response(message_text, prior_ai_response):
+                return "continuation"
+        except AIError as exc:
+            # The model answered but not in the expected shape: treat the
+            # message as new (the full pipeline) rather than failing the
+            # turn. Provider errors still raise.
+            if exc.failure is None or exc.failure.kind != "parse_schema":
+                raise
+            exc.failure.outcome = "fallback"
     return "classify"

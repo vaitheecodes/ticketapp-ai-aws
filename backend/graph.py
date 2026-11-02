@@ -143,6 +143,11 @@ class TicketState(TypedDict):
     # picking a category can't get a request past the high-risk bar.
     requested_category: NotRequired[str | None]
 
+    # The AI's last replies in this conversation, newest last: a reply
+    # (near-)identical to one of them is regenerated or replaced
+    # (chat_response repeat guard).
+    recent_ai_replies: NotRequired[list[str]]
+
     route: NotRequired[Literal["ai", "human", "clarify"]]
     route_reason: NotRequired[str]
 
@@ -221,18 +226,68 @@ def fetch_customer_history(state: TicketState) -> dict:
 _SPEAKER_RE = re.compile(r"^(Customer|Agent \(AI\)|ai|staff|system|technician|manager|admin):\s?(.*)$")
 
 
-def _customer_authored_text(ticket_text: str) -> str:
-    """The customer's own messages of a transcript, every line of them;
-    nothing the AI or staff wrote. Plain ticket text (no speaker labels)
-    is returned as is."""
-    customer, speaker, labelled = [], None, False
+def _customer_messages(ticket_text: str) -> list[str]:
+    """The customer's own messages of a transcript, oldest first, every
+    line of each; nothing the AI or staff wrote. Plain ticket text (no
+    speaker labels) is one message."""
+    messages, speaker, labelled = [], None, False
     for line in ticket_text.splitlines():
         match = _SPEAKER_RE.match(line)
         if match:
             labelled, speaker, line = True, match.group(1), match.group(2)
-        if speaker == "Customer":
-            customer.append(line)
-    return "\n".join(customer).strip() if labelled else ticket_text
+            if speaker == "Customer":
+                messages.append([])
+        if speaker == "Customer" and messages:
+            messages[-1].append(line)
+    if not labelled:
+        return [ticket_text] if ticket_text.strip() else []
+    return [m for m in ("\n".join(lines).strip() for lines in messages) if m]
+
+
+def _customer_authored_text(ticket_text: str) -> str:
+    """All of the customer's own messages as one text (see _customer_messages)."""
+    return "\n".join(_customer_messages(ticket_text))
+
+
+# Words that say there is a problem without saying what it is. A customer
+# whose messages hold nothing else ("I have an issue", "help", "it's not
+# working") hasn't described a symptom yet.
+VAGUE_WORDS = frozenset("""
+    issue issues problem problems facing face faced having trouble troubles query question
+    questions support site24x7 monitor monitors monitoring something anything everything
+    wrong working work works worked hi hello hey regarding concern concerns assistance assist
+    kindly urgent asap team
+""".split())
+# A latest message with fewer informative words than this is short: earlier
+# customer messages are added to the KB search for context.
+SHORT_MESSAGE_WORDS = 4
+# KB stopwords that still state a task ("adding a monitor").
+TASK_WORDS = frozenset({"add", "adding"})
+
+
+def informative_words(text: str) -> list[str]:
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    return [w for w in words if (w in TASK_WORDS or w not in kb_retrieval._STOPWORDS) and w not in VAGUE_WORDS]
+
+
+def is_vague(ticket_text: str) -> bool:
+    """True when nothing the customer wrote describes a symptom or task."""
+    return not informative_words(_customer_authored_text(ticket_text))
+
+
+def retrieval_query(ticket_text: str) -> str:
+    """The KB search text: the customer's latest message first. Earlier
+    customer messages are added only when the latest is short or vague
+    (and the latest then counts twice), so a clear new question isn't
+    pulled back to an older topic, and a short follow-up ("on Linux")
+    still has its context. Never the AI's own replies."""
+    messages = _customer_messages(ticket_text)
+    if not messages:
+        return ""
+    latest = messages[-1]
+    if len(informative_words(latest)) >= SHORT_MESSAGE_WORDS or len(messages) == 1:
+        return latest
+    return "\n".join([latest, latest, *reversed(messages[:-1])])
 
 
 def _kb_candidates_to_dicts(candidates: list[kb_retrieval.KBCandidate]) -> list[dict]:
@@ -254,7 +309,7 @@ def retrieve_kb_candidates(state: TicketState) -> dict:
     response generation can all be grounded in the same retrieved
     evidence instead of each guessing independently. See
     backend/kb_retrieval.py."""
-    query = _customer_authored_text(state["ticket_text"])
+    query = retrieval_query(state["ticket_text"])
     candidates = kb_retrieval.retrieve_candidates(query, top_k=3)
     return {"kb_candidates": _kb_candidates_to_dicts(candidates)}
 
@@ -267,14 +322,14 @@ def kb_candidates_for(text: str, top_k: int = 3, category: str | None = None) ->
 
 def retrieve_kb_candidates_for_continuation(transcript: str, top_k: int = 3) -> list[dict]:
     """KB retrieval for a follow-up/continuation turn (see
-    is_continuation_of_prior_response below): searches on all of the
-    customer's own messages in the conversation (the latest included),
-    never on the AI's replies. A short follow-up fragment ("what is the
-    difference") has almost no topic vocabulary of its own; the
-    customer's earlier messages carry the topic. Searching on the AI's
+    is_continuation_of_prior_response below): searches on the customer's
+    own messages (retrieval_query: the latest first, earlier ones when it
+    is short), never on the AI's replies. A short follow-up fragment
+    ("what is the difference") has almost no topic vocabulary of its own;
+    the customer's earlier messages carry the topic. Searching on the AI's
     previous reply instead fed the AI's own wording back into retrieval
     and inflated the score of whatever it had already said."""
-    return kb_candidates_for(_customer_authored_text(transcript), top_k=top_k)
+    return kb_candidates_for(retrieval_query(transcript), top_k=top_k)
 
 
 def is_continuation_of_prior_response(message_text: str, prior_ai_response: str) -> bool:
@@ -482,7 +537,7 @@ def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dic
     candidates = state.get("kb_candidates", [])
     requested = state.get("requested_category")
     if requested in CATEGORIES:
-        narrowed = kb_candidates_for(customer_text, category=requested)
+        narrowed = kb_candidates_for(retrieval_query(state["ticket_text"]), category=requested)
         if narrowed:
             candidates = narrowed
     usable, unconfirmed = [], []
@@ -496,9 +551,13 @@ def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dic
 
 
 def _reply_context(state: TicketState) -> dict:
-    """What the answer and clarify prompts get beyond the transcript."""
-    usable, unconfirmed = grounding_candidates(state)
+    """What the answer and clarify prompts get beyond the transcript. A
+    customer who hasn't described a symptom yet gets no grounding at all
+    (any KB match would be a guessed scenario)."""
+    vague = is_vague(state["ticket_text"])
+    usable, unconfirmed = ([], []) if vague else grounding_candidates(state)
     customer_text = _customer_authored_text(state["ticket_text"])
+    messages = _customer_messages(state["ticket_text"])
     requested = state.get("requested_category")
     types = topic_terms.monitor_types(customer_text, requested)
     details = [f"Monitor type: {', '.join(types)} (stated by the customer)" if types
@@ -514,6 +573,10 @@ def _reply_context(state: TicketState) -> dict:
         ],
         "customer_details": "\n".join(details),
         "monitor_type_known": bool(types),
+        "monitor_type": types[0] if len(types) == 1 else None,
+        "vague": vague,
+        "recent_ai_replies": list(state.get("recent_ai_replies") or [])[-2:],
+        "latest_message": messages[-1] if messages else "",
     }
 
 

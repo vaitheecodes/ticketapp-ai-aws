@@ -20,9 +20,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
-from backend import admin, app_settings, auth, chats, db, email_utils, graph, handoff_signals, incidents
+from backend import admin, ai_failures, app_settings, auth, chats, db, email_utils, graph, handoff_signals
+from backend import incidents
 from backend import db_postgres, incident_memory, incident_resolution, runtime, staff_tickets, storage
 from backend.ai_service import backends as ai_backends
+from backend.ai_service import provider as ai_provider
 from backend import ticket_lifecycle as lifecycle
 from backend.repositories import messages as messages_repo
 from backend.conversation import ESCALATION_MARKER as _ESCALATION_MARKER
@@ -348,6 +350,7 @@ class _Followup:
     transcript: str
     prior_ai: str | None
     customer_name: str
+    recent_ai: list[str] = field(default_factory=list)  # last 2 AI replies, oldest first
 
 
 @dataclass
@@ -394,6 +397,7 @@ def _decide_followup(f: _Followup, message_text: str) -> _FollowupOutcome:
             category=ticket["category"],
             kb_candidates=graph.retrieve_kb_candidates_for_continuation(f.transcript),
             continuation=True,
+            recent_ai_replies=f.recent_ai,
         )
         state.update(graph.fetch_customer_history(state))
         state.update(graph.lookup_order(state))
@@ -407,7 +411,8 @@ def _decide_followup(f: _Followup, message_text: str) -> _FollowupOutcome:
 
     result = runtime.get_graph().invoke(
         _pipeline_state(ticket, f.transcript, f.customer_name,
-                        clarification_attempts=ticket["clarification_attempts"])
+                        clarification_attempts=ticket["clarification_attempts"],
+                        recent_ai_replies=f.recent_ai)
     )
     if result["route"] in ("ai", "clarify"):
         # An "ai" answer that concedes it can't do the thing is a hand-off
@@ -653,6 +658,7 @@ def tickets_create(
         contact_name = _customer_row(conn, customer_id)["name"]
     finally:
         conn.close()
+    failures = ai_provider.start_failure_log()
     try:
         result = runtime.get_graph().invoke(
             {
@@ -665,8 +671,9 @@ def tickets_create(
                 "requested_category": body.category,
             }
         )
-    except Exception:  # noqa: BLE001 — any pipeline failure falls back to a human
+    except Exception as exc:  # noqa: BLE001 — any pipeline failure falls back to a human
         logger.exception("Pipeline failed for new ticket %s; queueing for a human", ticket_id)
+        ai_failures.note_exception(exc, failures)
         result = {"route": "human", "category": None, "confidence": None, "pipeline_failed": True}
 
     created = _store_new_ticket(
@@ -674,6 +681,7 @@ def tickets_create(
         subject=subject, priority=body.priority, requested_category=body.category,
         contact_name=contact_name,
     )
+    _record_ai_failures(ticket_id, failures)
     # Look for other customers reporting the same thing (after the response).
     background_tasks.add_task(incidents.run_for_ticket, ticket_id)
     return created
@@ -789,8 +797,11 @@ def ticket_reply(
         else:
             prior_ai = _last_ai_message(conn, ticket_id)
             message_id = _insert_message(conn, ticket_id, "customer", message_text)
+            recent_ai = [r["message"] for r in conn.execute(
+                "SELECT message FROM ticket_messages WHERE ticket_id = ? AND sender = 'ai' "
+                "ORDER BY created_at DESC, rowid DESC LIMIT 2", (ticket_id,)).fetchall()][::-1]
             followup = _Followup(dict(ticket), _transcript_for(conn, ticket_id), prior_ai,
-                                 _display_name(conn, ticket))
+                                 _display_name(conn, ticket), recent_ai)
         conn.commit()
     finally:
         conn.close()
@@ -807,24 +818,41 @@ def ticket_reply(
     return response
 
 
+def _record_ai_failures(ticket_id: str, failures: list) -> None:
+    if not failures:
+        return
+    conn = db.get_connection()
+    try:
+        ai_failures.record(conn, "ticket", ticket_id, failures)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _finish_followup(ticket_id: str, followup: _Followup, message_text: str, outbox: _Outbox) -> dict:
     unavailable = {"route": followup.ticket["route"], "ai_error": _AI_UNAVAILABLE}
+    failures = ai_provider.start_failure_log()
     try:
         outcome = _decide_followup(followup, message_text)
-    except Exception:  # noqa: BLE001 — provider/network/parse failures alike
+    except Exception as exc:  # noqa: BLE001 — provider/network/parse failures alike
         logger.exception("AI follow-up failed for %s", ticket_id)
+        ai_failures.note_exception(exc, failures)
+        _record_ai_failures(ticket_id, failures)
         return unavailable
     conn = db.get_connection()
     try:
         response = _apply_followup(conn, ticket_id, outcome, outbox)
         conn.commit()
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         logger.exception("Storing the AI follow-up failed for %s", ticket_id)
         conn.rollback()
         outbox.clear()
+        ai_failures.note_exception(exc, failures, operation="store_turn")
+        _record_ai_failures(ticket_id, failures)
         return unavailable
     finally:
         conn.close()
+    _record_ai_failures(ticket_id, failures)
     if response is None:  # the ticket left the AI while it was working
         outbox.clear()
         return {"route": "human"}

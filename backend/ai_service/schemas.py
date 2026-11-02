@@ -87,6 +87,14 @@ class AnswerInput(BaseModel):
     unconfirmed_topics: list[str] = []
     customer_details: str = ""
     monitor_type_known: bool = True
+    monitor_type: str | None = None
+    # No symptom described yet ("I have an issue"): one open question,
+    # no grounding (chat_response.open_question).
+    vague: bool = False
+    # The AI's last replies in this conversation (repeat guard) and the
+    # customer's latest message (answered first when it asks a question).
+    recent_ai_replies: list[str] = []
+    latest_message: str = ""
 
 
 class ClarifyInput(BaseModel):
@@ -103,6 +111,14 @@ class ClarifyInput(BaseModel):
     unconfirmed_topics: list[str] = []
     customer_details: str = ""
     monitor_type_known: bool = True
+    monitor_type: str | None = None
+    # No symptom described yet ("I have an issue"): one open question,
+    # no grounding (chat_response.open_question).
+    vague: bool = False
+    # The AI's last replies in this conversation (repeat guard) and the
+    # customer's latest message (answered first when it asks a question).
+    recent_ai_replies: list[str] = []
+    latest_message: str = ""
 
 
 class ChatReply(BaseModel):

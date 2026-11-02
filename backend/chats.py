@@ -32,9 +32,9 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from backend import audit, auth, db, graph, handoff_signals, incident_memory, incidents, runtime
+from backend import ai_failures, audit, auth, db, graph, handoff_signals, incident_memory, incidents, runtime
 from backend import ticket_lifecycle as lifecycle
-from backend.ai_service import AIError, summarize_conversation
+from backend.ai_service import AIError, provider, summarize_conversation
 from backend.conversation import (
     ESCALATION_MARKER,
     customer_row,
@@ -201,6 +201,7 @@ class _Turn:
     session: dict
     transcript: str
     prior_ai: str | None
+    recent_ai: list[str] = field(default_factory=list)  # last 2 AI replies, oldest first
 
 
 @dataclass
@@ -305,8 +306,11 @@ def _store_customer_message(conn, session, message_text: str) -> _Turn:
     """Step 1. Caller commits."""
     session_id = session["session_id"]
     prior_ai = _last_ai(conn, session_id)
+    recent_ai = [r["content"] for r in conn.execute(
+        "SELECT content FROM chat_messages WHERE session_id = ? AND role = 'ai' "
+        "ORDER BY created_at DESC, rowid DESC LIMIT 2", (session_id,)).fetchall()][::-1]
     _insert_chat_message(conn, session_id, "customer", message_text)
-    return _Turn(dict(_reload(conn, session_id)), _transcript_text(conn, session_id), prior_ai)
+    return _Turn(dict(_reload(conn, session_id)), _transcript_text(conn, session_id), prior_ai, recent_ai)
 
 
 def _decide(turn: _Turn, message_text: str) -> _Outcome:
@@ -333,6 +337,7 @@ def _decide(turn: _Turn, message_text: str) -> _Outcome:
             category=session["category"],
             kb_candidates=graph.retrieve_kb_candidates_for_continuation(turn.transcript),
             continuation=True,
+            recent_ai_replies=turn.recent_ai,
         )
         state.update(graph.fetch_customer_history(state))
         state.update(graph.lookup_order(state))
@@ -342,7 +347,8 @@ def _decide(turn: _Turn, message_text: str) -> _Outcome:
     else:
         result = runtime.get_graph().invoke(
             _pipeline_state(session, turn.transcript,
-                            clarification_attempts=session["clarification_attempts"])
+                            clarification_attempts=session["clarification_attempts"],
+                            recent_ai_replies=turn.recent_ai)
         )
 
     if result["route"] == "human":
@@ -383,13 +389,17 @@ def _apply(conn, session_id: str, outcome: _Outcome, subject: str | None = None)
 
 
 def _finish_turn(turn: _Turn, message_text: str, background_tasks: BackgroundTasks) -> dict:
-    """Steps 2 and 3, then the customer's view of the chat."""
+    """Steps 2 and 3, then the customer's view of the chat. Every AI
+    failure of the turn, recovered or not, is recorded for the admin
+    (backend/ai_failures.py)."""
     session_id = turn.session["session_id"]
     ai_error = None
+    failures = provider.start_failure_log()
     try:
         outcome = _decide(turn, message_text)
-    except Exception:  # noqa: BLE001 — provider/network/parse failures alike
+    except Exception as exc:  # noqa: BLE001 — provider/network/parse failures alike
         logger.exception("AI chat turn failed for %s", session_id)
+        ai_failures.note_exception(exc, failures)
         outcome, ai_error = None, AI_UNAVAILABLE
     conn = db.get_connection()
     try:
@@ -397,10 +407,14 @@ def _finish_turn(turn: _Turn, message_text: str, background_tasks: BackgroundTas
             try:
                 _apply(conn, session_id, outcome)
                 conn.commit()
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 logger.exception("Storing the AI chat turn failed for %s", session_id)
                 conn.rollback()
+                ai_failures.note_exception(exc, failures, operation="store_turn")
                 ai_error = AI_UNAVAILABLE
+        if failures:
+            ai_failures.record(conn, "chat", session_id, failures)
+            conn.commit()
         _after_escalation(conn, session_id, background_tasks)
         return _view(conn, session_id, ai_error)
     finally:
