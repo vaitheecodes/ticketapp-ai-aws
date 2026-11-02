@@ -128,6 +128,7 @@ message is kept and nothing else changed.
 | `PUT /admin/settings/{routing\|incidents\|statuses}` | the whole section as JSON | validated; 422 with reasons |
 | `DELETE /admin/settings/{section}` | — | back to env/default values |
 | `GET /admin/audit?entity=&entity_id=&action=&actor_id=&since=&until=&limit=&offset=` | — | `{total, events:[{id, actor_id, actor_name, action, entity, entity_id, detail, at}]}`; `action` is a prefix match |
+| `GET /admin/chats/{session_id}` | — | Chat state (status, categories, route, clarification count, escalated ticket), `message_counts` by role, and `ai_failures:[{at, kind, code, attempts, latency_ms, operation, outcome}]`. No message text. 404 unknown chat |
 
 Settings sections:
 

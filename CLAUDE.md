@@ -532,7 +532,20 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   corrections, chat review updates, staff/customer/department/settings
   admin changes, password changes and failed logins — ids, statuses and
   field names only, never bodies or passwords; filterable at
-  `GET /api/admin/audit` (Activity tab). **Real email is off** unless
+  `GET /api/admin/audit` (Activity tab). **AI failures**
+  (`backend/ai_failures.py`): every failure of a chat turn, ticket reply
+  or new ticket is audited as `chat.ai_failure` / `ticket.ai_failure`
+  with kind (throttling, timeout, access_denied, validation, parse_schema,
+  filter_rejected, config, unknown), error code name, attempts, latency,
+  operation and outcome (`failed` = the customer saw "AI unavailable";
+  `regenerated`/`fallback` = our own check rejected a reply and the chat
+  recovered with a regenerated reply or a fallback question); never
+  provider text or customer text; admin view `GET /api/admin/chats/{id}`.
+  Chat replies also get a repeat guard (>= 80% word overlap with one of
+  the last two AI replies: regenerate once, then a different question or
+  a ticket offer), a vague-message open question (no symptom yet: no KB
+  grounding, no model call), and a latest-message-first KB query
+  (`graph.retrieval_query`). **Real email is off** unless
   `EMAIL_ENABLED=true` + SMTP (`Outbox.flush` / `email_utils.email_enabled`).
   Attachments are only served by the authorised download endpoint (no
   static mount). Covered by `tests/test_admin_console.py`.
