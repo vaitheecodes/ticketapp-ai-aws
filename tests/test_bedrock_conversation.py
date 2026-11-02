@@ -63,7 +63,7 @@ def converse_violations(request: dict) -> list[str]:
 class _StrictClient:
     """Rejects requests that break the Converse rules; otherwise answers
     forced tool calls by tool name and text requests with `text`.
-    `fail_next` raises that exception on the next call."""
+    `fail_next`: exceptions raised by the next calls, one per call."""
 
     TOOL_REPLIES = {
         "Categorization": {"category": "AGENT", "confidence": 0.95},
@@ -73,13 +73,12 @@ class _StrictClient:
     def __init__(self, text="Restart the agent service."):
         self.text = text
         self.calls, self.rejected = [], []
-        self.fail_next = None
+        self.fail_next = []
 
     def converse(self, **request):
         self.calls.append(request)
-        if self.fail_next is not None:
-            exc, self.fail_next = self.fail_next, None
-            raise exc
+        if self.fail_next:
+            raise self.fail_next.pop(0)
         problems = converse_violations(request)
         if problems:
             self.rejected.append(problems)
@@ -101,6 +100,7 @@ class _StrictClient:
 @pytest.fixture()
 def strict(monkeypatch):
     monkeypatch.setattr(provider, "complete", _REAL_COMPLETE)
+    monkeypatch.setattr(backends, "_sleep", lambda seconds: None)
     client = _StrictClient()
     provider.set_backend(BedrockBackend(client=client))
     return client
@@ -181,8 +181,10 @@ def test_chat_turn_after_an_ai_failure_sends_a_valid_request(app_client, strict)
     assert first["messages"][-1] == {**first["messages"][-1], "role": "ai", "content": "Restart the agent service."}
     session_id = first["session_id"]
 
-    # Turn 2: Bedrock throttles. The customer's message is kept, nothing else.
-    strict.fail_next = ClientError({"Error": {"Code": "ThrottlingException", "Message": "slow down"}}, "Converse")
+    # Turn 2: Bedrock throttles twice (the call and its one retry). The
+    # customer's message is kept, nothing else.
+    throttled = ClientError({"Error": {"Code": "ThrottlingException", "Message": "slow down"}}, "Converse")
+    strict.fail_next = [throttled, throttled]
     second = app_client.post(f"/api/chats/{session_id}/messages",
                              json={"message": "Which log file should I check?"}, headers=headers).json()
     assert second["ai_error"] == chats.AI_UNAVAILABLE

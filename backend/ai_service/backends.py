@@ -34,7 +34,9 @@ import contextvars
 import json
 import logging
 import os
+import random
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -342,6 +344,16 @@ BEDROCK_ERRORS = {
 
 TOOL_NAME_UNSAFE = re.compile(r"[^a-zA-Z0-9_-]")
 
+# Transient Bedrock errors get one retry after a short backoff: throttling
+# and timeouts only. Access, validation and configuration errors never do.
+BEDROCK_RETRY_CODES = frozenset({"ThrottlingException", "ModelTimeoutException"})
+BEDROCK_RETRY_DELAY = 1.0   # seconds, plus up to BEDROCK_RETRY_JITTER
+BEDROCK_RETRY_JITTER = 0.5
+
+
+def _sleep(seconds: float) -> None:
+    time.sleep(seconds)
+
 
 def converse_messages(turns) -> list[dict]:
     """(role, text) turns -> a message list the Converse API accepts: no
@@ -372,8 +384,9 @@ class BedrockBackend:
     deployed); none are read or stored here. BEDROCK_MODEL_ID (default
     Nova Lite through the APAC inference profile), AWS_REGION.
 
-    boto3's own retries are off: like every backend, a provider error is
-    reported once and never retried. `on_usage(dict)` is an optional hook
+    boto3's own retries are off. Throttling and timeouts (transient) get
+    one retry here after about 1 s plus jitter; every other error is
+    reported at once and never retried. `on_usage(dict)` is an optional hook
     (scripts/bedrock_quality_check.py) for token counts and latency."""
 
     name = "bedrock"
@@ -447,8 +460,19 @@ class BedrockBackend:
         request = self.request(system_prompt, user_content, max_tokens=max_tokens,
                                json_schema=json_schema, extra_messages=extra_messages,
                                model_id=self.model_id())
+        client = self.client()
         try:
-            response = self.client().converse(**request)
+            try:
+                response = client.converse(**request)
+            except Exception as exc:  # noqa: BLE001 — sorted below
+                transient = isinstance(exc, (ReadTimeoutError, ConnectTimeoutError)) or (
+                    isinstance(exc, ClientError)
+                    and exc.response.get("Error", {}).get("Code") in BEDROCK_RETRY_CODES)
+                if not transient:
+                    raise
+                logger.warning("Bedrock call failed (%s); retrying once", type(exc).__name__)
+                _sleep(BEDROCK_RETRY_DELAY + random.uniform(0, BEDROCK_RETRY_JITTER))
+                response = client.converse(**request)
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "")
             is_config, message = BEDROCK_ERRORS.get(code, (False, f"Bedrock error ({code or 'unknown'})"))

@@ -74,11 +74,24 @@ class _Meter:
         self.truncated += usage.get("stopReason") == "max_tokens"
 
 
-class _CappedBackend(BedrockBackend):
-    def generate(self, *args, **kwargs):
+class _CappedClient:
+    """Counts every Converse call, the backend's own retry included."""
+
+    def __init__(self, client, meter):
+        self.client, self.meter = client, meter
+
+    def converse(self, **request):
         if self.meter.total_calls >= MAX_CALLS:
             raise _Budget(f"call limit of {MAX_CALLS} reached")
         self.meter.total_calls += 1
+        return self.client.converse(**request)
+
+
+class _CappedBackend(BedrockBackend):
+    def client(self):
+        return _CappedClient(super().client(), self.meter)
+
+    def generate(self, *args, **kwargs):
         text = super().generate(*args, **kwargs)
         self.meter.replies.append(text)
         return text
@@ -143,6 +156,7 @@ def main() -> int:
     if latencies:
         print(f"\nlatency per prompt: median {latencies[len(latencies) // 2]:.2f}s, max {latencies[-1]:.2f}s")
     print(f"prompts with a retry: {sum(r[1] > 1 for r in rows)}   failed after retry: {len(rows) - ok}")
+    print(f"Bedrock API calls made: {meter.total_calls} (limit {MAX_CALLS}; includes throttling/timeout retries)")
     if price:
         cost = tin / 1e6 * price[0] + tout / 1e6 * price[1]
         print(f"estimated cost: ${cost:.6f}  (at ${price[0]}/1M input, ${price[1]}/1M output)")

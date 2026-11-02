@@ -35,6 +35,14 @@ def real_complete(monkeypatch):
     monkeypatch.setattr(provider, "complete", _REAL_COMPLETE)
 
 
+@pytest.fixture(autouse=True)
+def sleeps(monkeypatch):
+    """The retry backoff, recorded instead of slept."""
+    seen = []
+    monkeypatch.setattr(backends, "_sleep", seen.append)
+    return seen
+
+
 class _Client:
     """A fake bedrock-runtime client: records converse() kwargs and replies
     from a queue of texts, raw response dicts or exceptions."""
@@ -253,31 +261,59 @@ def test_usage_hook_reports_tokens_and_latency(real_complete):
 
 
 # ---------------------------------------------------------------------------
-# Error mapping: never retried, AWS messages never logged
+# Error mapping: AWS messages never logged; only throttling and timeouts
+# are retried, once
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize("error, message, level", [
-    (_client_error("ThrottlingException"), "throttled", logging.WARNING),
-    (_client_error("ServiceUnavailableException"), "unavailable", logging.WARNING),
-    (_client_error("ModelTimeoutException"), "timed out", logging.WARNING),
-    (_client_error("AccessDeniedException"), "IAM policy", logging.ERROR),
-    (_client_error("ValidationException"), "BEDROCK_MODEL_ID", logging.ERROR),
-    (_client_error("ResourceNotFoundException"), "model not found", logging.ERROR),
-    (_client_error("ExpiredTokenException"), "expired", logging.ERROR),
-    (_client_error("SomethingNewException"), "Bedrock error (SomethingNewException)", logging.WARNING),
-    (ReadTimeoutError(endpoint_url="https://bedrock-runtime.ap-south-1.amazonaws.com"), "timed out after",
-     logging.WARNING),
+_TIMEOUT = ReadTimeoutError(endpoint_url="https://bedrock-runtime.ap-south-1.amazonaws.com")
+
+
+@pytest.mark.parametrize("error, message, level, calls", [
+    (_client_error("ThrottlingException"), "throttled", logging.WARNING, 2),
+    (_client_error("ServiceUnavailableException"), "unavailable", logging.WARNING, 1),
+    (_client_error("ModelTimeoutException"), "timed out", logging.WARNING, 2),
+    (_client_error("AccessDeniedException"), "IAM policy", logging.ERROR, 1),
+    (_client_error("ValidationException"), "BEDROCK_MODEL_ID", logging.ERROR, 1),
+    (_client_error("ResourceNotFoundException"), "model not found", logging.ERROR, 1),
+    (_client_error("ExpiredTokenException"), "expired", logging.ERROR, 1),
+    (_client_error("ServiceQuotaExceededException"), "quota exceeded", logging.WARNING, 1),
+    (_client_error("SomethingNewException"), "Bedrock error (SomethingNewException)", logging.WARNING, 1),
+    (_TIMEOUT, "timed out after", logging.WARNING, 2),
     (EndpointConnectionError(endpoint_url="https://bedrock-runtime.ap-south-1.amazonaws.com"),
-     "Could not reach Bedrock", logging.WARNING),
-    (NoCredentialsError(), "No AWS credentials", logging.ERROR),
+     "Could not reach Bedrock", logging.WARNING, 1),
+    (NoCredentialsError(), "No AWS credentials", logging.ERROR, 1),
 ])
-def test_errors_are_mapped_not_retried_and_never_leak(real_complete, caplog, error, message, level):
-    client = _bedrock(error)
+def test_errors_are_mapped_retried_only_when_transient_and_never_leak(
+        real_complete, caplog, sleeps, error, message, level, calls):
+    client = _bedrock(error, error)
     with caplog.at_level(logging.DEBUG), pytest.raises(AIError):
         _categorize()
-    assert len(client.calls) == 1
+    assert len(client.calls) == calls
+    assert len(sleeps) == calls - 1
+    assert all(1.0 <= s <= 1.5 for s in sleeps)
     record = next(r for r in caplog.records if "AI provider call failed" in r.getMessage())
     assert message in record.getMessage() and record.levelno == level
     assert "SECRET-USER" not in caplog.text and "111122223333" not in caplog.text
+
+
+@pytest.mark.parametrize("error", [_client_error("ThrottlingException"), _client_error("ModelTimeoutException"),
+                                   _TIMEOUT])
+def test_a_transient_error_succeeds_on_the_one_retry(real_complete, caplog, sleeps, error):
+    client = _bedrock(error, _tool_reply({"category": "AGENT", "confidence": 0.9}))
+    with caplog.at_level(logging.WARNING):
+        result = _categorize()
+    assert result.category == "AGENT"
+    assert len(client.calls) == 2 and client.calls[0] == client.calls[1]
+    assert len(sleeps) == 1 and 1.0 <= sleeps[0] <= 1.5
+    assert "retrying once" in caplog.text and "SECRET-USER" not in caplog.text
+
+
+def test_the_retry_is_not_counted_against_the_validation_retry(real_complete, sleeps):
+    """A throttled call retried once, then an invalid reply: the provider's
+    own validation retry still happens (4 calls at most, never more)."""
+    client = _bedrock(_client_error("ThrottlingException"), "not json",
+                      _client_error("ThrottlingException"), _tool_reply({"category": "AGENT", "confidence": 0.9}))
+    assert _categorize().category == "AGENT"
+    assert len(client.calls) == 4 and len(sleeps) == 2
 
 
 # ---------------------------------------------------------------------------
