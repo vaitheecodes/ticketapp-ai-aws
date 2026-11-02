@@ -16,7 +16,13 @@ answer. Customer terms come from the customer's own words only.
 
 from __future__ import annotations
 
+import logging
 import re
+from functools import lru_cache
+
+from backend import kb_registry
+
+logger = logging.getLogger(__name__)
 
 # label -> pattern, matched case-insensitively.
 INTEGRATIONS = {
@@ -89,9 +95,42 @@ CATEGORY_MONITOR_TYPE = {
 }
 
 
+@lru_cache(maxsize=1)
+def _merged() -> tuple[dict[str, re.Pattern], dict[str, set[str]]]:
+    """Built-in terms and intent map plus data/kb/kb_registry.json (terms
+    and intents registered when entries are approved; a registered intent
+    replaces a built-in one). Loaded once per process; reload() after a
+    change."""
+    registry = kb_registry.load()
+    compiled = dict(_COMPILED)
+    for label, pattern in registry["terms"].items():
+        compiled[label] = re.compile(pattern, re.IGNORECASE)
+    intents = {intent: set(labels) for intent, labels in INTENT_TERMS.items()}
+    for intent, labels in registry["intent_terms"].items():
+        unknown = [label for label in labels if label not in compiled]
+        if unknown:
+            logger.warning("kb_registry: intent %s names unknown terms %s; ignored", intent, unknown)
+        intents[intent] = {label for label in labels if label in compiled}
+    return compiled, intents
+
+
+def reload() -> None:
+    _merged.cache_clear()
+
+
+def known_terms() -> list[str]:
+    return sorted(_merged()[0])
+
+
+def intent_terms(intent: str) -> set[str] | None:
+    """The terms an intent depends on, or None if it was never registered."""
+    terms = _merged()[1].get(intent)
+    return set(terms) if terms is not None else None
+
+
 def mentioned(text: str) -> set[str]:
     """Every specific term named in `text`."""
-    return {label for label, pattern in _COMPILED.items() if pattern.search(text or "")}
+    return {label for label, pattern in _merged()[0].items() if pattern.search(text or "")}
 
 
 def monitor_types(customer_text: str, requested_category: str | None = None) -> list[str]:
@@ -105,7 +144,7 @@ def monitor_types(customer_text: str, requested_category: str | None = None) -> 
 
 def entry_terms(intent: str, response: str = "") -> set[str]:
     """What a KB entry is specific to (empty: a generic entry)."""
-    terms = set(INTENT_TERMS.get(intent, set()))
+    terms = set(_merged()[1].get(intent, set()))
     answer = _HYPHENATED_NAME.sub(" ", response or "")
     terms |= {label for label in _ANSWER_NAMES if _COMPILED[label].search(answer)}
     return terms

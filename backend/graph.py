@@ -379,9 +379,11 @@ def classify_ticket(state: TicketState) -> dict:
             # direct match — trust it over a conservative raw confidence
             # number for a short/common phrasing.
             confidence = max(confidence, grounded_confidence)
-        elif llm_confidence < app_settings.get("routing").confidence_threshold:
+        elif llm_confidence < app_settings.get("routing").confidence_threshold and top["category"] in CATEGORIES:
             # LLM was unsure AND retrieval strongly points elsewhere —
-            # trust the grounded KB match over an ungrounded guess.
+            # trust the grounded KB match over an ungrounded guess. Only
+            # to one of the classifier's categories: a KB-only category
+            # (data/kb/kb_registry.json) never becomes a ticket category.
             category, confidence = top["category"], grounded_confidence
 
     print(

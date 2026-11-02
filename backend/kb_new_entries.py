@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
+from backend import kb_registry
 from backend.ai_service.schemas import CATEGORIES
 
 NEW_ENTRIES_PATH = Path(__file__).resolve().parent.parent / "data" / "kb" / "new_entries.json"
@@ -69,11 +70,19 @@ def official_source(url) -> bool:
     return parsed.scheme == "https" and parsed.hostname in SOURCE_HOSTS and bool(parsed.path.strip("/"))
 
 
-def validate(data, existing: list[dict]) -> Report:
+def allowed_categories(registry: dict | None = None) -> list[str]:
+    """The classifier's 17 categories plus categories added in
+    data/kb/kb_registry.json (KB labels only; see backend/kb_registry.py)."""
+    registry = registry if registry is not None else kb_registry.load()
+    return list(CATEGORIES) + [c for c in registry["categories"] if c not in CATEGORIES]
+
+
+def validate(data, existing: list[dict], registry: dict | None = None) -> Report:
     """`data`: the parsed new_entries.json. `existing`: the entries of
     data/kb/kb_entries.json (kb_entry_id, category, intent, instruction,
-    response)."""
+    response). `registry`: kb_registry contents (default: the file)."""
     report = Report()
+    categories = allowed_categories(registry)
     if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
         report.errors.append('file: expected an object with an "entries" list')
         return report
@@ -122,12 +131,12 @@ def validate(data, existing: list[dict]) -> Report:
                 seen_ids.add(kb_id)
 
         category, intent = entry.get("category"), entry.get("intent")
-        if "category" in entry and category not in CATEGORIES:
-            problems.append(f"category must be one of: {', '.join(CATEGORIES)}")
+        if "category" in entry and category not in categories:
+            problems.append(f"category must be one of: {', '.join(categories)}")
         if "intent" in entry:
             if not isinstance(intent, str) or not re.fullmatch(r"[a-z][a-z0-9_]{2,40}", intent):
                 problems.append("intent must be lower_snake_case (e.g. agent_installation)")
-            elif category in CATEGORIES and intent not in known_intents.get(category, set()) and not draft:
+            elif category in categories and intent not in known_intents.get(category, set()) and not draft:
                 known = ", ".join(sorted(known_intents.get(category, set()))) or "none yet"
                 report.warnings.append(f"{label}: intent {intent!r} is new for {category} "
                                        f"(existing: {known}); fine if intended")
