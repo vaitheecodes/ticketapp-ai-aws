@@ -176,6 +176,14 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   hand-written entries in `data/kb/new_entries.json` are loaded when valid
   (`backend/kb_new_entries.py`, `scripts/validate_kb.py`,
   `docs/KB_ENTRY_TEMPLATE.md`; `"example": true` entries never are);
+  an entry specific to an integration or monitor type the customer
+  hasn't mentioned (`backend/topic_terms.py`, by intent plus integration
+  names in the answer) never grounds a reply and is passed as an
+  "unconfirmed topic" to ask about (`graph.grounding_candidates`); the
+  category picked at chat/ticket start narrows grounding only, never
+  classification or routing; prompts never ask for identifiers (the AI
+  has no account access) but for monitor type, exact error, screen/step,
+  what was tried, and the chat filter swaps identifier requests for one;
   a strong match — `kb_retrieval.STRONG_MATCH_SCORE` — raises its
   returned confidence past a conservative raw LLM score, logged for
   comparison); `ask_clarifying_question`'s prompt (names the *specific*
