@@ -14,10 +14,28 @@ listed in `docs/KB_COVERAGE.md` were prepared from Site24x7's official
 documentation. Each one waits for a person to review it, write or correct the
 answer, and approve it.
 
-1. Review a draft, or add a new entry by copying the example and removing
-   `"example"`.
-2. Write or check the answer against the page in `source_url`, then set
-   `"status": "approved"`.
+1. Review the drafts with the interactive reviewer:
+
+   ```bash
+   .venv/bin/python scripts/kb_review.py
+   ```
+
+   It shows each draft's area, category, intent, questions, answer,
+   `source_url` and `collect` list. You can then:
+
+   - **approve:** pick the category, say what the entry is specific to, and
+     type `yes` to confirm.
+   - **edit:** change the answer text, and optionally the `source_url`.
+   - **reject:** move the entry to `data/kb/rejected_entries.json`.
+   - **skip:** leave it as a draft.
+
+   Each decision is validated and saved atomically straight away, so you can
+   stop at any point. Nothing is approved without the typed `yes`. To work
+   through part of the list, use `--area "Databases"`, `--id KB-N0101` or
+   `--list`.
+2. You can also add a new entry by copying the example and removing
+   `"example"`. Check the answer against the page in `source_url` before
+   approving it.
 3. Run the validator and fix every `ERROR`. It also lists the drafts by area:
 
    ```bash
@@ -85,6 +103,24 @@ Any other field causes a warning and is ignored.
   answer as its only source and is told not to add facts.
 - If something depends on the customer's setup, say what to check, not what
   the result will be.
+
+## Categories and specificity (`data/kb/kb_registry.json`)
+
+When you approve an entry, the reviewer records two things in
+`data/kb/kb_registry.json`:
+
+- **Category:** one of the classifier's 17 categories, or a new one you add.
+  A new category only labels KB entries. The classifier never returns it,
+  and a KB match never moves a ticket into it, until it is added to the code
+  (`ai_service/schemas.py`, departments and the frontend).
+- **Specific to:** which monitor type, integration or product the entry
+  applies to, chosen from the known terms or added as a new term with a
+  pattern. The AI only grounds a reply on the entry once the customer has
+  mentioned one of these terms. Until then it asks whether the entry
+  applies. `none` registers the entry as generic.
+
+`backend/topic_terms.py` merges the registry with its built-in terms. Restart
+the backend after approving.
 
 ## How retrieval uses entries
 

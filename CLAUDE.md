@@ -173,9 +173,14 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   collapse into one topic so the top results are distinct (386 entries ->
   27 topics), a best match below `KB_MIN_SCORE` (default 0.35) is no match
   (the answer prompt then asks one question or offers a ticket), and
-  hand-written entries in `data/kb/new_entries.json` are loaded when valid
-  (`backend/kb_new_entries.py`, `scripts/validate_kb.py`,
-  `docs/KB_ENTRY_TEMPLATE.md`; `"example": true` entries never are);
+  hand-written entries in `data/kb/new_entries.json` are loaded when
+  valid and `status: approved` (`backend/kb_new_entries.py`,
+  `scripts/validate_kb.py`, `docs/KB_ENTRY_TEMPLATE.md`; drafts and
+  `"example": true` entries never are); `scripts/kb_review.py` is the
+  interactive approve/edit/reject/skip reviewer (typed "yes" to approve,
+  atomic save per decision) and records each approved entry's category
+  and specific terms in `data/kb/kb_registry.json` (`backend/kb_registry.py`;
+  KB-only categories never become ticket categories);
   an entry specific to an integration or monitor type the customer
   hasn't mentioned (`backend/topic_terms.py`, by intent plus integration
   names in the answer) never grounds a reply and is passed as an
