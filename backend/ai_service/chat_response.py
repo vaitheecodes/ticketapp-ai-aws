@@ -37,7 +37,8 @@ _CHAT_STYLE = (
     "in chat: conversational, short (usually two to five sentences), straight to "
     "the point. No greeting, no sign-off, no signature, no subject line. Never "
     "write placeholder text in square brackets such as [Your Name] or [Customer "
-    "Name], and never sign with a name or team."
+    "Name], and never sign with a name or team. Ask at most one question per "
+    "reply."
 )
 
 # Chat output filter. A greeting line: "Hello," / "Hi Dana!" / "Dear customer,".
@@ -57,13 +58,35 @@ _SIGNATURE_LINE = re.compile(
 # [Your Name], [Customer's Name], [insert link]: words only, so a UI path
 # like [Admin > Monitors] or a markdown link [docs](url) is kept.
 _PLACEHOLDER = re.compile(r"\[[A-Za-z][A-Za-z' -]{0,40}\](?!\()")
+_SENTENCE_END = re.compile(r"(?<=[.?!])\s+")
+_LIST_MARKER_ONLY = re.compile(r"^\s*([-*•]|\d+[.)])?\s*$")
+
+
+def _first_question_only(lines: list[str]) -> list[str]:
+    """Drop every question sentence after the first; a line left with
+    nothing but a list marker goes too."""
+    out, asked = [], False
+    for line in lines:
+        kept = []
+        for sentence in _SENTENCE_END.split(line):
+            if sentence.rstrip().endswith("?"):
+                if asked:
+                    continue
+                asked = True
+            kept.append(sentence)
+        new = " ".join(kept)
+        if new != line and _LIST_MARKER_ONLY.match(new):
+            continue
+        out.append(new)
+    return out
 
 
 def clean_chat_reply(text: str) -> str:
-    """Strip greeting lines, the sign-off and signature, and [Placeholder]
-    text from a chat reply. A reply with nothing left (only placeholders
-    and pleasantries) is an AI failure."""
-    lines = _PLACEHOLDER.sub("", text).splitlines()
+    """Strip greeting lines, the sign-off and signature, [Placeholder]
+    text, and every question after the first from a chat reply. A reply
+    with nothing left (only placeholders and pleasantries) is an AI
+    failure."""
+    lines = _first_question_only(_PLACEHOLDER.sub("", text).splitlines())
     while lines and (not lines[0].strip() or _GREETING_LINE.match(lines[0])):
         lines.pop(0)
     for i, line in enumerate(lines):
@@ -113,8 +136,18 @@ def answer(data: AnswerInput) -> ChatReply:
             "to answer well, ask exactly one short clarifying question instead of "
             f"guessing.{continuation_note}"
         )
+    no_match_note = ""
+    if not data.kb_candidates:
+        offer = ("offer to raise a ticket so the support team can look into it"
+                 if data.reply_format == "chat" else "say the support team will look into it")
+        no_match_note = (
+            "\n\nThe kb_guidance block has no close knowledge-base match for this "
+            "request. Do not answer from general knowledge and do not give "
+            "troubleshooting steps. Either ask exactly one short question that would "
+            f"help identify the problem, or {offer}."
+        )
     text = provider.complete_text(
-        f"{role}\n\n"
+        f"{role}{no_match_note}\n\n"
         "Base the answer on the kb_guidance block, personalised to the customer's "
         "own wording; don't contradict it. Use the order_record block as the only "
         "source of truth for order facts. If answering would need a specific fact "

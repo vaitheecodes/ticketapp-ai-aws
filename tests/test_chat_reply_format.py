@@ -15,7 +15,7 @@ import pytest
 
 from backend.ai_service import AIError, chat_response, provider
 from backend.ai_service.chat_response import clean_chat_reply
-from backend.ai_service.schemas import AnswerInput, ClarifyInput
+from backend.ai_service.schemas import AnswerInput, ClarifyInput, KBCandidate
 
 STEPS = "1. Open Admin > Monitors.\n2. Restart the agent service."
 
@@ -117,3 +117,70 @@ def test_chat_reply_of_only_placeholders_fails_the_turn(monkeypatch):
     _capture(monkeypatch, "Hello [Customer Name],\n\n[Your answer here]\n\nBest regards,\n[Your Name]")
     with pytest.raises(AIError):
         _answer("chat")
+
+
+# ---------------------------------------------------------------------------
+# At most one question per chat reply
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("raw, expected", [
+    ("Is it an SNMP device? Which version is the agent?",
+     "Is it an SNMP device?"),
+    ("Can you confirm the credentials are correct? Also, please check the discovery logs.",
+     "Can you confirm the credentials are correct? Also, please check the discovery logs."),
+    ("Restart the agent service. Did that help? If not, is port 443 open?",
+     "Restart the agent service. Did that help?"),
+    ("Try these steps:\n1. Restart the agent.\n2. Is port 443 open?\n3. Is the proxy set?",
+     "Try these steps:\n1. Restart the agent.\n2. Is port 443 open?"),
+    ("Is the monitor a server or a website?\nWhich location reports it down?\nCheck the alert log too.",
+     "Is the monitor a server or a website?\nCheck the alert log too."),
+    ("Restart the agent and check that data comes back within five minutes.",
+     "Restart the agent and check that data comes back within five minutes."),
+])
+def test_only_the_first_question_is_kept(raw, expected):
+    assert clean_chat_reply(raw) == expected
+
+
+def test_chat_prompts_ask_for_at_most_one_question(monkeypatch):
+    seen = _capture(monkeypatch, "Is it a network device?")
+    _answer("chat")
+    assert "at most one question per reply" in seen["instructions"]
+    chat_response.clarify(ClarifyInput(ticket_text="Customer: it is broken", reply_format="chat"))
+    assert "at most one question per reply" in seen["instructions"]
+
+
+def test_email_replies_are_not_question_limited(monkeypatch):
+    _capture(monkeypatch, "Is it a network device? Which agent version do you run?")
+    text = _answer("email").text
+    assert "Is it a network device? Which agent version do you run?" in text
+
+
+# ---------------------------------------------------------------------------
+# No close KB match: no grounding, ask one question or offer a ticket
+# ---------------------------------------------------------------------------
+_CANDIDATE = KBCandidate(kb_entry_id="KB-0297", category="AGENT", intent="agent_installation",
+                         instruction="how do I install the Site24x7 agent",
+                         response="Download the agent installer and run it.", score=0.9)
+
+
+def test_no_kb_match_answer_asks_or_offers_a_ticket(monkeypatch):
+    seen = _capture(monkeypatch, "Which device type is it: a server or a network device?")
+    _answer("chat")
+    instructions = seen["instructions"]
+    assert seen["data"]["kb_guidance"] == "(no KB match)"
+    assert "no close knowledge-base match" in instructions
+    assert "Do not answer from general knowledge" in instructions
+    assert "offer to raise a ticket" in instructions
+
+
+def test_no_kb_match_email_says_the_team_will_look(monkeypatch):
+    seen = _capture(monkeypatch, "Could you tell us which device type this is?")
+    _answer("email")
+    assert "say the support team will look into it" in seen["instructions"]
+    assert "offer to raise a ticket" not in seen["instructions"]
+
+
+def test_a_kb_match_grounds_the_answer_as_before(monkeypatch):
+    seen = _capture(monkeypatch, "Download the agent installer and run it on the server.")
+    _answer("chat", kb_candidates=[_CANDIDATE])
+    assert "no close knowledge-base match" not in seen["instructions"]
+    assert "Download the agent installer and run it." in seen["data"]["kb_guidance"]
