@@ -9,7 +9,8 @@
   validator but never becomes a classifier category.
 - A new category or term never repeats an existing name (any case) and a
   term's regex is never empty or match-everything; --retag changes an
-  approved entry's category and terms without re-approving it.
+  approved entry's category and terms without re-approving it, and --edit
+  its answer.
 - KB-N0140 (the "invalid data provided for api" HAR entry) is live.
 """
 
@@ -270,6 +271,66 @@ def test_interactive_retag_refuses_a_draft_and_stops_on_end_of_input(files):
     _approved(files)
     before = entries.read_text(encoding="utf-8")
     assert reviewer.retag("KB-N0901") == 0 and entries.read_text(encoding="utf-8") == before
+
+
+# ---------------------------------------------------------------------------
+# Editing approved entries
+# ---------------------------------------------------------------------------
+NEW_ANSWER = "Chrome: first step written here.\nFirefox: second step written here."
+OTHER_SOURCE = "https://support.site24x7.com/portal/en/kb/articles/zebradb"
+
+
+def test_edit_approved_keeps_the_approval_and_line_breaks(files):
+    data, registry = _approved(files)
+    data = kb_review.edit_approved(data, registry, "KB-N0901", NEW_ANSWER, OTHER_SOURCE,
+                                   edited_at="2026-11-02T11:00:00+00:00")
+    entry = next(e for e in data["entries"] if e["kb_entry_id"] == "KB-N0901")
+    assert (entry["status"], entry["reviewed_at"], entry["edited_at"]) == (
+        "approved", "2026-11-02T08:00:00+00:00", "2026-11-02T11:00:00+00:00")
+    assert entry["answer"] == NEW_ANSWER and entry["source_url"] == OTHER_SOURCE
+    assert kb_new_entries.validate(data, [], registry).errors == []
+
+
+def test_edit_approved_refuses_drafts_and_invalid_answers(files):
+    with pytest.raises(kb_review.ReviewError, match="not approved"):
+        kb_review.edit_approved(_load(files[0]), kb_registry.empty(), "KB-N0902", NEW_ANSWER)
+    data, registry = _approved(files)
+    with pytest.raises(kb_review.ReviewError, match="at least"):
+        kb_review.edit_approved(data, registry, "KB-N0901", "too short")
+    with pytest.raises(kb_review.ReviewError, match="can't be empty"):
+        kb_review.edit_approved(data, registry, "KB-N0901", "   ")
+    with pytest.raises(kb_review.ReviewError, match="official Site24x7 page"):
+        kb_review.edit_approved(data, registry, "KB-N0901", NEW_ANSWER, "https://example.com/har")
+
+
+def test_interactive_edit_needs_a_typed_yes_and_saves(files):
+    _approved(files)
+    before = files[0].read_text(encoding="utf-8")
+    lines = NEW_ANSWER.split("\n")
+    out = _run(files, [*lines, ".", "", "y"], method="edit_approved", kb_id="KB-N0901")
+    assert "Nothing was changed." in out and files[0].read_text(encoding="utf-8") == before
+    out = _run(files, [*lines, ".", "", "yes"], method="edit_approved", kb_id="KB-N0901")
+    assert "Saved KB-N0901." in out and NEW_ANSWER in out
+    entry = _entry(files[0], "KB-N0901")
+    assert entry["status"] == "approved" and entry["answer"] == NEW_ANSWER and entry["edited_at"]
+    assert entry["source_url"] == DRAFT["source_url"]  # Enter kept it
+    assert not list(files[0].parent.glob(".*.tmp"))
+
+
+def test_interactive_edit_refuses_drafts_invalid_text_and_stops_on_end_of_input(files):
+    entries, registry, rejected = files
+    said = []
+    reviewer = kb_review.Reviewer(entries, registry, rejected, ask=lambda p="": (_ for _ in ()).throw(EOFError),
+                                  say=lambda *a: said.append(" ".join(map(str, a))))
+    assert reviewer.edit_approved("KB-N0902") == 1 and "not approved" in said[-1]
+    _approved(files)
+    before = entries.read_text(encoding="utf-8")
+    assert reviewer.edit_approved("KB-N0901") == 0 and entries.read_text(encoding="utf-8") == before
+    script = iter(["too short", ".", ""])
+    said.clear()
+    reviewer.ask = lambda p="": next(script)
+    assert reviewer.edit_approved("KB-N0901") == 1
+    assert "Not saved" in "\n".join(said) and entries.read_text(encoding="utf-8") == before
 
 
 # ---------------------------------------------------------------------------

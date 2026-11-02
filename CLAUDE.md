@@ -179,7 +179,8 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `"example": true` entries never are); `scripts/kb_review.py` is the
   interactive approve/edit/reject/skip reviewer (typed "yes" to approve,
   atomic save per decision; `--retag ID` changes an approved entry's
-  category/terms without re-approving; new names that repeat an existing
+  category/terms and `--edit ID` its answer/source_url without
+  re-approving (typed "yes"); new names that repeat an existing
   one, any case, and empty or match-everything regexes are refused) and records each approved entry's category
   and specific terms in `data/kb/kb_registry.json` (`backend/kb_registry.py`;
   KB-only categories never become ticket categories);

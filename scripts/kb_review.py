@@ -2,6 +2,7 @@
 
     .venv/bin/python scripts/kb_review.py [--area AREA] [--id KB-N0101] [--list]
     .venv/bin/python scripts/kb_review.py --retag KB-N0103
+    .venv/bin/python scripts/kb_review.py --edit KB-N0140
 
 For each draft it shows the area, category, intent, question wordings,
 answer, source_url and "collect" list, then asks what to do:
@@ -21,6 +22,10 @@ answer, source_url and "collect" list, then asks what to do:
 (same choices as approve, confirmed by typing "yes"); it stays approved,
 keeps its reviewed_at and gets retagged_at. "Specific to" is recorded per
 intent, so it applies to every entry with that intent.
+
+--edit replaces an approved entry's answer (and optionally its
+source_url) after a typed "yes"; it stays approved, keeps reviewed_at and
+gets edited_at. Line breaks in an answer are kept.
 
 A new category or term must not repeat an existing name (any case), and
 a new term's regex must not be empty or match an empty message.
@@ -203,6 +208,19 @@ def retag(data: dict, registry: dict, kb_id: str, *, category: str, specific_to:
     return data, registry
 
 
+def edit_approved(data: dict, registry: dict, kb_id: str, answer: str, source_url: str | None = None,
+                  edited_at: str | None = None) -> dict:
+    """An approved entry with a new answer (and source_url). It stays
+    approved and keeps reviewed_at; edited_at is recorded."""
+    _, entry = find(data, kb_id)
+    if entry.get("status") != "approved":
+        raise ReviewError(f"{kb_id} is not approved: edit it in the normal review flow instead")
+    data = edit(data, registry, kb_id, answer, source_url)
+    index, entry = find(data, kb_id)
+    data["entries"][index] = {**entry, "edited_at": edited_at or _now()}
+    return data
+
+
 def sharing_intent(data: dict, entry: dict) -> list[str]:
     """Other new entries with the same intent (they share its terms)."""
     return [e["kb_entry_id"] for e in data["entries"]
@@ -216,6 +234,8 @@ def edit(data: dict, registry: dict, kb_id: str, answer: str, source_url: str | 
     entry = {**entry, "answer": answer.strip()}
     if source_url is not None:
         entry["source_url"] = source_url.strip()
+    if entry.get("status") == "approved" and not entry["answer"]:
+        raise ReviewError(f"{kb_id} is approved: its answer can't be empty")
     data["entries"][index] = entry
     errors = entry_errors(data, kb_id, registry)
     if errors:
@@ -397,8 +417,8 @@ class Reviewer:
         self.say(f"Retagged {kb_id} and saved. Restart the backend to use it.")
         return 0
 
-    def _edit(self, entry: dict) -> None:
-        data, registry = self._load()
+    def _read_answer(self) -> str | None:
+        """Answer text typed line by line, ending with a '.' line (None: cancelled)."""
         self.say("New answer text; finish with a line containing only '.' (an empty first line cancels):")
         lines = []
         while True:
@@ -406,12 +426,56 @@ class Reviewer:
             if line.strip() == "." or (not lines and line.strip() == ""):
                 break
             lines.append(line.rstrip())
-        if not lines:
+        return "\n".join(lines) if lines else None
+
+    def edit_approved(self, kb_id: str) -> int:
+        try:
+            return self._edit_approved(kb_id)
+        except EOFError:
+            self.say("\nStopped. Nothing was changed.")
+            return 0
+
+    def _edit_approved(self, kb_id: str) -> int:
+        data, registry = self._load()
+        try:
+            _, entry = find(data, kb_id)
+        except ReviewError as exc:
+            self.say(str(exc))
+            return 1
+        if entry.get("status") != "approved":
+            self.say(f"{kb_id} is not approved: edit it without --edit.")
+            return 1
+        self.say(card(entry, registry))
+        answer = self._read_answer()
+        if answer is None:
+            self.say("Nothing was changed.")
+            return 0
+        source = self.ask(f"source_url (Enter keeps {entry.get('source_url') or 'none'}): ").strip()
+        try:
+            new_data = edit_approved(data, registry, kb_id, answer, source or None)
+        except ReviewError as exc:
+            self.say(f"Not saved, the entry is not valid:\n{exc}")
+            return 1
+        _, new_entry = find(new_data, kb_id)
+        self.say("New answer:")
+        self.say(new_entry["answer"])
+        self.say(f"source_url: {new_entry.get('source_url') or '-'}")
+        if self.ask(f"Type 'yes' to save {kb_id} (it stays approved): ").strip().lower() != "yes":
+            self.say("Nothing was changed.")
+            return 0
+        kb_registry.write_json_atomic(self.entries_path, new_data)
+        self.say(f"Saved {kb_id}. Restart the backend to use it.")
+        return 0
+
+    def _edit(self, entry: dict) -> None:
+        data, registry = self._load()
+        answer = self._read_answer()
+        if answer is None:
             self.say("Edit cancelled.")
             return
         source = self.ask(f"source_url (Enter keeps {entry.get('source_url') or 'none'}): ").strip()
         try:
-            data = edit(data, registry, entry["kb_entry_id"], " ".join(lines), source or None)
+            data = edit(data, registry, entry["kb_entry_id"], answer, source or None)
         except ReviewError as exc:
             self.say(f"Not saved, the entry is not valid:\n{exc}")
             return
@@ -478,8 +542,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--id", dest="kb_id", help="only this draft, e.g. KB-N0101")
     parser.add_argument("--list", action="store_true", help="list the drafts and exit")
     parser.add_argument("--retag", metavar="ID", help="change an approved entry's category and terms")
+    parser.add_argument("--edit", metavar="ID", help="change an approved entry's answer and source_url")
     args = parser.parse_args(argv)
     reviewer = Reviewer(kb_new_entries.NEW_ENTRIES_PATH, kb_registry.REGISTRY_PATH, REJECTED_PATH)
+    if args.edit:
+        try:
+            return reviewer.edit_approved(args.edit)
+        except KeyboardInterrupt:
+            print("\nStopped. Nothing was changed.")
+            return 0
     if args.retag:
         try:
             return reviewer.retag(args.retag)

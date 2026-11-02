@@ -138,8 +138,19 @@ approved, keeps its `reviewed_at`, and gets a `retagged_at`. "Specific to"
 is recorded per intent, so it applies to every entry with that intent (the
 reviewer lists them).
 
+To change an approved entry's answer (and optionally its `source_url`):
+
+```bash
+.venv/bin/python scripts/kb_review.py --edit KB-N0140
+```
+
+Type the new answer line by line and end with a line containing only `.`.
+Line breaks are kept. The reviewer validates the entry, shows the result
+and saves only after you type `yes`. The entry stays approved, keeps its
+`reviewed_at`, and gets an `edited_at`.
+
 `backend/topic_terms.py` merges the registry with its built-in terms. Restart
-the backend after approving or retagging.
+the backend after approving, retagging or editing.
 
 ## How retrieval uses entries
 
