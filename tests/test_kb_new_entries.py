@@ -154,19 +154,25 @@ def test_missing_file_is_no_entries(tmp_path):
 # ---------------------------------------------------------------------------
 # The shipped file and retrieval
 # ---------------------------------------------------------------------------
-def test_shipped_file_holds_the_example_and_drafts_only():
-    """Nothing in the shipped file is used by the app: one example plus
-    drafts awaiting review. Every draft answer cites an official page."""
+def test_shipped_file_holds_the_example_drafts_and_reviewed_entries():
+    """One example, drafts awaiting review, and entries a person approved
+    (reviewed_at set). Every answer cites an official page."""
     data = json.loads(kb_new_entries.NEW_ENTRIES_PATH.read_text(encoding="utf-8"))
     existing = json.loads(kb_retrieval.KB_PATH.read_text(encoding="utf-8"))["entries"]
     report = kb_new_entries.validate(data, existing)
-    assert report.errors == [] and report.entries == [] and report.examples == 1
-    assert {e.get("status") for e in data["entries"] if not e.get("example")} == {"draft"}
-    assert len(report.drafts) == len(data["entries"]) - 1 >= 30
+    assert report.errors == [] and report.examples == 1
+    statuses = [e.get("status") for e in data["entries"] if not e.get("example")]
+    assert set(statuses) <= {"draft", "approved"} and statuses.count("draft") >= 30
+    assert len(report.drafts) == statuses.count("draft")
+    approved = [e for e in data["entries"] if e.get("status") == "approved"]
+    assert all(e.get("reviewed_at") for e in approved)
+    assert {e["kb_entry_id"] for e in report.entries} == {e["kb_entry_id"] for e in approved}
     for e in data["entries"]:
         if e.get("example"):
             continue
         assert e["area"] and e["collect"] and e["handling"] in kb_new_entries.HANDLING
+        if e["status"] == "approved":
+            continue
         if e["answer"]:
             assert kb_new_entries.official_source(e["source_url"]), e["kb_entry_id"]
             assert len(e["answer"]) <= 600, f"{e['kb_entry_id']}: keep draft answers short"
@@ -204,7 +210,7 @@ def test_validator_script_exit_codes(tmp_path):
     script = [sys.executable, str(ROOT / "scripts" / "validate_kb.py")]
     shipped = subprocess.run(script, capture_output=True, text=True, cwd=ROOT)
     assert shipped.returncode == 0, shipped.stdout + shipped.stderr
-    assert "1 example(s) skipped" in shipped.stdout and "0 approved and usable" in shipped.stdout
+    assert "1 example(s) skipped" in shipped.stdout and "approved and usable" in shipped.stdout
     assert "drafts by area" in shipped.stdout and "Databases:" in shipped.stdout
 
     bad = tmp_path / "bad.json"

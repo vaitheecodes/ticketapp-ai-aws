@@ -58,6 +58,10 @@ def test_runtime_file_is_current(parquet_entries):
 
 @pytest.mark.parametrize("query", QUERIES)
 def test_retrieval_identical_to_parquet(parquet_entries, query):
+    """kb_entries.json retrieves exactly like the parquet tables. (The live
+    index also holds approved hand-written entries from new_entries.json,
+    which are compared nowhere here.)"""
     before = kb_retrieval.build_index(parquet_entries).search(query, top_k=5)
-    after = kb_retrieval._load_index().search(query, top_k=5)
+    exported = json.loads(kb_retrieval.KB_PATH.read_text(encoding="utf-8"))["entries"]
+    after = kb_retrieval.build_index(exported).search(query, top_k=5)
     assert [(c.entry, round(c.score, 12)) for c in before] == [(c.entry, round(c.score, 12)) for c in after]

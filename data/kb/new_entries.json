@@ -848,7 +848,7 @@
     },
     {
       "kb_entry_id": "KB-N0140",
-      "status": "draft",
+      "status": "approved",
       "area": "Add-monitor errors",
       "category": "WEB_MONITORING",
       "intent": "add_api_monitor_error_har",
@@ -865,7 +865,8 @@
         "A HAR file of the failing add-monitor attempt, with cookies and tokens removed"
       ],
       "answer": "Support may ask for a HAR file, which records every request the browser makes. Open the page where the problem happens, open developer tools (F12, or Cmd+Option+I on Mac), turn on log preservation in the Network tab, repeat the failing action, then export all requests as a HAR file. Remove cookies and tokens before sharing it.",
-      "source_url": "https://support.site24x7.com/portal/en/kb/articles/how-to-generate-a-har-file"
+      "source_url": "https://support.site24x7.com/portal/en/kb/articles/how-to-generate-a-har-file",
+      "reviewed_at": "2026-11-02T07:52:38+00:00"
     }
   ]
 }

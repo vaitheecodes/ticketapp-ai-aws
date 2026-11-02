@@ -7,6 +7,7 @@
   decision atomically, and stops cleanly on end of input.
 - topic_terms merges the registry; a KB-only category is accepted by the
   validator but never becomes a classifier category.
+- KB-N0140 (the "invalid data provided for api" HAR entry) is live.
 """
 
 from __future__ import annotations
@@ -219,3 +220,29 @@ def test_a_kb_only_category_never_becomes_the_ticket_category(monkeypatch):
              "kb_candidates": [{"kb_entry_id": "KB-N0901", "category": "DATABASES", "intent": "zebradb_monitoring",
                                 "instruction": "zebradb slow", "response": "x", "score": 0.95}]}
     assert graph.classify_ticket(state)["category"] == "MONITORING"
+
+
+# ---------------------------------------------------------------------------
+# KB-N0140 is live
+# ---------------------------------------------------------------------------
+def test_the_har_entry_is_approved_and_live():
+    data = json.loads(kb_new_entries.NEW_ENTRIES_PATH.read_text(encoding="utf-8"))
+    entry = next(e for e in data["entries"] if e["kb_entry_id"] == "KB-N0140")
+    assert entry["status"] == "approved" and entry["reviewed_at"]
+    assert json.loads(kb_registry.REGISTRY_PATH.read_text(encoding="utf-8"))["intent_terms"][
+        "add_api_monitor_error_har"] == ["API"]
+    kb_retrieval._load_index.cache_clear()
+    topic_terms.reload()
+    try:
+        hits = kb_retrieval.retrieve_candidates("invalid data provided for api")
+        assert hits and hits[0].entry.kb_entry_id == "KB-N0140"
+        state = {"ticket_text": "Customer: invalid data provided for api", "kb_candidates": graph.kb_candidates_for(
+            "invalid data provided for api")}
+        usable, unconfirmed = graph.grounding_candidates(state)
+        assert [c["kb_entry_id"] for c, _ in unconfirmed] == ["KB-N0140"]  # asks: is it an API monitor?
+        state["ticket_text"] = "Customer: my REST API monitor says invalid data provided for api"
+        usable, _ = graph.grounding_candidates(state)
+        assert usable and usable[0]["kb_entry_id"] == "KB-N0140"
+    finally:
+        kb_retrieval._load_index.cache_clear()
+        topic_terms.reload()
