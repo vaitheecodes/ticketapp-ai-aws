@@ -130,6 +130,9 @@ def test_dev_without_admin_env_uses_fallback_with_loud_warning(db_path, caplog):
 def _strong_jwt(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", STRONG_SECRET)
     monkeypatch.setattr(auth, "JWT_SECRET", STRONG_SECRET)
+    # A Postgres test run connects with the local-only test password, which
+    # production refuses; these tests are about the other checks.
+    monkeypatch.setattr(db_postgres, "production_problems", lambda: [])
 
 
 @pytest.mark.parametrize("env_value, secret, problem", [
@@ -193,8 +196,6 @@ def test_health_is_public(db_path):
 
 def test_demo_staff_not_seeded_in_production(db_path, monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
-    # A Postgres test run uses the local-only test password.
-    monkeypatch.setattr(db_postgres, "production_problems", lambda: [])
     _strong_jwt(monkeypatch)
     monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL)
     monkeypatch.setenv("ADMIN_PASSWORD", ADMIN_PASSWORD)
@@ -504,7 +505,8 @@ def test_postgres_production_problems_from_parts(monkeypatch):
 
 def test_production_on_postgres_refuses_to_start_without_ssl(db_path, monkeypatch, capsys):
     monkeypatch.setenv("APP_ENV", "production")
-    _strong_jwt(monkeypatch)
+    monkeypatch.setenv("JWT_SECRET", STRONG_SECRET)  # not _strong_jwt: keep the DB check
+    monkeypatch.setattr(auth, "JWT_SECRET", STRONG_SECRET)
     monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL)
     monkeypatch.setenv("ADMIN_PASSWORD", ADMIN_PASSWORD)
     monkeypatch.setenv("DB_BACKEND", "postgres")
