@@ -64,6 +64,9 @@ def test_runs_as_non_root_with_a_health_check():
     assert re.search(r"^USER app$", DOCKERFILE, re.M)
     assert "useradd --system --uid 10001" in DOCKERFILE
     assert "HEALTHCHECK" in DOCKERFILE and "/health" in DOCKERFILE
+    # COPY keeps the build machine's modes: a 0600 file would be unreadable.
+    assert "chmod -R a+rX,go-w /app" in DOCKERFILE
+    assert DOCKERFILE.index("chmod -R a+rX") < DOCKERFILE.index("USER app")
     assert "--only-binary=:all: -r /tmp/requirements-runtime.txt" in DOCKERFILE
 
 

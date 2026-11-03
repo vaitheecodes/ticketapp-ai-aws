@@ -29,9 +29,10 @@ COPY backend/ backend/
 COPY data/kb/kb_entries.json data/kb/new_entries.json data/kb/kb_registry.json data/kb/
 COPY migrations/ migrations/
 COPY scripts/db_migrate.py scripts/
-# Byte-compile as root so the read-only app user starts faster; the code
-# stays owned by root and isn't writable by the process.
-RUN python -m compileall -q backend scripts
+# Readable by the app user whatever the build machine's file modes were
+# (COPY keeps them); owned by root and not writable by the process.
+# Byte-compiled as root so the app user starts faster.
+RUN chmod -R a+rX,go-w /app && python -m compileall -q backend scripts
 USER app
 EXPOSE 8000
 # Liveness only (no DB, no AI): /health. The ALB health check uses it too.
