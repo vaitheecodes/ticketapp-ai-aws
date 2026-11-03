@@ -112,23 +112,71 @@ def on_appsail() -> bool:
     return bool(os.environ.get("X_ZOHO_CATALYST_LISTEN_PORT"))
 
 
+# Words that mark a value copied from an example rather than generated.
+_PLACEHOLDER_WORDS = ("change", "example", "replace", "placeholder", "default", "secret", "password")
+# Passwords that stay weak however they are padded with digits or symbols.
+_COMMON_PASSWORDS = frozenset({"password", "admin", "administrator", "qwerty", "letmein", "welcome",
+                               "changeme", "secret", "ticketapp", "iloveyou", "abc"})
+MIN_ADMIN_PASSWORD_LENGTH = 12
+
+
+def jwt_secret_problem(secret: str) -> str | None:
+    """Why `secret` is unfit to sign tokens in production, or None."""
+    if not secret.strip():
+        return "is missing"
+    if secret == _DEV_JWT_SECRET:
+        return "is the public development default"
+    if len(secret) < 32:
+        return "is too short (needs at least 32 characters)"
+    lowered = secret.lower()
+    if len(set(secret)) < 10 or any(word in lowered for word in _PLACEHOLDER_WORDS):
+        return "looks like a placeholder, not a random value (use e.g. `openssl rand -hex 32`)"
+    return None
+
+
+def admin_password_problem(password: str, email: str = "") -> str | None:
+    """Why the bootstrap admin password is too weak for production, or None."""
+    if password == _DEV_ADMIN_PASSWORD:
+        return "is the public development default"
+    if len(password) < MIN_ADMIN_PASSWORD_LENGTH:
+        return f"is too short (needs at least {MIN_ADMIN_PASSWORD_LENGTH} characters)"
+    if len(set(password)) < 6:
+        return "repeats too few characters"
+    letters = "".join(ch for ch in password.lower() if ch.isalpha())
+    local = email.split("@", 1)[0].lower()
+    if letters in _COMMON_PASSWORDS or (len(local) >= 4 and local in password.lower()):
+        return "is a common password or contains the admin email"
+    return None
+
+
 def check_production_config() -> None:
     """Fail closed before anything else starts:
     - on AppSail, APP_ENV must be set explicitly (unset would mean
       development: the dev admin, with a password in the source, on a
       public URL);
     - in production, JWT_SECRET must be set, not the public dev default,
-      and at least 32 characters (else anyone could forge a token)."""
+      at least 32 characters and not a placeholder (else anyone could
+      forge a token); ADMIN_PASSWORD, when set, must not be weak; with
+      DB_BACKEND=postgres the database password must not be weak and SSL
+      must be required (db_postgres.production_problems).
+    Errors name the variable, never its value."""
     if on_appsail() and not os.environ.get("APP_ENV", "").strip():
         raise config_error("APP_ENV", "is missing (set APP_ENV=production in the AppSail console)")
     if not is_production():
         return
-    if not os.environ.get("JWT_SECRET", "").strip():
-        raise config_error("JWT_SECRET", "is missing")
-    if JWT_SECRET == _DEV_JWT_SECRET:
-        raise config_error("JWT_SECRET", "is the public development default")
-    if len(JWT_SECRET) < 32:
-        raise config_error("JWT_SECRET", "is too short (needs at least 32 characters)")
+    problem = jwt_secret_problem(JWT_SECRET if os.environ.get("JWT_SECRET", "").strip() else "")
+    if problem:
+        raise config_error("JWT_SECRET", problem)
+    password = os.environ.get("ADMIN_PASSWORD", "")
+    if password:
+        problem = admin_password_problem(password, os.environ.get("ADMIN_EMAIL", "").strip())
+        if problem:
+            raise config_error("ADMIN_PASSWORD", problem)
+    if db.is_postgres():
+        from backend import db_postgres
+
+        for variable, problem in db_postgres.production_problems():
+            raise config_error(variable, problem)
 
 
 def ensure_admin() -> None:

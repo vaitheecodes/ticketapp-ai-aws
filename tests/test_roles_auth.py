@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from backend import auth, db, main, seed_data  # noqa: E402
+from backend import auth, db, db_postgres, main, seed_data  # noqa: E402
 
 ADMIN_EMAIL = "root-admin@example.com"
 ADMIN_PASSWORD = "admin-test-password"
@@ -107,7 +107,7 @@ def test_admin_seeded_once_from_env_and_never_overwritten(db_path, monkeypatch):
         conn.close()
 
 
-STRONG_SECRET = "x" * 40
+STRONG_SECRET = "9f2c71e4b0a85d36" * 3
 
 
 def test_production_without_admin_env_refuses_to_start(db_path, monkeypatch):
@@ -136,6 +136,9 @@ def _strong_jwt(monkeypatch):
     (None, "dev-secret-change-me", "JWT_SECRET is missing"),
     ("dev-secret-change-me", "dev-secret-change-me", "JWT_SECRET is the public development default"),
     ("short-secret", "short-secret", "JWT_SECRET is too short"),
+    ("x" * 40, "x" * 40, "JWT_SECRET looks like a placeholder"),
+    ("please-change-this-jwt-secret-before-deploying", "please-change-this-jwt-secret-before-deploying",
+     "JWT_SECRET looks like a placeholder"),
 ])
 def test_production_refuses_a_weak_jwt_secret(db_path, monkeypatch, capsys, env_value, secret, problem):
     monkeypatch.setenv("APP_ENV", "production")
@@ -190,6 +193,8 @@ def test_health_is_public(db_path):
 
 def test_demo_staff_not_seeded_in_production(db_path, monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
+    # A Postgres test run uses the local-only test password.
+    monkeypatch.setattr(db_postgres, "production_problems", lambda: [])
     _strong_jwt(monkeypatch)
     monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL)
     monkeypatch.setenv("ADMIN_PASSWORD", ADMIN_PASSWORD)
@@ -436,3 +441,75 @@ def test_legacy_agents_migrate_to_technicians_keeping_assignments(db_path, monke
     assert not conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agents'"
     ).fetchone()
+
+
+# ---------------------------------------------------------------------------
+# Weak secrets refused in production (auth.check_production_config)
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("password, problem", [
+    ("admin-dev-password", "is the public development default"),
+    ("Short-1", "is too short"),
+    ("aaaaaaaaaaaaaaaa", "repeats too few characters"),
+    ("Password!2026", "is a common password"),
+    ("root-admin-2026!", "contains the admin email"),
+])
+def test_production_refuses_a_weak_admin_password(db_path, monkeypatch, capsys, password, problem):
+    monkeypatch.setenv("APP_ENV", "production")
+    _strong_jwt(monkeypatch)
+    monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL)
+    monkeypatch.setenv("ADMIN_PASSWORD", password)
+    with pytest.raises(RuntimeError, match="ADMIN_PASSWORD"):
+        with TestClient(main.app):
+            pass
+    err = capsys.readouterr().err
+    assert "STARTUP CONFIG ERROR: ADMIN_PASSWORD" in err and problem in err and password not in err
+
+
+def test_weak_admin_password_allowed_outside_production(db_path, monkeypatch):
+    monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL)
+    monkeypatch.setenv("ADMIN_PASSWORD", "Short-1")
+    with TestClient(main.app) as c:
+        assert _login(c, ADMIN_EMAIL, "Short-1").status_code == 200
+
+
+@pytest.mark.parametrize("url, problems", [
+    ("postgresql://app:ticketapp-local-test-only@db.internal:5432/app?sslmode=require",
+     ["DATABASE_URL has a weak or local-only database password"]),
+    ("postgresql://app:Zq8vT2mLw9xR4kPd@db.internal:5432/app",
+     ["DATABASE_URL must require SSL"]),
+    ("postgresql://app:Zq8vT2mLw9xR4kPd@db.internal:5432/app?sslmode=disable",
+     ["DATABASE_URL must require SSL"]),
+    ("postgresql://app@db.internal:5432/app?sslmode=prefer",
+     ["DATABASE_URL has no database password", "DATABASE_URL must require SSL"]),
+    ("postgresql://app:Zq8vT2mLw9xR4kPd@db.internal:5432/app?sslmode=verify-full", []),
+    ("postgresql://app:Zq8vT2mLw9xR4kPd@db.internal:5432/app?sslmode=require", []),
+])
+def test_postgres_production_problems_from_url(monkeypatch, url, problems):
+    monkeypatch.setenv("DATABASE_URL", url)
+    found = [f"{variable} {problem}" for variable, problem in db_postgres.production_problems()]
+    assert len(found) == len(problems) and all(f.startswith(p) for f, p in zip(found, problems))
+    assert not any("Zq8vT2mLw9xR4kPd" in f or "local-test-only" in f for f in found)
+
+
+def test_postgres_production_problems_from_parts(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    for name, value in (("DB_HOST", "db.internal"), ("DB_NAME", "app"), ("DB_USER", "app"),
+                        ("DB_PASSWORD", "short")):
+        monkeypatch.setenv(name, value)
+    assert [v for v, _ in db_postgres.production_problems()] == ["DB_PASSWORD", "DB_SSLMODE"]
+    monkeypatch.setenv("DB_PASSWORD", "Zq8vT2mLw9xR4kPd")
+    monkeypatch.setenv("DB_SSLMODE", "require")
+    assert db_postgres.production_problems() == []
+
+
+def test_production_on_postgres_refuses_to_start_without_ssl(db_path, monkeypatch, capsys):
+    monkeypatch.setenv("APP_ENV", "production")
+    _strong_jwt(monkeypatch)
+    monkeypatch.setenv("ADMIN_EMAIL", ADMIN_EMAIL)
+    monkeypatch.setenv("ADMIN_PASSWORD", ADMIN_PASSWORD)
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://app:Zq8vT2mLw9xR4kPd@db.invalid:5432/app")
+    with pytest.raises(RuntimeError, match="must require SSL"):
+        with TestClient(main.app):
+            pass
+    assert "Zq8vT2mLw9xR4kPd" not in capsys.readouterr().err

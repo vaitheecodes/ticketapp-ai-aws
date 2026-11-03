@@ -83,6 +83,37 @@ def conninfo() -> str:
                          password=_env("DB_PASSWORD") or "", sslmode=_env("DB_SSLMODE") or "prefer")
 
 
+# sslmode values that refuse an unencrypted connection.
+SECURE_SSLMODES = ("require", "verify-ca", "verify-full")
+# Passwords that exist only for local test databases (docker-compose.yml,
+# scripts/pg_local.sh).
+_LOCAL_ONLY_PASSWORDS = frozenset({"ticketapp-local-test-only", "postgres", "ticketapp", "password"})
+MIN_PRODUCTION_PASSWORD_LENGTH = 12
+
+
+def production_problems() -> list[tuple[str, str]]:
+    """(variable, problem) for settings unfit for production: a weak or
+    local-only password, or SSL not required. Never includes a value."""
+    variable = "DATABASE_URL" if _env("DATABASE_URL") else "DB_PASSWORD"
+    try:
+        parts = conninfo_to_dict(conninfo())
+    except DatabaseConfigError:
+        return [("DATABASE_URL", "is missing (or set DB_HOST, DB_NAME and DB_USER)")]
+    except Exception:  # noqa: BLE001  (never echo an unparseable URL)
+        return [("DATABASE_URL", "can't be parsed")]
+    problems = []
+    password = parts.get("password") or ""
+    if not password:
+        problems.append((variable, "has no database password"))
+    elif password in _LOCAL_ONLY_PASSWORDS or len(password) < MIN_PRODUCTION_PASSWORD_LENGTH:
+        problems.append((variable, "has a weak or local-only database password "
+                                   f"(needs at least {MIN_PRODUCTION_PASSWORD_LENGTH} characters)"))
+    if (parts.get("sslmode") or "prefer") not in SECURE_SSLMODES:
+        ssl_var = "DATABASE_URL" if _env("DATABASE_URL") else "DB_SSLMODE"
+        problems.append((ssl_var, "must require SSL (sslmode=require or verify-full)"))
+    return problems
+
+
 def describe() -> str:
     """host:port/dbname, safe to log (no user or password)."""
     try:
