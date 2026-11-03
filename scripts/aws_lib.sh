@@ -47,10 +47,12 @@ on_exit() {
 trap on_exit EXIT
 
 # `aws` with text output; "None" (an empty query result) becomes "".
-# Ends with a newline so `read` gets a whole line.
+# Ends with a newline so `read` gets a whole line. A failed call returns
+# its exit code explicitly: `set -e` is off inside a function called as
+# `x=$(awst ...) || ...`, so it can't be relied on to stop here.
 awst() {
   local out
-  out=$(aws "$@" --output text)
+  out=$(aws "$@" --output text) || return
   [ "$out" != "None" ] || out=""
   printf '%s\n' "$out"
 }
@@ -60,9 +62,15 @@ need() { command -v "$1" >/dev/null 2>&1 || die "$1 is not installed"; }
 preflight() {
   need aws
   need python3
-  ACCOUNT_ID=$(awst sts get-caller-identity --query Account) \
-    || die "AWS profile '$AWS_PROFILE' can't authenticate (aws sso login / aws configure)"
-  info "profile $AWS_PROFILE, region $AWS_REGION"
+  local err="$TMP_DIR/preflight.err"
+  if ! ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>"$err"); then
+    if grep -q 'could not be found' "$err"; then
+      die "AWS profile '$AWS_PROFILE' doesn't exist in ~/.aws/config: create it (aws configure sso --profile $AWS_PROFILE) or set AWS_PROFILE"
+    fi
+    die "AWS profile '$AWS_PROFILE' can't authenticate ($(sed '/^[[:space:]]*$/d' "$err" | head -n 1)); try: aws sso login --profile $AWS_PROFILE"
+  fi
+  [[ "$ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || die "unexpected answer from sts get-caller-identity for profile '$AWS_PROFILE'"
+  info "profile $AWS_PROFILE, region $AWS_REGION, account $ACCOUNT_ID"
 }
 
 # --- lookups (all return "" when the thing doesn't exist) -----------------

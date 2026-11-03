@@ -186,7 +186,8 @@ fi
 step "Building $TAG in CodeBuild (~3-5 min)"
 KEY=source/$TAG.zip
 git -C "$ROOT" archive --format=zip -o "$TMP_DIR/source.zip" HEAD
-aws s3 cp "$TMP_DIR/source.zip" "s3://$BUILD_BUCKET/$KEY" --only-show-errors --expected-bucket-owner "$ACCOUNT_ID"
+aws s3api put-object --bucket "$BUILD_BUCKET" --key "$KEY" --body "$TMP_DIR/source.zip" \
+  --expected-bucket-owner "$ACCOUNT_ID" >/dev/null
 info "uploaded git archive HEAD ($(($(wc -c < "$TMP_DIR/source.zip") / 1024)) KB, committed files only)"
 BUILD_ID=$(awst codebuild start-build --project-name "$BUILD_PROJECT" \
   --source-type-override S3 --source-location-override "$BUILD_BUCKET/$KEY" \
