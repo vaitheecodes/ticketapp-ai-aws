@@ -1,6 +1,6 @@
 """A fake `aws` CLI for tests/test_aws_scripts.py.
 
-Only the calls scripts/aws_up.sh and aws_down.sh make. State lives in a
+Only the calls scripts/aws_up.sh, aws_down.sh and aws_build_image.sh make. State lives in a
 JSON file (FAKE_AWS_STATE) and every call is appended to FAKE_AWS_LOG as
 a JSON argv list. --query is applied with jmespath and --output text is
 formatted like the real CLI (scalars as-is, lists tab-separated, None as
@@ -109,6 +109,51 @@ def handle(state: dict, service: str, op: str, o: dict) -> object:
                 if tag not in images:
                     raise NotFound
             return {"imageDetails": [{"imageTags": [t], "imagePushedAt": i} for i, t in enumerate(images)]}
+        if op == "batch-get-image":
+            tag = _one(o, "image-ids").split("=", 1)[1]
+            single = {"schemaVersion": 2, "mediaType": "application/vnd.docker.distribution.manifest.v2+json"}
+            manifest = s.get("manifests", {}).get(tag, single)
+            return {"images": [{"imageManifest": json.dumps(manifest)}] if tag in s.get("images", []) else []}
+
+    # --- S3 (build bucket) ---------------------------------------------------
+    if service == "s3api":
+        bucket = s.get("bucket")
+        if op == "head-bucket":
+            if not bucket:
+                raise NotFound
+            return {}
+        if op == "create-bucket":
+            s["bucket"] = {"name": _one(o, "bucket"), "region": _one(o, "create-bucket-configuration")}
+            return {}
+        if op in ("put-public-access-block", "put-bucket-encryption", "put-bucket-lifecycle-configuration"):
+            bucket[op] = o[next(k for k in o if k.endswith("configuration"))][0]
+            return {}
+
+    # --- CodeBuild -----------------------------------------------------------
+    if service == "codebuild":
+        if op == "batch-get-projects":
+            project = s.get("project")
+            return {"projects": [{"name": "ticketapp-image-build"}] if project else [],
+                    "projectsNotFound": [] if project else _one(o, "names")}
+        if op == "create-project":
+            s["project"] = {k: (_file(v[0]) if v else None) for k, v in o.items()}
+            return {"project": {}}
+        if op == "start-build":
+            env = dict(p.split("=", 1) for p in _one(o, "environment-variables-override").split(","))
+            s.setdefault("builds", []).append({"tag": env["value"], "source": _one(o, "source-location-override"),
+                                               "polls": 0})
+            return {"build": {"id": f"ticketapp-image-build:{len(s['builds'])}"}}
+        if op == "batch-get-builds":
+            build = s["builds"][int(_one(o, "ids").split(":")[1]) - 1]
+            build["polls"] += 1
+            status = "IN_PROGRESS" if build["polls"] == 1 else s.get("build_result", "SUCCEEDED")
+            if status == "SUCCEEDED" and build["tag"] not in s.setdefault("images", []):
+                s["images"].append(build["tag"])
+            failed = [] if status in ("IN_PROGRESS", "SUCCEEDED") else [
+                {"phaseType": "BUILD", "phaseStatus": "FAILED"}]
+            return {"builds": [{"buildStatus": status, "currentPhase": "BUILD" if status == "IN_PROGRESS" else "COMPLETED",
+                                "phases": [{"phaseType": "PROVISIONING", "phaseStatus": "SUCCEEDED"}, *failed],
+                                "logs": {"groupName": "/aws/codebuild/ticketapp-image-build", "streamName": "abc"}}]}
 
     # --- RDS ---------------------------------------------------------------
     if service == "rds":
@@ -228,8 +273,20 @@ def handle(state: dict, service: str, op: str, o: dict) -> object:
         if op == "describe-load-balancers":
             alive = s.get("service") and s["service"]["status"] == "ACTIVE"
             return {"LoadBalancers": [{"LoadBalancerName": "ecs-express-1"}] if alive else []}
-    if service == "logs" and op == "put-retention-policy":
-        return {}
+    if service == "logs":
+        groups = s.setdefault("log_groups", {})
+        if op == "put-retention-policy":
+            groups.setdefault(_one(o, "log-group-name"), {})["retention"] = int(_one(o, "retention-in-days"))
+            return {}
+        if op == "describe-log-groups":
+            prefix = _one(o, "log-group-name-prefix")
+            return {"logGroups": [{"logGroupName": g} for g in groups if g.startswith(prefix)]}
+        if op == "create-log-group":
+            groups[_one(o, "log-group-name")] = {}
+            return {}
+        if op == "get-log-events":
+            lines = s.get("build_log", [])[-int(_one(o, "limit")):]
+            return {"events": [{"message": line + "\n"} for line in lines]}
     raise SystemExit(f"fake aws: unsupported call {service} {op}")
 
 
@@ -249,16 +306,23 @@ def main(argv: list[str]) -> int:
     with open(os.environ["FAKE_AWS_LOG"], "a") as log:
         log.write(json.dumps(argv) + "\n")
     service, op, rest = argv[0], argv[1], argv[2:]
+    path = os.environ["FAKE_AWS_STATE"]
+    state = json.load(open(path))
     if rest[:1] == ["help"]:
-        print("create-express-gateway-service\n  --service-name\n  --cpu\n")
+        arch = "  --cpu-architecture\n" if state.get("cli_arch") else ""
+        print(f"create-express-gateway-service\n  --service-name\n  --cpu\n{arch}")
         return 0
     if service == "ecr" and op == "get-login-password":
         print("fake-ecr-password")
         return 0
     if op == "wait":
         return 0
-    path = os.environ["FAKE_AWS_STATE"]
-    state = json.load(open(path))
+    if service == "s3" and op == "cp":  # s3 cp <local zip> s3://bucket/key
+        import zipfile
+        src, dst = rest[0], rest[1]
+        state.setdefault("uploads", {})[dst] = sorted(zipfile.ZipFile(src).namelist())
+        json.dump(state, open(path, "w"))
+        return 0
     if f"{service} {op}" in state.get("fail", []):
         print(f"An error occurred (InjectedFailure) when calling {op}", file=sys.stderr)
         return 254

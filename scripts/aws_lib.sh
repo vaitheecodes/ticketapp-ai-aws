@@ -1,4 +1,5 @@
-# Shared settings and helpers for scripts/aws_up.sh and scripts/aws_down.sh.
+# Shared settings and helpers for scripts/aws_up.sh, aws_down.sh and
+# aws_build_image.sh.
 # Sourced, not run. Nothing here prints a secret: secret values are only
 # ever written to a private temp file or passed to AWS by ARN.
 
@@ -20,6 +21,8 @@ AMPLIFY_NAME=ticketapp-web
 EXEC_ROLE=ticketapp-ecs-exec
 INFRA_ROLE=ticketapp-ecs-infra
 TASK_ROLE=ticketapp-api-task
+BUILD_ROLE=ticketapp-codebuild       # CodeBuild service role (aws_build_image.sh)
+BUILD_PROJECT=ticketapp-image-build
 DB_NAME=ticketapp
 DB_USER=ticketapp_admin
 BEDROCK_MODEL=apac.amazon.nova-lite-v1:0
@@ -79,6 +82,23 @@ db_snapshots() {
     --query "sort_by(DBSnapshots[?starts_with(DBSnapshotIdentifier, '$DB_ID-') && Status=='available'], &SnapshotCreateTime)[].DBSnapshotIdentifier" \
     | tr '\t' '\n' | sed '/^$/d'
 }
+
+# ECR repository $SERVICE: created if missing (scan on push, immutable
+# tags); the keep-last-5 lifecycle rule is (re)applied every run, so a run
+# that failed right after creating the repository is fixed by a re-run.
+ensure_ecr_repo() {
+  if aws ecr describe-repositories --repository-names "$SERVICE" >/dev/null 2>&1; then
+    info "repository $SERVICE exists"
+  else
+    aws ecr create-repository --repository-name "$SERVICE" \
+      --image-scanning-configuration scanOnPush=true --image-tag-mutability IMMUTABLE >/dev/null
+    info "created repository $SERVICE"
+  fi
+  aws ecr put-lifecycle-policy --repository-name "$SERVICE" --lifecycle-policy-text \
+    '{"rules":[{"rulePriority":1,"description":"keep last 5","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":5},"action":{"type":"expire"}}]}' >/dev/null
+}
+
+has_image() { aws ecr describe-images --repository-name "$SERVICE" --image-ids imageTag="$1" >/dev/null 2>&1; }
 
 # Polls until `$@` prints one of the wanted values (space-separated in
 # $WANT) or a failure value ($FAIL), for at most $1 seconds.

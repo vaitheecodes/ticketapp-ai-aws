@@ -14,7 +14,8 @@
 #   AWS_REGION     default ap-south-1
 #   ADMIN_EMAIL    needed once, when the app secret is first created
 #   IMAGE_TAG      image to run; default: this commit's short hash, else
-#                  the newest image in ECR (with a warning)
+#                  the newest image in ECR (with a warning). Without
+#                  Docker, scripts/aws_build_image.sh builds it in AWS.
 #   FORCE_FRONTEND=1  rebuild and redeploy the frontend even if the API
 #                  URL didn't change
 #   SKIP_FRONTEND=1 / SKIP_SMOKE=1  leave out the frontend deploy / the
@@ -95,16 +96,9 @@ fi
 
 # ---------------------------------------------------------------------------
 step "Image in ECR ($SERVICE): storage \$0.10/GB-month"
-if ! aws ecr describe-repositories --repository-names "$SERVICE" >/dev/null 2>&1; then
-  aws ecr create-repository --repository-name "$SERVICE" \
-    --image-scanning-configuration scanOnPush=true --image-tag-mutability IMMUTABLE >/dev/null
-  aws ecr put-lifecycle-policy --repository-name "$SERVICE" --lifecycle-policy-text \
-    '{"rules":[{"rulePriority":1,"description":"keep last 5","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":5},"action":{"type":"expire"}}]}' >/dev/null
-  info "created repository"
-fi
+ensure_ecr_repo
 REGISTRY=$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 TAG=${IMAGE_TAG:-$(git -C "$ROOT" rev-parse --short HEAD)}
-has_image() { aws ecr describe-images --repository-name "$SERVICE" --image-ids imageTag="$1" >/dev/null 2>&1; }
 if has_image "$TAG"; then
   info "image $TAG is in ECR"
 elif [ -z "${IMAGE_TAG:-}" ] && command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
@@ -115,13 +109,26 @@ elif [ -z "${IMAGE_TAG:-}" ] && command -v docker >/dev/null 2>&1 && docker info
 elif [ -z "${IMAGE_TAG:-}" ]; then
   LATEST=$(awst ecr describe-images --repository-name "$SERVICE" \
     --query 'sort_by(imageDetails, &imagePushedAt)[-1].imageTags[0]')
-  [ -n "$LATEST" ] || die "no image in ECR and Docker isn't available to build one"
-  warn "Docker isn't available: using the newest pushed image $LATEST, not this commit ($TAG)"
+  [ -n "$LATEST" ] || die "no image in ECR and no Docker here: run scripts/aws_build_image.sh (builds it in AWS CodeBuild), then re-run"
+  warn "no Docker: using the newest pushed image $LATEST, not this commit ($TAG); scripts/aws_build_image.sh builds this commit in AWS"
   TAG=$LATEST
 else
-  die "image $TAG isn't in ECR"
+  die "image $TAG isn't in ECR (scripts/aws_build_image.sh builds the current commit)"
 fi
 IMAGE=$REGISTRY/$SERVICE:$TAG
+# ARM64 only for a multi-arch image (the Docker buildx path above). A
+# CodeBuild image (scripts/aws_build_image.sh) is one x86_64 manifest.
+awst ecr batch-get-image --repository-name "$SERVICE" --image-ids imageTag="$TAG" \
+  --query 'images[0].imageManifest' > "$TMP_DIR/manifest.json"
+IMAGE_HAS_ARM64=$(python3 -c '
+import json, sys
+try:
+    manifest = json.load(open(sys.argv[1]))
+except ValueError:
+    manifest = {}
+archs = {(m.get("platform") or {}).get("architecture") for m in manifest.get("manifests", [])}
+print(1 if "arm64" in archs else 0)' "$TMP_DIR/manifest.json")
+if [ "$IMAGE_HAS_ARM64" = 1 ]; then info "image $TAG: arm64 + amd64"; else info "image $TAG: amd64 only"; fi
 
 # ---------------------------------------------------------------------------
 step "Database $DB_ID (db.t4g.micro, private, SSL): ~\$0.025/hour while it exists"
@@ -267,7 +274,8 @@ DB_PASSWORD_REF="$DB_SECRET_ARN:password::"
 SERVICE_ARN=$(service_arn)
 if [ -z "$SERVICE_ARN" ]; then
   ARCH=()
-  if aws ecs create-express-gateway-service help 2>/dev/null | grep -q -- '--cpu-architecture'; then
+  if [ "$IMAGE_HAS_ARM64" = 1 ] \
+    && aws ecs create-express-gateway-service help 2>/dev/null | grep -q -- '--cpu-architecture'; then
     ARCH=(--cpu-architecture ARM64)
   fi
   python3 - "$TMP_DIR/network.json" "$API_SG" $SUBNETS <<'PY'

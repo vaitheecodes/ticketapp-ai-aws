@@ -1,5 +1,5 @@
-"""scripts/aws_up.sh and scripts/aws_down.sh against a fake `aws` CLI
-(tests/fake_aws_cli.py): no AWS account is touched.
+"""scripts/aws_up.sh, aws_down.sh and aws_build_image.sh against a fake
+`aws` CLI (tests/fake_aws_cli.py): no AWS account is touched.
 
 - up creates what's missing, restores the newest snapshot, and a second
   run changes nothing;
@@ -7,6 +7,9 @@
   definition (only secret ARNs are);
 - down needs a typed "yes", snapshots before deleting anything, deletes
   nothing if the snapshot fails, and keeps the newest KEEP_SNAPSHOTS;
+- aws_build_image.sh refuses a dirty tree, stops when the tag is already
+  in ECR, creates only what's missing, and on a failed build prints the
+  log tail with tokens redacted;
 - the smoke test's checks pass and fail on the right responses.
 """
 
@@ -58,14 +61,14 @@ def fake(tmp_path):
         def mutating(self) -> list[str]:
             return [op for op in self.ops() if op.split()[1].startswith(MUTATING)]
 
-        def run(self, script: str, stdin: str = "", **env) -> subprocess.CompletedProcess:
+        def run(self, script: str, stdin: str = "", scripts: Path = SCRIPTS, **env) -> subprocess.CompletedProcess:
             full_env = {
                 "PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path),
                 "FAKE_AWS_STATE": str(state), "FAKE_AWS_LOG": str(log),
                 "POLL_SECONDS": "0", "IMAGE_TAG": "abc1234",
                 "SKIP_FRONTEND": "1", "SKIP_SMOKE": "1", **env,
             }
-            return subprocess.run(["bash", str(SCRIPTS / script)], input=stdin, capture_output=True,
+            return subprocess.run(["bash", str(scripts / script)], input=stdin, capture_output=True,
                                   text=True, env=full_env, timeout=120)
 
     return Fake()
@@ -169,6 +172,28 @@ def test_up_updates_the_service_when_the_db_secret_changed(fake):
     assert refs["DB_PASSWORD"].endswith("-new:password::")
 
 
+def test_up_says_how_to_build_when_there_is_no_image(fake):
+    fake.set_state(_existing(images=[]))
+    res = fake.run("aws_up.sh", IMAGE_TAG="")  # this commit's tag; no Docker on the test PATH
+    assert res.returncode != 0 and "scripts/aws_build_image.sh" in res.stderr
+    assert not any(op.startswith(("rds create", "ecs create")) for op in fake.ops())
+
+
+@pytest.mark.parametrize("manifest, arch", [
+    (None, False),  # one x86_64 manifest, as CodeBuild pushes
+    ({"manifests": [{"platform": {"architecture": "amd64"}}, {"platform": {"architecture": "arm64"}}]}, True),
+])
+def test_up_runs_arm64_only_for_a_multi_arch_image(fake, manifest, arch):
+    state = _existing(cli_arch=True)
+    if manifest:
+        state["manifests"] = {"abc1234": manifest}
+    fake.set_state(state)
+    res = fake.run("aws_up.sh")
+    assert res.returncode == 0, res.stderr
+    create = next(c for c in fake.calls() if c[1] == "create-express-gateway-service" and c[2:3] != ["help"])
+    assert ("--cpu-architecture" in create) is arch
+
+
 # ---------------------------------------------------------------------------
 # aws_down.sh
 # ---------------------------------------------------------------------------
@@ -231,6 +256,128 @@ def test_down_is_safe_to_re_run(fake):
 
 
 # ---------------------------------------------------------------------------
+# aws_build_image.sh
+# ---------------------------------------------------------------------------
+class _Repo(type(Path())):
+    """A path that also carries the repository's short commit hash."""
+    tag = ""
+
+
+@pytest.fixture()
+def repo(tmp_path):
+    """A committed copy of the scripts plus a Dockerfile: its own clean tree."""
+    root = _Repo(tmp_path / "repo")
+    (root / "scripts").mkdir(parents=True)
+    for name in ("aws_lib.sh", "aws_build_image.sh"):
+        (root / "scripts" / name).write_text((SCRIPTS / name).read_text())
+    (root / "Dockerfile").write_text("FROM python:3.13-slim-bookworm\n")
+    git = ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@example.com"]
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run([*git, "add", "."], check=True)
+    subprocess.run([*git, "commit", "-qm", "init"], check=True)
+    root.tag = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+                              capture_output=True, text=True, check=True).stdout.strip()
+    return root
+
+
+def _build(fake, repo, **env):
+    return fake.run("aws_build_image.sh", scripts=repo / "scripts", **env)
+
+
+def test_build_first_run_creates_everything_and_pushes_this_commit(fake, repo):
+    res = _build(fake, repo)
+    assert res.returncode == 0, res.stderr
+    state, tag = fake.state(), repo.tag
+    assert state["repo"] is True and tag in state["images"]
+    assert f"ticketapp-api:{tag}" in res.stdout and "Next: run scripts/aws_up.sh" in res.stdout
+
+    bucket = state["bucket"]
+    assert bucket["name"] == "ticketapp-build-123456789012" and bucket["region"] == "LocationConstraint=ap-south-1"
+    assert "BlockPublicPolicy=true" in bucket["put-public-access-block"]
+    assert "AES256" in bucket["put-bucket-encryption"]
+    assert json.loads(bucket["put-bucket-lifecycle-configuration"])["Rules"][0]["Expiration"] == {"Days": 7}
+
+    statements = {st["Sid"]: st for st in state["roles"]["ticketapp-codebuild"]["ticketapp-image-build"]["Statement"]}
+    assert statements["PushImage"]["Resource"] == "arn:aws:ecr:ap-south-1:123456789012:repository/ticketapp-api"
+    assert statements["EcrLogin"]["Action"] == "ecr:GetAuthorizationToken"
+    assert all(a.startswith(("s3:Get",)) for a in statements["ReadSource"]["Action"] + statements["SourceBucket"]["Action"])
+    assert not any("*" in a for st in statements.values() for a in ([st["Action"]] if isinstance(st["Action"], str) else st["Action"]))
+
+    project = state["project"]
+    environment = json.loads(project["environment"])
+    assert environment["computeType"] == "BUILD_GENERAL1_SMALL" and environment["privilegedMode"] is True
+    assert environment["image"].startswith("aws/codebuild/standard:")
+    assert {v["type"] for v in environment["environmentVariables"]} == {"PLAINTEXT"}
+    assert {v["name"] for v in environment["environmentVariables"]} == {"REGISTRY", "REPO_URI", "IMAGE_TAG"}
+    buildspec = json.loads(project["source"])["buildspec"]
+    assert '"docker build -t \\"$REPO_URI:$IMAGE_TAG\\" ."' in buildspec
+    assert '"docker push \\"$REPO_URI:$IMAGE_TAG\\""' in buildspec
+    assert "--password-stdin" in buildspec
+    assert project["service-role"] == "arn:aws:iam::123456789012:role/ticketapp-codebuild"
+    assert state["log_groups"]["/aws/codebuild/ticketapp-image-build"]["retention"] == 14
+
+    build = state["builds"][0]
+    assert build["tag"] == tag and build["source"] == f"ticketapp-build-123456789012/source/{tag}.zip"
+    assert state["uploads"][f"s3://ticketapp-build-123456789012/source/{tag}.zip"] == [
+        "Dockerfile", "scripts/", "scripts/aws_build_image.sh", "scripts/aws_lib.sh"]
+
+
+def test_build_re_run_after_a_failure_creates_nothing_new(fake, repo):
+    fake.set_state({"build_result": "FAILED"})
+    assert _build(fake, repo).returncode == 1
+    first = len(fake.calls())
+    state = fake.state()
+    state["build_result"] = "SUCCEEDED"
+    fake.set_state(state)
+    res = _build(fake, repo)
+    assert res.returncode == 0, res.stderr
+    second = [f"{c[0]} {c[1]}" for c in fake.calls()[first:]]
+    assert not [op for op in second if op.split()[1].startswith("create-")]
+    assert second.count("codebuild start-build") == 1 and repo.tag in fake.state()["images"]
+    # A third run finds the image and changes nothing.
+    third_from = len(fake.calls())
+    res = _build(fake, repo)
+    assert res.returncode == 0 and "nothing to build" in res.stdout
+    third = [f"{c[0]} {c[1]}" for c in fake.calls()[third_from:]]
+    assert [op for op in third if op.split()[1].startswith(MUTATING)] == ["ecr put-lifecycle-policy"]
+
+
+@pytest.mark.parametrize("change", ["untracked", "modified"])
+def test_build_refuses_a_dirty_tree(fake, repo, change):
+    if change == "untracked":
+        (repo / "notes.txt").write_text("x")
+    else:
+        (repo / "Dockerfile").write_text("FROM python:3.13-slim\n")
+    res = _build(fake, repo)
+    assert res.returncode != 0 and "commit or stash" in res.stderr
+    assert fake.calls() == []  # stopped before any AWS call
+
+
+def test_build_stops_when_the_tag_is_already_in_ecr(fake, repo):
+    fake.set_state({"repo": True, "images": [repo.tag]})
+    res = _build(fake, repo)
+    assert res.returncode == 0, res.stderr
+    assert "yes: nothing to build" in res.stdout
+    assert not [op for op in fake.ops() if op.startswith(("s3", "codebuild", "iam", "logs"))]
+
+
+def test_build_failure_prints_the_log_tail_without_tokens(fake, repo):
+    token = "eyJwYXlsb2FkIjoiQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo0NTY3ODkwYWJjZGVmIn0"
+    lines = [f"line {i}" for i in range(1, 41)]
+    lines[35] = f"Authorization: {token}"
+    lines[36] = "key AKIAABCDEFGHIJKLMNOP used"
+    lines[37] = "sha256:" + "a" * 64  # a digest is not a token
+    fake.set_state({"build_result": "FAILED", "build_log": lines})
+    res = _build(fake, repo)
+    assert res.returncode == 1
+    assert "build FAILED" in res.stderr and "failed phase: BUILD FAILED" in res.stderr
+    assert "line 40" in res.stderr and "line 11" in res.stderr and "line 10\n" not in res.stderr
+    assert token not in res.stdout + res.stderr and "AKIAABCDEFGHIJKLMNOP" not in res.stderr
+    assert "[redacted]" in res.stderr and "a" * 64 in res.stderr
+    assert repo.tag not in fake.state().get("images", [])
+
+
+# ---------------------------------------------------------------------------
 # aws_smoke.py
 # ---------------------------------------------------------------------------
 FRONTEND = "https://main.d123.amplifyapp.com"
@@ -275,5 +422,5 @@ def test_smoke_api_origin(given, origin):
 
 
 def test_scripts_are_executable():
-    for name in ("aws_up.sh", "aws_down.sh"):
+    for name in ("aws_up.sh", "aws_down.sh", "aws_build_image.sh"):
         assert os.access(SCRIPTS / name, os.X_OK), name
