@@ -3,12 +3,268 @@
 **Status: plan only. Nothing here has been run; no AWS resource exists
 for it yet.** Region `ap-south-1` (Mumbai), CLI profile `ticketapp`.
 
+**Chosen approach: demo-only hosting (section 0).** `scripts/aws_up.sh`
+brings the stack up before a demo and `scripts/aws_down.sh` takes it down
+after, keeping the database as an RDS snapshot. Sections 2-10 are the
+same steps by hand: what the scripts do, and how to debug or change them.
+
 Commands marked **💲** create something that bills (most of it by the
 hour, whether or not anyone uses the app). Everything else is free (IAM,
 security groups, configuration). Prices are on-demand ap-south-1 rates
 from AWS's public Price List files (downloaded 3 Nov 2026; publication
 dates: RDS 2026-10-29, ECS/Fargate 2026-10-19, VPC 2026-11-03, App Runner
 2026-09-11).
+
+## 0. Demo-only hosting (chosen): up before a demo, down after
+
+The app is hosted only for demos. Running it all the time costs about
+$60-70 a month (section 1), and almost all of that is billed while
+nobody uses it. The plan is to create the hourly-billed parts before a
+demo and delete them after, keeping the data in an RDS snapshot.
+
+### Four ways to run it for demos only
+
+ap-south-1 on-demand prices from the Price List files (downloaded 3 Nov
+2026; EC2 file published 2026-10-29, Lightsail 2026-09-15). A **demo
+day** below means the stack is up for 4 hours (30 min setup, the demo,
+slack). The local CLI (aws-cli 2.36.19) has no `--cpu-architecture` for
+Express Mode, so Fargate is priced as x86_64 (ARM64 is ~$0.011/hour
+cheaper).
+
+Price per hour for what (a), (b) and (d) run:
+
+| Item | $/hour |
+|---|---|
+| Fargate task, x86_64, 0.5 vCPU / 1 GB (0.5 × 0.04256 + 1 × 0.004655) | 0.0259 |
+| Public IPv4 on the task ($0.005 per address-hour, in use or idle) | 0.005 |
+| ALB ($0.0239) + LCUs (a demo uses a fraction of one, ≤ $0.008) | 0.024-0.032 |
+| ALB public IPv4, one per AZ (3 default subnets in ap-south-1) | 0.015 |
+| RDS PostgreSQL db.t4g.micro Single-AZ | 0.021 |
+| RDS storage, 20 GB gp3 ($0.131/GB-month) | 0.0036 |
+| **Total while up** | **~0.10** |
+
+| | (a) Always on (ECS Express) | **(b) On demand: scripted up/down, snapshot kept** | (c) One small instance, app + Postgres, stopped between demos | (d) (a), with parts stopped between demos |
+|---|---|---|---|---|
+| Per demo day (4 h) | $0 extra (already paid) | **~$0.41** | EC2 t4g.small: ~$0.07 (instance $0.0112/h + IPv4 $0.005/h). Lightsail 2 GB: ~$0.06 | ~$0.21 (task + its IP + RDS hours) |
+| Idle month | ~$68-71 | **~$0.50 likely, ~$4.40 at most** | EC2: $1.82 (20 GB gp3 EBS at $0.0912), +$3.65 to keep an Elastic IP. Lightsail: the full $11.77 even when stopped; or snapshot ($0.05/GB-month) and delete | ~$32: ALB $17.45 + its 3 IPv4 $10.95 + RDS storage $2.62 + secrets $0.80. +$15.33 for any month RDS restarts itself |
+| Time to get ready | none | ~25-35 min (RDS restore 10-20, service 5-10, frontend 2) | ~3-5 min (instance start) | ~10-15 min (RDS start, task start) |
+| Same architecture as production | yes | yes | no | yes |
+| Code or ops changes | none | none (scripts only) | yes, see below | none |
+
+**Idle month for (b)**, what really bills while nothing runs:
+- RDS snapshots, $0.095/GB-month: the script keeps the 2 newest.
+  - If billing follows the data stored, that's a few MB for this app:
+    cents.
+  - If it follows the full 20 GB allocation, it's $1.90 per snapshot.
+  - I couldn't confirm which from AWS's own pages; the $4.40 maximum
+    assumes the second.
+- App secret: $0.40 (prorated if deleted).
+- ECR: about 0.4 GB per image tag (two architectures); the lifecycle
+  rule keeps 5 tags, so $0.04-0.20.
+- Amplify (a few MB of static files), CloudWatch logs (14-day
+  retention), IAM roles, security groups and the subnet group: ~$0, or
+  free.
+- No public IPv4 address, load balancer, NAT gateway or Elastic IP is
+  left. The RDS-managed password secret is deleted with the instance.
+
+**What (d) still bills** when the task count is 0 and RDS is stopped:
+- the ALB with its IPv4 addresses (~$28/month), which is most of it;
+- RDS storage, the secrets, and ECR.
+
+Two catches: AWS starts a stopped RDS instance by itself after 7 days,
+and then it bills at the full hourly rate until someone stops it again.
+I also haven't confirmed that Express Mode accepts `minTaskCount` 0.
+
+**What (c) needs** (code and operations changes):
+- **SSL on the self-hosted Postgres.** In production the app refuses a
+  `DB_SSLMODE` weaker than `require` (`db_postgres.production_problems`).
+  Two ways around it:
+  - turn on `ssl` in the Postgres container with a self-signed
+    certificate (`require` doesn't verify it);
+  - or add a code exemption for a database on localhost.
+- **HTTPS for the API.** The Amplify site is HTTPS, so browsers block
+  calls to a plain-HTTP API as mixed content.
+  - Needs a reverse proxy with a certificate (Caddy or nginx with Let's
+    Encrypt), and so a DNS name.
+  - Without an Elastic IP ($3.65/month idle), the public IP, and with it
+    that name, changes on every start.
+  - Alternatively, serve the frontend from the same box.
+- **Running it all yourself:** docker compose, OS patching, Postgres
+  backups. A stopped EC2 instance doesn't snapshot itself.
+- **Behind the proxy:** `TRUSTED_PROXY_HOPS=1`, and an instance role for
+  Bedrock and S3.
+- **Lightsail bills a stopped instance in full.** Only snapshot and
+  delete saves money there.
+
+**Recommendation: (b).**
+- It is close to (c) on idle cost: about $0.50, versus $1.82 for (c).
+- It needs no code change.
+- It keeps the managed production architecture: RDS with SSL, ECS, an
+  ALB with an AWS certificate, and least-privilege IAM. That is what the
+  portfolio is about.
+- It costs about $0.10 per hour while up.
+
+The price is the 25-35 minutes of setup before each demo. Run
+`aws_up.sh` well before the demo starts.
+
+### How the frontend finds the API when its URL changes
+
+- **The frontend URL never changes.** The Amplify app and its `main`
+  branch are kept between demos, so `https://main.<appId>.amplifyapp.com`
+  is fixed. That is the link to share, and it is also the backend's only
+  CORS origin (`ALLOWED_ORIGINS`), so CORS never needs touching.
+- **The API URL may change.** Express Mode builds the service URL from
+  the service name and region (`<name>.ecs.<region>.on.aws`, per the ECS
+  getting-started guide), so recreating `ticketapp-api` will probably
+  give the same URL. AWS doesn't promise that.
+- **`aws_up.sh` handles both cases.**
+  - It records the API URL the frontend was built with on the Amplify
+    branch, as the `API_URL` environment variable (free metadata).
+  - It rebuilds and redeploys the frontend, with
+    `VITE_API_URL=<api>/api`, only when that URL changed. That takes
+    about 1-2 minutes and costs a fraction of a cent.
+  - `FORCE_FRONTEND=1` forces a rebuild.
+- **Cost: $0.** No code change either: `VITE_API_URL` is already a
+  build-time setting (`frontend/src/api.js`).
+- **Stable custom domain (not needed).** Route 53 costs $0.50/month per
+  hosted zone plus about $3-15/year for a domain, and needs an ACM
+  certificate on the ALB, which is free. It only pays off if the API URL
+  turns out to change, or for a nicer link.
+- **Rejected: proxying `/api` through Amplify** (a rewrite to the API
+  URL). It would make the frontend same-origin, but:
+  - Amplify's CloudFront origin timeout (30 s by default for CloudFront)
+    may cut a long AI turn;
+  - the client IP would then sit two proxies deep.
+
+### The up/down procedure
+
+Kept between demos (created by the first `aws_up.sh` run, cents a month):
+- security groups `ticketapp-api` and `ticketapp-db`, and the DB subnet
+  group;
+- IAM roles `ticketapp-ecs-exec`, `ticketapp-ecs-infra` and
+  `ticketapp-api-task`;
+- the `ticketapp/app` secret, holding JWT_SECRET, ADMIN_PASSWORD and
+  ADMIN_EMAIL;
+- the ECR repository `ticketapp-api`;
+- the Amplify app `ticketapp-web`;
+- the RDS snapshots `ticketapp-db-<UTC time>`.
+
+Created per demo (billed by the hour):
+- the RDS instance `ticketapp-db`;
+- the Express service `ticketapp-api`, with its Fargate task and ALB.
+
+**Up** (25-35 min):
+
+```bash
+ADMIN_EMAIL=you@example.com scripts/aws_up.sh   # ADMIN_EMAIL only on the very first run
+```
+
+1. Checks the profile (`ticketapp`, `ap-south-1`).
+2. Security groups and subnet group: created if missing.
+3. App secret: generated on the first run and never printed.
+4. Image: uses `IMAGE_TAG`, else this commit's tag.
+   - If that tag isn't in ECR, it builds and pushes when Docker is
+     running.
+   - Otherwise it falls back to the newest pushed image, with a warning.
+5. Database:
+   - restored from the newest `ticketapp-db-*` snapshot;
+   - or, on the first run, created empty (newest PostgreSQL 18.x,
+     encrypted, private, deletion protection).
+
+   Either way RDS generates a new managed password secret.
+6. IAM roles: created if missing. The execution role's policy is
+   rewritten each run for the two current secret ARNs.
+7. Amplify app and branch: created if missing.
+8. Express service:
+   - created if missing;
+   - updated if its image or DB secret reference changed (after a
+     restore it always has);
+   - then the script waits until the service is stable and `/health`
+     returns 200;
+   - ALB idle timeout set to 120 s, log retention to 14 days.
+9. Frontend: rebuilt and deployed only if the API URL changed.
+10. Smoke test without sign-in (`scripts/aws_smoke.py`).
+
+**Down** (10-20 min). Stop using the app first, then:
+
+```bash
+scripts/aws_down.sh
+```
+
+1. Shows what exists and asks you to type `yes`. Anything else changes
+   nothing.
+2. Snapshots the database and waits until the snapshot is available. If
+   that fails, nothing is deleted.
+3. Deletes the Express service and waits until it is inactive.
+4. Removes deletion protection and deletes the DB instance. It skips a
+   second snapshot (step 2 is the final one) and deletes the automated
+   backups.
+5. Deletes snapshots beyond the newest `KEEP_SNAPSHOTS` (default 2), only
+   now that the new one exists.
+6. Lists anything still billing by the hour: the service, the DB, any
+   load balancer in the region, idle Elastic IPs.
+
+Both scripts:
+- print each step and stop at the first error;
+- are safe to re-run, because every step checks what exists first;
+- never print a secret (no `set -x`). Generated values go through a
+  private temp directory that is removed on exit.
+
+`tests/test_aws_scripts.py` runs both scripts against a fake `aws` CLI.
+
+### Demo-day checklist
+
+**The first time only** (the data then lives on in the snapshots):
+1. Run `ADMIN_EMAIL=you@example.com scripts/aws_up.sh`.
+2. Copy the generated admin password to the clipboard without displaying
+   it:
+   ```bash
+   aws --profile ticketapp secretsmanager get-secret-value --secret-id ticketapp/app \
+     --query SecretString --output text \
+     | python3 -c 'import json,sys; print(json.load(sys.stdin)["ADMIN_PASSWORD"], end="")' | pbcopy
+   ```
+3. Sign in as the admin and change the password. Keep the new one in
+   your password manager. The secret's ADMIN_PASSWORD is only used to
+   create the first admin.
+4. Create the demo accounts. Production seeds no demo staff, so create
+   them once:
+   - **Team → Add:** a manager (with a department) and a technician.
+     Each gets a temporary password and changes it on first sign-in.
+     Sign in as each one once to do that.
+   - **A customer:** sign up on the login page (no forced change).
+   - Suggested emails: `demo-manager@…`, `demo-tech@…` and
+     `demo-customer@…` on a domain you control.
+   - Keep the passwords in your password manager, not in the repo.
+   - Optionally seed a few tickets and one chat so the queues aren't
+     empty.
+5. Run `scripts/aws_down.sh`. From then on every demo starts from this
+   data.
+
+**Before each demo** (start 45 minutes ahead):
+1. Run `scripts/aws_up.sh` and wait for `[n] Up` and "All checks passed".
+2. Run the signed-in checks (asks for the admin password, never echoed):
+   ```bash
+   python3 scripts/aws_smoke.py --frontend <frontend URL> --api <API URL> --admin
+   ```
+   It checks sign-in, `/api/auth/me`, and one ticket through Bedrock via
+   the admin simulator (nothing saved).
+3. In the browser, on the frontend URL:
+   - sign in as `demo-customer`, start a chat, and raise a ticket with a
+     small attachment (S3 upload) and download it again;
+   - sign in as `demo-tech` and see the ticket in the queue;
+   - sign in as `demo-manager` and open Incidents.
+4. Keep the AWS console's Billing page open in another tab if you want
+   to watch costs.
+
+**After the demo:**
+1. Run `scripts/aws_down.sh` and type `yes`.
+2. Check that it ends with "No. What remains costs about $1-4 a month".
+3. If it warns about a load balancer, check the EC2 console a few
+   minutes later. Express Mode removes its ALB asynchronously.
+
+**If you forget to run down:** about $2.45 a day. Set a monthly AWS
+Budget (for example $10, with email alerts) as a safety net. A plain
+cost budget with email alerts costs nothing.
 
 ## 1. Hosting choice: ECS Fargate (Express Mode), not App Runner
 
@@ -70,6 +326,9 @@ ARM64/Graviton), default VPC public subnets, private RDS.
   --force-new-deployment`, step 9) or lengthen the schedule (step 3).
 
 ### Monthly estimate: low-traffic demo, running 24/7 (730 h)
+
+(Option (a) in section 0. ARM64 shown; on x86_64, which the current
+CLI gives you, add ~$8.)
 
 | Item | Basis | $/month |
 |---|---|---|
@@ -221,10 +480,11 @@ removed:
 
 ```bash
 umask 077; SECRET_FILE=$(mktemp)
-python3 - "$SECRET_FILE" <<'PY'
-import json, secrets, sys
+ADMIN_EMAIL=you@example.com python3 - "$SECRET_FILE" <<'PY'
+import json, os, secrets, sys
 json.dump({"JWT_SECRET": secrets.token_hex(32),
-           "ADMIN_PASSWORD": secrets.token_urlsafe(18)}, open(sys.argv[1], "w"))
+           "ADMIN_PASSWORD": secrets.token_urlsafe(18),
+           "ADMIN_EMAIL": os.environ["ADMIN_EMAIL"]}, open(sys.argv[1], "w"))
 PY
 APP_SECRET_ARN=$(aws secretsmanager create-secret --name ticketapp/app \
   --description "ticketapp API: JWT signing key, first admin password" \
@@ -363,10 +623,10 @@ task start, never in the task definition as text):
 | `DB_SSLMODE` | `require` | production refuses less |
 | `DB_POOL_MAX` / `DB_POOL_TIMEOUT` | `10` / `10` | |
 | `ALLOWED_ORIGINS` | `$FRONTEND_ORIGIN` | CORS: the Amplify site only |
-| `ADMIN_EMAIL` | your admin email | |
 | `TRUSTED_PROXY_HOPS` | `1` | client IP behind the ALB |
 | `EMAIL_ENABLED` | `false` | no SMTP in this plan |
 | secret `JWT_SECRET` | `$APP_SECRET_ARN:JWT_SECRET::` | |
+| secret `ADMIN_EMAIL` | `$APP_SECRET_ARN:ADMIN_EMAIL::` | first start only (kept in the secret so `aws_up.sh` needs it once) |
 | secret `ADMIN_PASSWORD` | `$APP_SECRET_ARN:ADMIN_PASSWORD::` | first start only |
 | secret `DB_PASSWORD` | `$DB_SECRET_ARN:password::` | RDS-managed |
 
@@ -382,7 +642,6 @@ The variables are `LOGIN_IP_MAX_ATTEMPTS`, `LOGIN_IP_WINDOW_SECONDS`,
 with the ALB):
 
 ```bash
-ADMIN_EMAIL=you@example.com   # set yours
 SUBNET_LIST=$(echo $SUBNETS | tr ' ' ',')
 aws ecs create-express-gateway-service \
   --service-name ticketapp-api \
@@ -414,11 +673,11 @@ aws ecs create-express-gateway-service \
       {\"name\":\"DB_POOL_MAX\",\"value\":\"10\"},
       {\"name\":\"DB_POOL_TIMEOUT\",\"value\":\"10\"},
       {\"name\":\"ALLOWED_ORIGINS\",\"value\":\"$FRONTEND_ORIGIN\"},
-      {\"name\":\"ADMIN_EMAIL\",\"value\":\"$ADMIN_EMAIL\"},
       {\"name\":\"TRUSTED_PROXY_HOPS\",\"value\":\"1\"},
       {\"name\":\"EMAIL_ENABLED\",\"value\":\"false\"}],
     \"secrets\":[
       {\"name\":\"JWT_SECRET\",\"valueFrom\":\"$APP_SECRET_ARN:JWT_SECRET::\"},
+      {\"name\":\"ADMIN_EMAIL\",\"valueFrom\":\"$APP_SECRET_ARN:ADMIN_EMAIL::\"},
       {\"name\":\"ADMIN_PASSWORD\",\"valueFrom\":\"$APP_SECRET_ARN:ADMIN_PASSWORD::\"},
       {\"name\":\"DB_PASSWORD\",\"valueFrom\":\"$DB_SECRET_ARN:password::\"}]}" \
   --monitor-resources
@@ -519,17 +778,20 @@ deployment is a canary.
 **Restart after a DB password rotation:**
 `aws ecs update-service --cluster default --service ticketapp-api --force-new-deployment`.
 
-## 10. Smoke test, then teardown
+## 10. Smoke test, then full teardown
 
-**Smoke test:**
+**Smoke test:** `scripts/aws_smoke.py` (section 0, demo-day checklist).
+By hand:
 1. Sign in as the admin and change the password.
 2. Create a technician.
 3. As a customer, sign up, start a chat (Bedrock reply), raise a ticket
    with an attachment (S3 round trip), and download it.
 4. Six wrong passwords for one account give 429.
 
-**Teardown** (stops all charges; the snapshot keeps the data for
-$0.095/GB-month):
+**Full teardown**, to leave AWS entirely. Between demos use
+`scripts/aws_down.sh` instead. This also removes what it keeps. The
+final snapshot keeps the data for $0.095/GB-month; delete it too
+(`aws rds delete-db-snapshot`) to reach $0.
 
 ```bash
 aws ecs delete-express-gateway-service --service-arn <arn>      # service, ALB, Express SGs, alarm
@@ -560,8 +822,16 @@ bucket is left as it was before this plan.)
 2. Deployer permissions (section 2).
 3. Checks on the first run:
    - Express Mode's handling of the extra security group;
-   - the endpoint format and the ALB lookup;
-   - the managed-secret rotation schedule;
+   - the endpoint format (the scripts accept it with or without
+     `https://`);
+   - whether a recreated service gets the same URL (the frontend is
+     rebuilt if not);
+   - whether the ALB disappears when the last Express service is deleted
+     (`aws_down.sh` warns if one is left);
+   - that `restore-db-instance-from-db-snapshot --manage-master-user-password`
+     creates a new managed secret as expected;
+   - the managed-secret rotation schedule (less relevant now: each
+     restore gets a new secret, and the stack rarely lives 7 days);
    - whether the account's free tier or credits apply.
 4. Later:
    - least-privilege DB role;

@@ -616,6 +616,14 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `docs/AWS_DEPLOY.md`): python:3.13-slim, runtime requirements only,
   non-root, `/health` check; planned on ECS Express Mode (Fargate) + RDS +
   Amplify, not deployed (`AWS_PLAN.md`). `tests/test_dockerfile.py`.
+  Demo-only hosting: `scripts/aws_up.sh` (idempotent; restores RDS from
+  the newest `ticketapp-db-*` snapshot, creates/updates the Express
+  service, rebuilds the Amplify frontend only when the API URL changed,
+  runs `scripts/aws_smoke.py`) and `scripts/aws_down.sh` (typed "yes",
+  snapshot first, then deletes the service and DB, keeps the newest
+  `KEEP_SNAPSHOTS`). Shared helpers in `scripts/aws_lib.sh`; tested
+  against a fake `aws` CLI (`tests/fake_aws_cli.py`,
+  `tests/test_aws_scripts.py`).
 - **Run locally**: `uvicorn backend.main:app --reload` (repo root, needs
   `.env`) + `npm run dev` in `frontend/` (proxies `/api` to `:8000`).
 - **Phase 2 (not yet done)**: swap SQLite → Azure SQL/Cosmos in
