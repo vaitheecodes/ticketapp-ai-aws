@@ -55,7 +55,10 @@ def _require_kb():
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("text, expected", [
     ("I am facing issue in adding monitor", set()),
-    ("AIOPS-Entra-Moniitor, I am getting invalid data provided for api error", set()),
+    # "for api": the Site24x7 error names the API monitor.
+    ("AIOPS-Entra-Moniitor, I am getting invalid data provided for api error", {"API"}),
+    ("AIOPS-Entra-Moniitor, I am getting invalid data provided error", set()),
+    ("I lost my API key", set()),
     ("my website shows down", {"website"}),
     ("the REST API monitor fails with 401", {"API"}),
     ("PagerDuty alerts are not created", {"PagerDuty"}),
@@ -136,8 +139,8 @@ def test_reply_context_tells_the_prompt_what_is_known(monkeypatch):
     data = seen["data"]
     assert all(c.intent != "pagerduty_integration" for c in data.kb_candidates)
     assert any("PagerDuty" in topic for topic in data.unconfirmed_topics)
-    assert "Monitor type: not stated yet" in data.customer_details
-    assert data.monitor_type_known is False
+    assert "Monitor type: API (stated by the customer)" in data.customer_details
+    assert data.monitor_type_known is True
 
 
 def test_picked_category_narrows_grounding(monkeypatch):
@@ -174,11 +177,12 @@ def test_picked_category_never_changes_classification(monkeypatch, picked):
 
 
 def test_an_unconfirmed_strong_match_does_not_override_classification(monkeypatch):
-    """The PagerDuty entry scored above STRONG_MATCH_SCORE for the test
-    chat; it no longer moves an unsure classification to INTEGRATION."""
+    """The API-specific HAR entry (KB-N0140) scores above STRONG_MATCH_SCORE
+    for the test chat without "for api"; unconfirmed, it doesn't move an
+    unsure classification to WEB_MONITORING."""
     monkeypatch.setattr(graph.categorize_op, "categorize_ticket",
                         lambda data: Categorization(category="MONITORING", confidence=0.5))
-    state = {"ticket_text": _transcript(CHAT[:2])}
+    state = {"ticket_text": _transcript([CHAT[0], CHAT[1].replace(" for api", "")])}
     state.update(graph.retrieve_kb_candidates(state))
     assert state["kb_candidates"][0]["score"] >= kb_retrieval.STRONG_MATCH_SCORE
     assert graph.classify_ticket(state)["category"] == "MONITORING"

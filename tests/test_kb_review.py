@@ -408,11 +408,11 @@ def test_the_har_entry_is_approved_and_live():
     try:
         hits = kb_retrieval.retrieve_candidates("invalid data provided for api")
         assert hits and hits[0].entry.kb_entry_id == "KB-N0140"
-        state = {"ticket_text": "Customer: invalid data provided for api", "kb_candidates": graph.kb_candidates_for(
-            "invalid data provided for api")}
+        state = {"ticket_text": "Customer: invalid data provided", "kb_candidates": graph.kb_candidates_for(
+            "invalid data provided")}
         usable, unconfirmed = graph.grounding_candidates(state)
         assert [c["kb_entry_id"] for c, _ in unconfirmed] == ["KB-N0140"]  # asks: is it an API monitor?
-        state["ticket_text"] = "Customer: my REST API monitor says invalid data provided for api"
+        state["ticket_text"] = "Customer: invalid data provided for api"  # the error names the API
         usable, _ = graph.grounding_candidates(state)
         assert usable and usable[0]["kb_entry_id"] == "KB-N0140"
     finally:

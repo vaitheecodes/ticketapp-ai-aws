@@ -37,7 +37,9 @@ INTEGRATIONS = {
 }
 MONITOR_TYPES = {
     "website": r"\bweb ?sites?\b|\bweb ?pages?\b|\burls?\b|\bhttps? monitors?\b",
-    "API": r"\b(rest |soap |graphql )?api (monitor|endpoint|check)s?\b|\brest api\b|\bsoap\b|\bgraphql\b",
+    # "for api": Site24x7's add-monitor error "Invalid data provided for api".
+    "API": r"\b(rest |soap |graphql )?api (monitor|endpoint|check)s?\b|\brest api\b|\bsoap\b|\bgraphql\b"
+           r"|\bfor (an |the )?api\b",
     "server": r"\bservers?\b|\blinux\b|\bwindows\b|\bvms?\b",
     "ping": r"\bping\b|\bicmp\b",
     "port": r"\bport (monitor|check)s?\b|\btcp port\b",
