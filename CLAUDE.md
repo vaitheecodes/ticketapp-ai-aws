@@ -602,6 +602,20 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   replies. Customer reply on Pending Customer / Resolved -> Open (owner
   kept). AI-handled tickets (route ai/clarify) stay out of the workspace.
   Covered by `tests/test_ticket_workspace.py`.
+- **Login rate limiting + production secrets** (`backend/rate_limit.py`,
+  `auth.check_production_config`, `db_postgres.production_problems`):
+  `/api/auth/login` is limited per client IP (every attempt) and per
+  account (failures only; success clears them), 429 + Retry-After, checked
+  before the password; env-configurable, in-memory per process; client IP
+  from X-Forwarded-For only with `TRUSTED_PROXY_HOPS` (1 behind an ALB).
+  Off in tests by default (`tests/conftest.py`). In production startup
+  refuses a placeholder/short JWT_SECRET, a weak ADMIN_PASSWORD, and on
+  Postgres a weak/local-only DB password or no required SSL. Covered by
+  `tests/test_rate_limit.py`, `tests/test_roles_auth.py`.
+- **Container / AWS hosting** (`Dockerfile`, `.dockerignore`,
+  `docs/AWS_DEPLOY.md`): python:3.13-slim, runtime requirements only,
+  non-root, `/health` check; planned on ECS Express Mode (Fargate) + RDS +
+  Amplify, not deployed (`AWS_PLAN.md`). `tests/test_dockerfile.py`.
 - **Run locally**: `uvicorn backend.main:app --reload` (repo root, needs
   `.env`) + `npm run dev` in `frontend/` (proxies `/api` to `:8000`).
 - **Phase 2 (not yet done)**: swap SQLite → Azure SQL/Cosmos in
