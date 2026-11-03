@@ -870,9 +870,10 @@
         "Endpoint host and method (no tokens)",
         "A HAR file of the failing add-monitor attempt, with cookies and tokens removed"
       ],
-      "answer": "Support may ask for a HAR file, which records every request the browser makes. Open the page where the problem happens, open developer tools (F12, or Cmd+Option+I on Mac), turn on log preservation in the Network tab, repeat the failing action, then export all requests as a HAR file. Remove cookies and tokens before sharing it.",
+      "answer": "Support may ask for a HAR file, which records the requests your browser makes. Right-click the page where the error happens, choose Inspect (Inspect Element in Safari), and open the Network tab. Then:\nChrome or Edge: in the Network tab, turn on \"Preserve log\", repeat the failing action, then right-click a request and choose \"Save all as HAR with content\".\nFirefox: in the Network tab, open the Network settings (gear icon) and select \"Persist Logs\", repeat the failing action, then right-click a request and choose \"Save All As HAR\".\nSafari: if the Develop menu is missing, turn on Safari > Settings > Advanced > Show features for web developers; open Develop > Show Web Inspector, go to the Network tab, repeat the failing action, then click Export.\nA HAR file can contain cookies and tokens, so attach it only to your support ticket and don't share it anywhere else.",
       "source_url": "https://support.site24x7.com/portal/en/kb/articles/how-to-generate-a-har-file",
-      "reviewed_at": "2026-11-02T07:52:38+00:00"
+      "reviewed_at": "2026-11-02T07:52:38+00:00",
+      "edited_at": "2026-11-03T06:14:36+00:00"
     }
   ]
 }
