@@ -621,7 +621,11 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   service, rebuilds the Amplify frontend only when the API URL changed,
   runs `scripts/aws_smoke.py`) and `scripts/aws_down.sh` (typed "yes",
   snapshot first, then deletes the service and DB, keeps the newest
-  `KEEP_SNAPSHOTS`). Shared helpers in `scripts/aws_lib.sh`; tested
+  `KEEP_SNAPSHOTS`). Without Docker, `scripts/aws_build_image.sh`
+  builds the image in CodeBuild (clean git tree required, tag = short
+  commit hash, exits early if ECR has it; x86_64 only, so `aws_up.sh`
+  asks for ARM64 only when the manifest has an arm64 variant). Shared
+  helpers (incl. `ensure_ecr_repo`) in `scripts/aws_lib.sh`; tested
   against a fake `aws` CLI (`tests/fake_aws_cli.py`,
   `tests/test_aws_scripts.py`).
 - **Run locally**: `uvicorn backend.main:app --reload` (repo root, needs

@@ -59,8 +59,10 @@ Price per hour for what (a), (b) and (d) run:
   - I couldn't confirm which from AWS's own pages; the $4.40 maximum
     assumes the second.
 - App secret: $0.40 (prorated if deleted).
-- ECR: about 0.4 GB per image tag (two architectures); the lifecycle
-  rule keeps 5 tags, so $0.04-0.20.
+- ECR: about 0.15 GB per image tag built in CodeBuild (x86_64 only),
+  about 0.4 GB for a two-architecture Docker build; the lifecycle rule
+  keeps 5 tags, so $0.04-0.20.
+- Build bucket: source zips of about 1 MB, deleted after 7 days: ~$0.
 - Amplify (a few MB of static files), CloudWatch logs (14-day
   retention), IAM roles, security groups and the subnet group: ~$0, or
   free.
@@ -146,12 +148,61 @@ Kept between demos (created by the first `aws_up.sh` run, cents a month):
 - the `ticketapp/app` secret, holding JWT_SECRET, ADMIN_PASSWORD and
   ADMIN_EMAIL;
 - the ECR repository `ticketapp-api`;
+- the image build (`scripts/aws_build_image.sh`): the bucket
+  `ticketapp-build-<account id>`, the role `ticketapp-codebuild`, the
+  CodeBuild project `ticketapp-image-build` and its log group;
 - the Amplify app `ticketapp-web`;
 - the RDS snapshots `ticketapp-db-<UTC time>`.
 
 Created per demo (billed by the hour):
 - the RDS instance `ticketapp-db`;
 - the Express service `ticketapp-api`, with its Fargate task and ALB.
+
+**Build the image** (no Docker needed, 3-5 min), once per commit you
+want to demo. Commit first: the script refuses uncommitted or untracked
+files, because the tag is the commit hash and ECR tags are immutable.
+
+```bash
+scripts/aws_build_image.sh
+```
+
+1. Checks the profile and that `git status --porcelain` is empty.
+2. ECR repository `ticketapp-api`: created if missing (same settings and
+   shared code as `aws_up.sh`: scan on push, immutable tags, keep the
+   last 5).
+3. If this commit's tag is already in ECR, says so and stops (exit 0).
+4. Bucket `ticketapp-build-<account id>`: created if missing. Public
+   access blocked, SSE-S3 encryption, objects deleted after 7 days.
+5. Role `ticketapp-codebuild`: created if missing. Its policy, rewritten
+   each run, allows only: writing its own log group, reading
+   `source/*` in the build bucket, `ecr:GetAuthorizationToken`, and
+   pushing to the `ticketapp-api` repository.
+6. CodeBuild project `ticketapp-image-build`: created if missing.
+   - `aws/codebuild/standard:7.0` (x86_64), `BUILD_GENERAL1_SMALL`,
+     privileged mode (needed for `docker build`), 30 min timeout.
+   - Inline buildspec: ECR login (token piped, never printed),
+     `docker build -t <repo>:<tag> .`, `docker push`.
+   - The build container's copy of the Dockerfile pulls `python:` from
+     the ECR Public mirror of Docker's official images
+     (`public.ecr.aws/docker/library/python`), to avoid Docker Hub's
+     anonymous pull limit on CodeBuild's shared IPs. The repository's
+     Dockerfile is unchanged.
+   - Log group `/aws/codebuild/ticketapp-image-build`, kept 14 days.
+   - The build gets no secrets: only the registry, repository and tag.
+7. Uploads `git archive HEAD` (committed files only, so no `.env`),
+   starts the build and waits. On failure it prints the failed phase and
+   the last 30 log lines, with token-like strings redacted, and exits 1.
+8. Prints the image tag and "Next: run scripts/aws_up.sh".
+
+The image is linux/amd64 only. `aws_up.sh` reads the image manifest and
+asks for ARM64 only when the image has an arm64 variant (a Docker buildx
+build), so a CodeBuild image runs on x86_64.
+
+**Cost:** CodeBuild `general1.small` is $0.005 per build minute in
+ap-south-1 (Price List file published 2026-09-11), so a 3-5 minute
+build is about 1.5-2.5 cents. The first 100 build minutes a month on
+this size are listed as free tier. The bucket, logs and role cost
+nothing measurable.
 
 **Up** (25-35 min):
 
@@ -165,7 +216,10 @@ ADMIN_EMAIL=you@example.com scripts/aws_up.sh   # ADMIN_EMAIL only on the very f
 4. Image: uses `IMAGE_TAG`, else this commit's tag.
    - If that tag isn't in ECR, it builds and pushes when Docker is
      running.
-   - Otherwise it falls back to the newest pushed image, with a warning.
+   - Otherwise it falls back to the newest pushed image, with a warning
+     that `scripts/aws_build_image.sh` builds this commit.
+   - With no image at all, it stops and points to
+     `scripts/aws_build_image.sh`.
 5. Database:
    - restored from the newest `ticketapp-db-*` snapshot;
    - or, on the first run, created empty (newest PostgreSQL 18.x,
@@ -210,12 +264,14 @@ Both scripts:
 - never print a secret (no `set -x`). Generated values go through a
   private temp directory that is removed on exit.
 
-`tests/test_aws_scripts.py` runs both scripts against a fake `aws` CLI.
+`tests/test_aws_scripts.py` runs all three scripts against a fake `aws`
+CLI.
 
 ### Demo-day checklist
 
 **The first time only** (the data then lives on in the snapshots):
-1. Run `ADMIN_EMAIL=you@example.com scripts/aws_up.sh`.
+1. Run `scripts/aws_build_image.sh`, then
+   `ADMIN_EMAIL=you@example.com scripts/aws_up.sh`.
 2. Copy the generated admin password to the clipboard without displaying
    it:
    ```bash
@@ -241,7 +297,10 @@ Both scripts:
    data.
 
 **Before each demo** (start 45 minutes ahead):
-1. Run `scripts/aws_up.sh` and wait for `[n] Up` and "All checks passed".
+1. If you committed changes since the last demo, run
+   `scripts/aws_build_image.sh` (it exits at once if the image exists).
+   Then run `scripts/aws_up.sh` and wait for `[n] Up` and "All checks
+   passed".
 2. Run the signed-in checks (asks for the admin password, never echoed):
    ```bash
    python3 scripts/aws_smoke.py --frontend <frontend URL> --api <API URL> --admin
@@ -382,7 +441,11 @@ deployer (not to the app's role):
 
 - ECR (repository, push)
 - ECS (Express services)
-- IAM: create roles and `iam:PassRole` for the three roles below
+- CodeBuild (create project, start build, read builds) and S3 (create
+  and configure the build bucket, upload to it), for
+  `scripts/aws_build_image.sh`
+- IAM: create roles and `iam:PassRole` for the three roles below and
+  `ticketapp-codebuild`
 - RDS
 - EC2: security groups, describe VPC/subnets
 - Secrets Manager
@@ -517,6 +580,9 @@ aws ecr get-login-password | docker login --username AWS --password-stdin $REGIS
 docker buildx build --platform linux/arm64,linux/amd64 -t $REGISTRY/ticketapp-api:$TAG --push .
 IMAGE=$REGISTRY/ticketapp-api:$TAG
 ```
+
+Without Docker, `scripts/aws_build_image.sh` does the build in CodeBuild
+instead (section 0, "Build the image"); the result is x86_64 only.
 
 The image (`Dockerfile`):
 - based on `python:3.13-slim`, with binary wheels from
@@ -832,7 +898,11 @@ bucket is left as it was before this plan.)
      creates a new managed secret as expected;
    - the managed-secret rotation schedule (less relevant now: each
      restore gets a new secret, and the stack rarely lives 7 days);
-   - whether the account's free tier or credits apply.
+   - whether the account's free tier or credits apply;
+   - the first CodeBuild image build: that `aws/codebuild/standard:7.0`
+     is still offered, that the ECR Public `python` mirror has the same
+     tag, that the push works with only the listed ECR actions, and how
+     long a build takes.
 4. Later:
    - least-privilege DB role;
    - `DB_SSLMODE=verify-full` with the RDS CA bundle in the image;
