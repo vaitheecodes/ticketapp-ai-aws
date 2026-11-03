@@ -10,6 +10,9 @@
 - aws_build_image.sh refuses a dirty tree, stops when the tag is already
   in ECR, creates only what's missing, and on a failed build prints the
   log tail with tokens redacted;
+- every script stops at step 1 when the AWS profile is missing, and
+  every `aws` call in them uses only options the real subcommand accepts
+  (tests/fake_aws_options.json; the fake rejects anything else);
 - the smoke test's checks pass and fail on the right responses.
 """
 
@@ -29,6 +32,8 @@ API_URL = "https://ticketapp-api.ecs.ap-south-1.on.aws/api"
 MUTATING = ("create-", "delete-", "put-", "attach-", "authorize-", "restore-", "start-", "modify-", "update-")
 
 sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(0, str(ROOT / "tests"))
+import aws_cli_options  # noqa: E402
 import aws_smoke  # noqa: E402
 
 
@@ -318,8 +323,10 @@ def test_build_first_run_creates_everything_and_pushes_this_commit(fake, repo):
 
     build = state["builds"][0]
     assert build["tag"] == tag and build["source"] == f"ticketapp-build-123456789012/source/{tag}.zip"
-    assert state["uploads"][f"s3://ticketapp-build-123456789012/source/{tag}.zip"] == [
-        "Dockerfile", "scripts/", "scripts/aws_build_image.sh", "scripts/aws_lib.sh"]
+    upload = state["uploads"][f"s3://ticketapp-build-123456789012/source/{tag}.zip"]
+    assert upload == {"files": ["Dockerfile", "scripts/", "scripts/aws_build_image.sh", "scripts/aws_lib.sh"],
+                      "owner": "123456789012"}
+    assert "s3api put-object" in fake.ops() and not any(op.startswith("s3 ") for op in fake.ops())
 
 
 def test_build_re_run_after_a_failure_creates_nothing_new(fake, repo):
@@ -375,6 +382,55 @@ def test_build_failure_prints_the_log_tail_without_tokens(fake, repo):
     assert token not in res.stdout + res.stderr and "AKIAABCDEFGHIJKLMNOP" not in res.stderr
     assert "[redacted]" in res.stderr and "a" * 64 in res.stderr
     assert repo.tag not in fake.state().get("images", [])
+
+
+# ---------------------------------------------------------------------------
+# All scripts: preflight, CLI options
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("script", ["aws_up.sh", "aws_down.sh", "aws_build_image.sh"])
+def test_missing_profile_stops_at_preflight(fake, repo, script):
+    fake.set_state({"no_profile": True})
+    scripts = repo / "scripts" if script == "aws_build_image.sh" else SCRIPTS
+    res = fake.run(script, scripts=scripts, AWS_PROFILE="nosuchprofile")
+    assert res.returncode != 0
+    assert "AWS profile 'nosuchprofile' doesn't exist" in res.stderr and "Failed at step 1" in res.stderr
+    assert "region" not in res.stdout  # never reported the profile as fine
+    assert fake.ops() == ["sts get-caller-identity"]
+
+
+def test_preflight_reports_an_authentication_failure(fake):
+    fake.set_state({"fail": ["sts get-caller-identity"]})
+    res = fake.run("aws_down.sh")
+    assert res.returncode != 0 and "can't authenticate (An error occurred (InjectedFailure)" in res.stderr
+    assert fake.ops() == ["sts get-caller-identity"]
+
+
+def test_scripts_use_only_options_the_cli_accepts():
+    listed = json.loads((ROOT / "tests" / "fake_aws_options.json").read_text())
+    calls = aws_cli_options.extract_calls()
+    assert {"s3api put-object", "ecs wait services-stable", "sts get-caller-identity"} <= set(calls)
+    missing = sorted(set(calls) - set(listed))
+    assert missing == [], f"run tests/aws_cli_options.py for {missing}"
+    unsupported = {key: sorted(opts - set(listed[key]) - aws_cli_options.GLOBAL_OPTIONS)
+                   for key, opts in calls.items()}
+    assert {k: v for k, v in unsupported.items() if v} == {}
+
+
+@pytest.mark.parametrize("argv, bad", [
+    (["s3api", "put-object", "--bucket", "b", "--key", "k", "--body", "f", "--only-show-errors"], "--only-show-errors"),
+    (["ecr", "describe-images", "--repository-name", "r", "--image-tag", "x"], "--image-tag"),
+    (["ecs", "wait", "services-stable", "--cluster", "c", "--services", "s", "--timeout", "5"], "--timeout"),
+    (["ecs", "wait", "services-stable", "--cluster", "c", "--services", "s"], None),
+])
+def test_fake_cli_rejects_options_the_real_cli_does_not_accept(tmp_path, argv, bad):
+    state, log = tmp_path / "state.json", tmp_path / "calls.log"
+    state.write_text("{}")
+    res = subprocess.run([sys.executable, str(ROOT / "tests" / "fake_aws_cli.py"), *argv], capture_output=True,
+                         text=True, env={**os.environ, "FAKE_AWS_STATE": str(state), "FAKE_AWS_LOG": str(log)})
+    if bad:
+        assert res.returncode == 252 and f"Unknown options: {bad}" in res.stderr
+    else:
+        assert res.returncode == 0, res.stderr
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,10 @@ JSON file (FAKE_AWS_STATE) and every call is appended to FAKE_AWS_LOG as
 a JSON argv list. --query is applied with jmespath and --output text is
 formatted like the real CLI (scalars as-is, lists tab-separated, None as
 "None"). An unknown resource exits 254 like the real CLI; state["fail"]
-lists "service operation" pairs that should fail.
+lists "service operation" pairs that should fail. An option the real
+subcommand doesn't accept (tests/fake_aws_options.json, from the CLI's
+own help) exits 252 with the real CLI's "Unknown options" error, and
+state["no_profile"] makes every call fail like a missing --profile.
 """
 
 from __future__ import annotations
@@ -18,6 +21,18 @@ import jmespath
 
 ACCOUNT = "123456789012"
 REGION = "ap-south-1"
+OPTIONS = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_aws_options.json")))
+GLOBAL_OPTIONS = {"--output", "--query", "--region", "--profile", "--debug", "--no-cli-pager"}
+
+
+def unknown_options(service: str, op: str, rest: list[str]) -> list[str] | None:
+    """Options the real subcommand would reject; None if it isn't listed at all."""
+    key = f"{service} {op}"
+    if op == "wait":
+        key, rest = f"{key} {rest[0]}", rest[1:]
+    if key not in OPTIONS:
+        return None
+    return [a for a in rest if a.startswith("--") and a not in OPTIONS[key] and a not in GLOBAL_OPTIONS]
 
 
 def _opts(args: list[str]) -> dict[str, list[str]]:
@@ -128,6 +143,12 @@ def handle(state: dict, service: str, op: str, o: dict) -> object:
         if op in ("put-public-access-block", "put-bucket-encryption", "put-bucket-lifecycle-configuration"):
             bucket[op] = o[next(k for k in o if k.endswith("configuration"))][0]
             return {}
+        if op == "put-object":
+            import zipfile
+            key = f"s3://{_one(o, 'bucket')}/{_one(o, 'key')}"
+            s.setdefault("uploads", {})[key] = {"files": sorted(zipfile.ZipFile(_one(o, "body")).namelist()),
+                                                "owner": _one(o, "expected-bucket-owner")}
+            return {"ETag": '"abc"'}
 
     # --- CodeBuild -----------------------------------------------------------
     if service == "codebuild":
@@ -308,6 +329,9 @@ def main(argv: list[str]) -> int:
     service, op, rest = argv[0], argv[1], argv[2:]
     path = os.environ["FAKE_AWS_STATE"]
     state = json.load(open(path))
+    if state.get("no_profile"):
+        print(f"\nThe config profile ({os.environ.get('AWS_PROFILE')}) could not be found", file=sys.stderr)
+        return 255
     if rest[:1] == ["help"]:
         arch = "  --cpu-architecture\n" if state.get("cli_arch") else ""
         print(f"create-express-gateway-service\n  --service-name\n  --cpu\n{arch}")
@@ -315,13 +339,13 @@ def main(argv: list[str]) -> int:
     if service == "ecr" and op == "get-login-password":
         print("fake-ecr-password")
         return 0
+    bad = unknown_options(service, op, rest)
+    if bad is None:
+        raise SystemExit(f"fake aws: no option list for `{service} {op}`; run tests/aws_cli_options.py")
+    if bad:
+        print(f"\naws: [ERROR]: Unknown options: {','.join(bad)}", file=sys.stderr)
+        return 252
     if op == "wait":
-        return 0
-    if service == "s3" and op == "cp":  # s3 cp <local zip> s3://bucket/key
-        import zipfile
-        src, dst = rest[0], rest[1]
-        state.setdefault("uploads", {})[dst] = sorted(zipfile.ZipFile(src).namelist())
-        json.dump(state, open(path, "w"))
         return 0
     if f"{service} {op}" in state.get("fail", []):
         print(f"An error occurred (InjectedFailure) when calling {op}", file=sys.stderr)

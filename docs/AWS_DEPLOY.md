@@ -265,7 +265,12 @@ Both scripts:
   private temp directory that is removed on exit.
 
 `tests/test_aws_scripts.py` runs all three scripts against a fake `aws`
-CLI.
+CLI. The fake rejects any option the real subcommand doesn't accept
+(`tests/fake_aws_options.json`, taken from the CLI's own offline help;
+regenerate it with `python3 tests/aws_cli_options.py` after adding a
+call), and a static test checks every `aws` call in the scripts against
+the same list. Each script stops at step 1 if the profile is missing or
+can't authenticate.
 
 ### Demo-day checklist
 

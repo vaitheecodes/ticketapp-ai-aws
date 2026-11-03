@@ -627,7 +627,9 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   asks for ARM64 only when the manifest has an arm64 variant). Shared
   helpers (incl. `ensure_ecr_repo`) in `scripts/aws_lib.sh`; tested
   against a fake `aws` CLI (`tests/fake_aws_cli.py`,
-  `tests/test_aws_scripts.py`).
+  `tests/test_aws_scripts.py`) that rejects options the real subcommand
+  doesn't accept (`tests/fake_aws_options.json`, generated from the CLI's
+  help by `tests/aws_cli_options.py`).
 - **Run locally**: `uvicorn backend.main:app --reload` (repo root, needs
   `.env`) + `npm run dev` in `frontend/` (proxies `/api` to `:8000`).
 - **Phase 2 (not yet done)**: swap SQLite → Azure SQL/Cosmos in
