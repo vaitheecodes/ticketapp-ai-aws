@@ -1,6 +1,7 @@
-# What the deployed backend imports (AppSail: vendored by
-# scripts/build_appsail.sh). Keep this small: AppSail's default disk is
-# 256 MB and the vendored packages count against it.
+# What the deployed backend imports: installed into the Docker image
+# (Dockerfile, binary wheels only) and vendored by scripts/build_appsail.sh.
+# Keep this small: no pipeline, notebook or test libraries
+# (tests/test_dockerfile.py checks).
 fastapi>=0.115
 uvicorn>=0.30
 langgraph>=1.0

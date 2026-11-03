@@ -1,0 +1,19 @@
+# Allow-list: the image needs only what the Dockerfile copies.
+*
+!backend/
+!data/kb/kb_entries.json
+!data/kb/new_entries.json
+!data/kb/kb_registry.json
+!migrations/
+!scripts/db_migrate.py
+!requirements-runtime.txt
+
+# Never inside the allowed folders: secrets, local state, caches.
+**/.env
+**/.env.*
+**/__pycache__
+**/*.pyc
+backend/*.db
+backend/*.db-*
+backend/*.db.*
+backend/uploads/
