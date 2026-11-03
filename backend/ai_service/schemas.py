@@ -46,6 +46,8 @@ class KBCandidate(BaseModel):
     instruction: str
     response: str
     score: float
+    handling: str = "answer"
+    collect: list[str] = []
 
 
 class HistoryItem(BaseModel):

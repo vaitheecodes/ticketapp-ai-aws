@@ -224,7 +224,9 @@ def validate(data, existing: list[dict], registry: dict | None = None) -> Report
             continue
         for q in clean_questions:
             report.entries.append({"kb_entry_id": kb_id, "category": category, "intent": intent,
-                                   "instruction": q, "response": answer.strip()})
+                                   "instruction": q, "response": answer.strip(),
+                                   "handling": entry.get("handling") or "answer",
+                                   "collect": list(entry.get("collect") or [])})
     return report
 
 

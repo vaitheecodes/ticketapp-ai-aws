@@ -109,6 +109,11 @@ class KBEntry:
     intent: str
     instruction: str
     response: str
+    # data/kb/new_entries.json only: "escalate_with_info" entries tell the
+    # customer what to collect and hand the case to support (graph.
+    # generate_response); `collect` lists those details.
+    handling: str = "answer"
+    collect: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -190,7 +195,8 @@ class _KBIndex:
 def build_index(entries: list[dict]) -> "_KBIndex":
     return _KBIndex([
         KBEntry(kb_entry_id=e["kb_entry_id"], category=e["category"], intent=e["intent"],
-                instruction=e["instruction"], response=e["response"] or "")
+                instruction=e["instruction"], response=e["response"] or "",
+                handling=e.get("handling") or "answer", collect=tuple(e.get("collect") or ()))
         for e in entries
     ])
 
