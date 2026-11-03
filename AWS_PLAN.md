@@ -12,8 +12,8 @@ Catalyst-specific code (QuickML-on-AppSail provider, AppSail build,
 | AI provider | `quickml_appsail` (GLM on QuickML), `mock` locally | **Amazon Bedrock** provider (`AI_PROVIDER=bedrock`, Converse API) behind the existing `backend/ai_service` interface (same validation, retry and fail-safe rules) | Built (A1); model quality open, see below |
 | Attachments | Local disk (`db.uploads_dir()`) | **Amazon S3** (`STORAGE_BACKEND=s3`) behind a storage interface; private bucket, authorised download endpoint only (no public links) | Built (A3); round trip verified against the real bucket |
 | Database | SQLite | **RDS for PostgreSQL** (`DB_BACKEND=postgres`) | Built and tested locally on PostgreSQL 18 (A2); no RDS instance yet |
-| Backend host | AppSail | **Decide later** (e.g. App Runner, ECS Fargate, Lambda) | Open |
-| Frontend host | Slate (planned) | **Decide later** (e.g. S3 + CloudFront, Amplify) | Open |
+| Backend host | AppSail | **ECS Fargate via ECS Express Mode** (App Runner is closed to new customers); `Dockerfile` | Planned (A4): `docs/AWS_DEPLOY.md`, not deployed |
+| Frontend host | Slate (planned) | **Amplify Hosting** (manual zip deploy, `VITE_API_URL`) | Planned (A4), not deployed |
 
 ## Rules carried over
 
@@ -28,7 +28,8 @@ Catalyst-specific code (QuickML-on-AppSail provider, AppSail build,
 
 1. Database: RDS PostgreSQL (chosen in A2). Still open: instance size,
    Multi-AZ, and RDS Proxy vs the app's own pool.
-2. Backend and frontend hosting.
+2. Backend and frontend hosting: proposed in stage A4 (`docs/AWS_DEPLOY.md`),
+   waiting for the OK to create resources.
 3. Bedrock model: Nova Lite for now (see stage A1); revisit after
    reviewing real outputs.
 
