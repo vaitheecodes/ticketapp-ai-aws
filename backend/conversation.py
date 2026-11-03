@@ -25,6 +25,10 @@ ESCALATION_REASONS = {
     "customer_raised_ticket": "The customer raised a ticket from the chat.",
     "customer_reopened": "The customer reopened a ticket the AI had resolved.",
     "ai_cannot_resolve": "The AI assistant could not resolve the issue.",
+    "kb_needs_info": (
+        "The knowledge base says support needs details from the customer to "
+        "investigate; the AI told the customer what to collect and add to this ticket."
+    ),
     "routing_policy": (
         "Routing policy required a human (high-risk category, still unclear "
         "after clarifying questions, or escalation language)."

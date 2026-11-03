@@ -1,6 +1,9 @@
 """chat_response: what the customer reads.
 
 - answer: a KB-grounded reply to the request (chat or email format).
+- info_request: for an "escalate_with_info" KB entry: numbered steps to
+  collect what support needs, the collect list and a fixed safety note,
+  never a question (the caller raises the ticket in the same turn).
 - clarify: one targeted question naming the real candidate topics.
 - is_continuation: does a follow-up refer back to the AI's last answer?
 
@@ -405,6 +408,90 @@ def clarify(data: ClarifyInput) -> ChatReply:
         data,
         "clarify",
     )
+
+
+# ---------------------------------------------------------------------------
+# info_request: "escalate_with_info" KB entries
+# ---------------------------------------------------------------------------
+INFO_SAFETY_NOTE = ("Files such as a HAR file or logs can contain cookies, tokens or passwords, so "
+                    "attach them only to your support ticket, never in this chat or by email.")
+INFO_COLLECT_INTRO = "Please add these to your ticket:"
+_NUMBERED = re.compile(r"^\s*\d+[.)]\s+\S")
+# A sentence about sensitive data: INFO_SAFETY_NOTE replaces it.
+_SENSITIVE = re.compile(r"\b(cookies?|tokens?|passwords?)\b", re.IGNORECASE)
+
+
+def numbered_steps(text: str) -> str | None:
+    """`text` if it gives at least two numbered steps and asks nothing,
+    with any sentence about sensitive data removed; else None."""
+    if "?" in text:
+        return None
+    lines = []
+    for line in text.splitlines():
+        kept = " ".join(s for s in _SENTENCE_END.split(line) if not _SENSITIVE.search(s))
+        if line.strip() and (not kept.strip() or _LIST_MARKER_ONLY.match(kept)):
+            continue
+        lines.append(kept.rstrip())
+    if sum(1 for line in lines if _NUMBERED.match(line)) < 2:
+        return None
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def steps_from_answer(answer_text: str) -> str:
+    """The approved answer itself as numbered steps (one per line), used
+    when the model's rewrite fails the checks."""
+    lines = [line.strip() for line in answer_text.splitlines() if line.strip()]
+    if len(lines) == 1:
+        lines = [s for s in _SENTENCE_END.split(lines[0]) if s.strip()]
+    lines = [line for line in lines if not _SENSITIVE.search(line)] or lines
+    return "\n".join(f"{i}. {line}" for i, line in enumerate(lines, start=1))
+
+
+def info_request(data: AnswerInput) -> ChatReply:
+    """The reply for an "escalate_with_info" entry (data.kb_candidates[0]):
+    numbered steps from its approved answer (rewritten by the model, or the
+    answer's own lines if the rewrite has a question or no numbered steps),
+    then what to add to the ticket and INFO_SAFETY_NOTE, both added by code."""
+    entry = data.kb_candidates[0]
+    steps = None
+    try:
+        with backends.model_task("chat") if data.reply_format == "chat" else nullcontext():
+            raw = provider.complete_text(
+                "You are the Site24x7 support assistant (Site24x7 is an infrastructure "
+                "monitoring product). Our support team needs some details from the "
+                "customer to investigate, and a ticket is being raised for them now. "
+                "Rewrite the guidance in the kb_guidance block as short numbered steps "
+                "the customer follows (\"1.\", \"2.\", ...), one line each, keeping "
+                "browser names, menu names and button labels exactly as written there. "
+                "Where the guidance gives alternatives (for example one line per "
+                "browser), keep each alternative as ONE step starting with its name "
+                "(\"Chrome or Edge: ...\"); never split it into several steps. "
+                "You may start with one short sentence saying what is needed. Use only "
+                "what the kb_guidance block says. Do not ask any question. Do not mention "
+                "cookies, tokens, passwords or the ticket: those notes are added for you. "
+                "No greeting, no sign-off, no signature, no placeholder text.",
+                {"kb_guidance": kb_guidance_text([entry]),
+                 "customer_latest_message": data.latest_message or "(see the ticket block)",
+                 "ticket": data.ticket_text},
+                operation="info_request",
+            )
+        cleaned = raw if data.reply_format == "email" else clean_chat_reply(raw)
+        steps = numbered_steps(cleaned)
+        if steps is None:
+            provider.note_failure(provider.AIFailure(
+                kind="filter_rejected", operation="info_request", code="not_numbered_steps",
+                outcome="fallback"))
+    except provider.AIError as exc:
+        if exc.failure is None or exc.failure.kind not in ("parse_schema", "filter_rejected"):
+            raise
+        exc.failure.outcome = "fallback"
+    body = steps or steps_from_answer(entry.response)
+    if entry.collect:
+        body += "\n\n" + INFO_COLLECT_INTRO + "\n" + "\n".join(f"- {item}" for item in entry.collect)
+    body += "\n\n" + INFO_SAFETY_NOTE
+    if data.reply_format == "email":
+        return ChatReply(text=email_utils.format_email_reply(data.customer_name, body))
+    return ChatReply(text=body)
 
 
 def is_continuation(data: ContinuationInput) -> ContinuationVerdict:

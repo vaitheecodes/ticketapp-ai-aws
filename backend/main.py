@@ -401,7 +401,13 @@ def _decide_followup(f: _Followup, message_text: str) -> _FollowupOutcome:
         )
         state.update(graph.fetch_customer_history(state))
         state.update(graph.lookup_order(state))
-        ai_response = graph.generate_response(state)["ai_response"]
+        reply = graph.generate_response(state)
+        ai_response = reply["ai_response"]
+        # Steps to collect what support needs: the ticket goes to the team now.
+        if reply.get("needs_info"):
+            return escalate("kb_needs_info", {"route": "human", "message": ai_response},
+                            _with_ai_line(f.transcript, ai_response),
+                            ticket["category"], ticket["confidence"], text=ai_response)
         # An answer that concedes it can't actually help hasn't resolved anything.
         if handoff_signals.admits_limitation(ai_response):
             return escalate("ai_cannot_resolve", {"route": "human", "message": ai_response},
@@ -414,6 +420,11 @@ def _decide_followup(f: _Followup, message_text: str) -> _FollowupOutcome:
                         clarification_attempts=ticket["clarification_attempts"],
                         recent_ai_replies=f.recent_ai)
     )
+    if result["route"] == "ai" and result.get("needs_info"):
+        return escalate("kb_needs_info", {"route": "human", "message": result["ai_response"]},
+                        _with_ai_line(f.transcript, result["ai_response"]),
+                        result.get("category"), result.get("confidence"),
+                        text=result["ai_response"])
     if result["route"] in ("ai", "clarify"):
         # An "ai" answer that concedes it can't do the thing is a hand-off
         # signal, not a resolution (see backend/handoff_signals.py).
@@ -697,8 +708,11 @@ def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_ta
     # anything, however confidently it was classified — route it to a
     # human instead of recording it as the resolution. Same signal as
     # the follow-up check in _decide_followup.
-    escalate_for_limitation = route == "ai" and handoff_signals.admits_limitation(
-        ai_response or ""
+    # Steps to collect what support needs ("escalate_with_info" KB entry)
+    # go to the team the same way.
+    reason_key = "kb_needs_info" if route == "ai" and result.get("needs_info") else "ai_cannot_resolve"
+    escalate_for_limitation = route == "ai" and (
+        bool(result.get("needs_info")) or handoff_signals.admits_limitation(ai_response or "")
     )
     if escalate_for_limitation:
         route = "human"
@@ -710,7 +724,7 @@ def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_ta
         handoff = _ticket_handoff(
             _build_transcript([{"sender": "customer", "message": ticket_text},
                                {"sender": "ai", "message": ai_response}]),
-            {"subject": subject, "ticket_text": ticket_text}, "ai_cannot_resolve",
+            {"subject": subject, "ticket_text": ticket_text}, reason_key,
             result.get("category"),
         )
 

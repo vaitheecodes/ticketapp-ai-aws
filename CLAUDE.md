@@ -183,7 +183,12 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   re-approving (typed "yes"); new names that repeat an existing
   one, any case, and empty or match-everything regexes are refused) and records each approved entry's category
   and specific terms in `data/kb/kb_registry.json` (`backend/kb_registry.py`;
-  KB-only categories never become ticket categories);
+  KB-only categories never become ticket categories); an approved entry with
+  `handling: escalate_with_info` that grounds a reply gets
+  `chat_response.info_request` (numbered steps from its answer, never a
+  question, then its `collect` list and a fixed safety note) and the chat /
+  ticket goes to the support team in the same turn (`needs_info`,
+  reason `kb_needs_info`);
   an entry specific to an integration or monitor type the customer
   hasn't mentioned (`backend/topic_terms.py`, by intent plus integration
   names in the answer) never grounds a reply and is passed as an

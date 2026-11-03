@@ -152,6 +152,10 @@ class TicketState(TypedDict):
     route_reason: NotRequired[str]
 
     ai_response: NotRequired[str]
+    # Set by generate_response when the reply was grounded on an
+    # "escalate_with_info" KB entry ({kb_entry_id, collect}): the caller
+    # raises the ticket in the same turn (chats._decide, main.py).
+    needs_info: NotRequired[dict | None]
 
 
 # ---------------------------------------------------------------------------
@@ -299,6 +303,8 @@ def _kb_candidates_to_dicts(candidates: list[kb_retrieval.KBCandidate]) -> list[
             "instruction": c.entry.instruction,
             "response": c.entry.response,
             "score": round(c.score, 3),
+            "handling": c.entry.handling,
+            "collect": list(c.entry.collect),
         }
         for c in candidates
     ]
@@ -583,19 +589,25 @@ def _reply_context(state: TicketState) -> dict:
 
 
 def generate_response(state: TicketState) -> dict:
-    reply = chat_response.answer(
-        AnswerInput(
-            ticket_text=state["ticket_text"],
-            category=state.get("category"),
-            history=_history(state),
-            order_context=_format_order_context(state.get("order_lookup")),
-            continuation=bool(state.get("continuation")),
-            reply_format=state.get("reply_format", "chat"),
-            customer_name=state.get("customer_name"),
-            **_reply_context(state),
-        )
+    """The answer, or, when the best grounding is an "escalate_with_info"
+    KB entry, numbered steps to collect what support needs plus
+    `needs_info` so the caller raises the ticket in the same turn."""
+    data = AnswerInput(
+        ticket_text=state["ticket_text"],
+        category=state.get("category"),
+        history=_history(state),
+        order_context=_format_order_context(state.get("order_lookup")),
+        continuation=bool(state.get("continuation")),
+        reply_format=state.get("reply_format", "chat"),
+        customer_name=state.get("customer_name"),
+        **_reply_context(state),
     )
-    return {"ai_response": reply.text}
+    top = data.kb_candidates[0] if data.kb_candidates else None
+    if top is not None and top.handling == "escalate_with_info" and top.response.strip():
+        reply = chat_response.info_request(data)
+        return {"ai_response": reply.text,
+                "needs_info": {"kb_entry_id": top.kb_entry_id, "collect": list(top.collect)}}
+    return {"ai_response": chat_response.answer(data).text, "needs_info": None}
 
 
 def ask_clarifying_question(state: TicketState) -> dict:
