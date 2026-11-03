@@ -26,7 +26,7 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "").strip() or None
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend import app_settings  # noqa: E402
+from backend import app_settings, rate_limit  # noqa: E402
 from backend.ai_service import provider  # noqa: E402
 
 
@@ -142,6 +142,12 @@ def _isolated_app_env(monkeypatch):
     provider.set_backend(None)
     monkeypatch.delenv("ADMIN_EMAIL", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    # Login rate limiting off (the suite logs in far more often than a
+    # person would); tests/test_rate_limit.py turns it on.
+    monkeypatch.setenv("LOGIN_RATE_LIMIT_ENABLED", "false")
+    for name in rate_limit.DEFAULTS:
+        monkeypatch.delenv(name, raising=False)
+    rate_limit.reset()
     for name in ("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "INCIDENT_WINDOW_HOURS", "INCIDENT_MIN_TICKETS",
                  "INCIDENT_SIMILARITY", "INCIDENT_ROUTING_CONFIDENCE", "INCIDENT_MEMORY_DAYS",
                  "SMTP_HOST", "SMTP_FROM",

@@ -15,14 +15,14 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
 from backend import admin, ai_failures, app_settings, auth, chats, db, email_utils, graph, handoff_signals
 from backend import incidents
-from backend import db_postgres, incident_memory, incident_resolution, runtime, staff_tickets, storage
+from backend import db_postgres, incident_memory, incident_resolution, rate_limit, runtime, staff_tickets, storage
 from backend.ai_service import backends as ai_backends
 from backend.ai_service import provider as ai_provider
 from backend import ticket_lifecycle as lifecycle
@@ -481,10 +481,20 @@ def customer_signup(body: SignupRequest):
 
 
 @app.post("/api/auth/login")
-def login(body: LoginRequest):
+def login(body: LoginRequest, request: Request):
     """One login for every role; the response's `role` tells the
-    frontend which portal to open."""
-    return auth.login(body.email.strip(), body.password)
+    frontend which portal to open. Rate limited per IP and per account
+    (backend/rate_limit.py)."""
+    email = body.email.strip()
+    rate_limit.check_login(rate_limit.client_ip(request), email)
+    try:
+        result = auth.login(email, body.password)
+    except HTTPException as exc:
+        if exc.status_code == 401:
+            rate_limit.record_failure(email)
+        raise
+    rate_limit.record_success(email)
+    return result
 
 
 @app.get("/api/auth/me")
