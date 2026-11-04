@@ -316,7 +316,7 @@ def open_question(monitor_type: str | None) -> str:
     if monitor_type:
         subject = f"your {monitor_type}" if monitor_type.endswith("monitoring") else f"your {monitor_type} monitor"
     else:
-        subject = "Site24x7"
+        subject = "your monitoring"
     return (f"What are you seeing, or trying to do, with {subject}? For example: no data, a wrong "
             "status, alerts, the agent, or setup.")
 

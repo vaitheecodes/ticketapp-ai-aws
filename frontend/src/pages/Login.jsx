@@ -45,7 +45,7 @@ export default function Login() {
       </div>
       <div className="hero-brand">
         <TicketIcon className="hero-brand-icon" />
-        <h1 className="hero-title">Site24x7 Support</h1>
+        <h1 className="hero-title">Help Desk</h1>
       </div>
       <p className="hero-subtitle">
         {isSignup ? "Create a customer account to raise tickets." : "Sign in to your portal."}

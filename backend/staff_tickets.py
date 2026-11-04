@@ -230,9 +230,9 @@ def _workspace(conn, ticket_id: str, user: dict) -> dict:
         if m["sender"] == "customer":
             author = ticket["contact_name"] or customer["name"]
         elif m["sender"] == "ai":
-            author = "Site24x7 AI Assistant"
+            author = "Support Bot"
         elif m["sender"] == "staff" and m["author_id"] is None:
-            author = "Site24x7 Support Team"
+            author = "Support Team"
         elif m["sender"] == "staff":
             author = names.get(m["author_id"], "Support Agent")
         else:

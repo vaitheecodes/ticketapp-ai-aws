@@ -22,7 +22,7 @@ from email.message import EmailMessage
 
 logger = logging.getLogger(__name__)
 
-SIGNATURE = "Regards,\nSite24x7 Support Team"
+SIGNATURE = "Regards,\nSupport Team"
 DEFAULT_CLOSING = "If anything is still unclear, just reply to this email and we'll pick it up."
 
 _QUOTED_LINE_RE = re.compile(r"^\s*>.*$", re.MULTILINE)

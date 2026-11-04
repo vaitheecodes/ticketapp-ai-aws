@@ -1,7 +1,7 @@
 /* Component gallery — dev route at /ui.
  *
  * Every shared component in every state, on the real page surface, with real
- * Site24x7 content taken from actual pipeline output rather than lorem. This
+ * Help desk content taken from actual pipeline output rather than lorem. This
  * is how the component layer gets reviewed before it is applied across the
  * three portals, and it stays afterwards as the place to check a change
  * without clicking through three logins.
@@ -15,7 +15,7 @@ import ChatMessage from "../components/ui/ChatMessage";
 import TicketListItem from "../components/ui/TicketListItem";
 import TicketTextDetail from "../components/TicketTextDetail";
 
-const AI_MARKDOWN = `Great question! Here's the difference between the two monitor types in Site24x7:
+const AI_MARKDOWN = `Great question! Here's the difference between the two monitor types:
 
 - **Transaction Monitor:** records and replays a series of predefined steps (login, form submission, navigation) through a step-by-step interface. Ideal for multi-step workflows without writing code.
 - **Scripted Browser Monitor:** uses real browser scripting (Selenium WebDriver) for complex, customizable flows — dynamic content, custom logic, advanced interactions.
@@ -29,7 +29,7 @@ To set either one up:
 If you tell me which flow you need to cover, I can recommend one.`;
 
 const AI_PLAIN =
-  "To install the Site24x7 agent, download the installer that matches your operating system and run it with administrator rights. If the agent does not report in afterwards, collect the installer output and agent logs.";
+  "To install the monitoring agent, download the installer that matches your operating system and run it with administrator rights. If the agent does not report in afterwards, collect the installer output and agent logs.";
 
 const NOW = Date.now();
 const ago = (mins) => new Date(NOW - mins * 60000).toISOString();
@@ -70,7 +70,7 @@ const TICKETS = [
     category: "AGENT",
     confidence: 0.99,
     created_at: ago(2880),
-    ticket_text: "how do I install the Site24x7 agent on a Kubernetes cluster",
+    ticket_text: "how do I install the monitoring agent on a Kubernetes cluster",
   },
 ];
 

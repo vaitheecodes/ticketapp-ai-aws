@@ -58,7 +58,7 @@ def test_open_question_names_the_monitor_type():
     assert OPEN_SERVER == ("What are you seeing, or trying to do, with your server monitor? For example: "
                            "no data, a wrong status, alerts, the agent, or setup.")
     assert "your log monitoring?" in chat_response.open_question("log monitoring")
-    assert "with Site24x7?" in chat_response.open_question(None)
+    assert "with your monitoring?" in chat_response.open_question(None)
 
 
 @pytest.mark.parametrize("node", ["generate_response", "ask_clarifying_question"])

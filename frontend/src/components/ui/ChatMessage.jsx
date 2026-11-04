@@ -11,6 +11,7 @@
  */
 
 import { Markdown } from "../../utils/markdown";
+import { BOT_NAME } from "../../lib/people";
 import { relativeTime, absoluteTime } from "../../utils/time";
 
 function Avatar({ sender }) {
@@ -57,7 +58,7 @@ export default function ChatMessage({ sender, message, createdAt }) {
       {!isCustomer && (
         <div className="msg-meta">
           <Avatar sender={sender} />
-          <span className="msg-author">Site24x7 AI</span>
+          <span className="msg-author">{BOT_NAME}</span>
           {stamp && (
             <time className="msg-time" title={absoluteTime(createdAt)}>
               {stamp}

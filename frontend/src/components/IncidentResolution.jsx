@@ -185,7 +185,7 @@ function SummaryEditor({ incident, aiError, onSaved }) {
         <div className="summary-preview" aria-label="Preview of the customer email">
           <p className="field-label">Preview</p>
           <div className="message-card incident-update-card">
-            <p className="incident-update-from">From Site24x7 Support Team</p>
+            <p className="incident-update-from">From the Support Team</p>
             <p className="incident-update-subject">Update on a service issue you reported</p>
             <div className="incident-update-body">{customer || "—"}</div>
           </div>
@@ -304,7 +304,7 @@ function SentSummary({ incident, onSaved }) {
         </div>
       </dl>
       <div className="message-card incident-update-card">
-        <p className="incident-update-from">Sent by Site24x7 Support Team</p>
+        <p className="incident-update-from">Sent by the Support Team</p>
         <div className="incident-update-body">{r.customer_summary}</div>
       </div>
       {r.internal_summary && (

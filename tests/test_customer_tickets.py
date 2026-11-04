@@ -207,7 +207,7 @@ def test_human_route_ticket_gets_agent_will_reply_by_email_message(client):
     reply = messages[1]["message"]
     assert reply.startswith("Hi Dana,")
     assert "reply to you by email" in reply
-    assert reply.endswith("Regards,\nSite24x7 Support Team")
+    assert reply.endswith("Regards,\nSupport Team")
 
 
 def test_ai_replies_on_tickets_are_emailed_when_configured(client, sent_emails):
@@ -260,7 +260,7 @@ def test_generate_response_wraps_email_replies(monkeypatch):
              "order_lookup": None, "reply_format": "email", "customer_name": "Dana Smith"}
     reply = graph.generate_response(state)["ai_response"]
     assert reply.startswith("Hi Dana,\n\nRestart the agent service")
-    assert reply.endswith("Regards,\nSite24x7 Support Team")
+    assert reply.endswith("Regards,\nSupport Team")
     assert "Write ONLY the body" in captured[0][0]["content"]
 
     state["reply_format"] = "chat"
@@ -305,7 +305,7 @@ def test_thread_detail_has_sender_roles_and_to_lines(client):
     assert detail["ticket"]["category"] == "AGENT"
     customer_msg, ai_msg = detail["messages"]
     assert (customer_msg["sender_name"], customer_msg["sender_role"], customer_msg["to"]) == (
-        "Dana Smith", "Customer", "Site24x7 Support")
+        "Dana Smith", "Customer", "Support")
     assert (ai_msg["sender_role"], ai_msg["to"]) == ("AI Assistant", "Dana Smith")
 
 

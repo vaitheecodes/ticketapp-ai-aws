@@ -102,7 +102,7 @@ def test_email_answer_keeps_the_email_frame(monkeypatch):
     text = _answer("email").text
     assert "sent as an email" in seen["instructions"] and "live chat" not in seen["instructions"]
     assert text.startswith("Hi Dana,") and "Restart the agent service." in text
-    assert "Site24x7 Support Team" in text
+    assert text.endswith("Regards,\nSupport Team")
 
 
 def test_chat_clarify_prompt_and_filter(monkeypatch):

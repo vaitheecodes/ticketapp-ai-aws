@@ -223,8 +223,8 @@ _AI_UNAVAILABLE = (
     "nothing about your ticket has changed — please try again shortly."
 )
 
-AI_SENDER_NAME = "Site24x7 AI Assistant"
-SUPPORT_TEAM_NAME = "Site24x7 Support"
+AI_SENDER_NAME = "Support Bot"
+SUPPORT_TEAM_NAME = "Support"
 
 
 # ---------------------------------------------------------------------------

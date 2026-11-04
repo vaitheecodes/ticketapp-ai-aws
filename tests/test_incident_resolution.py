@@ -354,7 +354,7 @@ def test_customer_thread_shows_the_update_from_the_support_team(client, model):
     headers, ticket_id = reporters[0]
     thread = client.get(f"/api/tickets/{ticket_id}", headers=headers).json()
     (update,) = [m for m in thread["messages"] if m.get("incident_update")]
-    assert update["sender_name"] == "Site24x7 Support Team"
+    assert update["sender_name"] == "Support Team"
     assert update["subject"] == incident_resolution.UPDATE_SUBJECT
 
 
