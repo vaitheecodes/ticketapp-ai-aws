@@ -226,7 +226,7 @@ def test_ongoing_event_reuses_the_open_cluster(client, pipeline, judge):
     ids = _three_customers_report(client, pipeline)
     calls_before = len(judge["calls"])
     # Nothing new: an explicit re-run doesn't call the model again.
-    client.post("/api/incidents/run", headers=_admin(client))
+    client.post("/api/incidents/run", headers=_demo_manager(client))
     assert len(judge["calls"]) == calls_before
 
     fourth = _raise(client, _customer(client), pipeline)
@@ -238,7 +238,7 @@ def test_correlation_never_closes_or_merges_tickets(client, pipeline, judge):
     ids = _three_customers_report(client, pipeline)
     (cluster,) = _clusters()
     client.post(f"/api/incidents/{cluster['incident_id']}/review",
-                json={"action": "confirm", "note": "Collector outage confirmed"}, headers=_admin(client))
+                json={"action": "confirm", "note": "Collector outage confirmed"}, headers=_demo_manager(client))
     rows = _query(f"SELECT ticket_id, status FROM tickets WHERE ticket_id IN ({','.join('?' * 3)})", tuple(ids))
     assert sorted(r["ticket_id"] for r in rows) == sorted(ids)
     assert {r["status"] for r in rows} == {"open"}
@@ -270,9 +270,9 @@ def test_dismissed_tickets_are_not_reclustered(client, pipeline, judge):
     _three_customers_report(client, pipeline)
     (cluster,) = _clusters()
     client.post(f"/api/incidents/{cluster['incident_id']}/review",
-                json={"action": "dismiss", "note": "Unrelated"}, headers=_admin(client))
+                json={"action": "dismiss", "note": "Unrelated"}, headers=_demo_manager(client))
     calls = len(judge["calls"])
-    client.post("/api/incidents/run", headers=_admin(client))
+    client.post("/api/incidents/run", headers=_demo_manager(client))
     assert len(judge["calls"]) == calls and len(_clusters()) == 1
 
 
@@ -285,7 +285,7 @@ def test_customer_banner_only_on_confirmed_clusters(client, pipeline, judge):
     assert client.get(f"/api/tickets/{mine}", headers=customer).json()["incident_notice"] is None
 
     client.post(f"/api/incidents/{cluster['incident_id']}/review",
-                json={"action": "confirm", "note": "ok"}, headers=_admin(client))
+                json={"action": "confirm", "note": "ok"}, headers=_demo_manager(client))
     notice = client.get(f"/api/tickets/{mine}", headers=customer).json()["incident_notice"]
     assert notice == "We're aware of this issue affecting multiple customers and are working on it."
 
@@ -327,7 +327,8 @@ def test_uncertain_cluster_is_left_for_routing(client, pipeline, judge):
     depts = client.get("/api/admin/departments", headers=admin).json()["departments"]
     network = next(d for d in depts if d["name"] == "Network")
     detail = client.put(f"/api/incidents/{cluster['incident_id']}/departments",
-                        json={"department_ids": [network["department_id"]]}, headers=admin).json()
+                        json={"department_ids": [network["department_id"]]},
+                        headers=_network_manager(client)).json()
     assert detail["needs_routing"] is False
     (department,) = detail["departments"]
     assert (department["name"], department["source"], department["confirmed"]) == ("Network", "manager", 1)
@@ -369,7 +370,7 @@ def test_manager_can_open_linked_tickets_outside_their_categories(client, pipeli
     assert res.json()["incidents"][0]["status"] == "detected"
 
 
-def test_only_managers_and_admin_use_incident_endpoints(client, pipeline, judge):
+def test_only_managers_use_incident_endpoints(client, pipeline, judge):
     _three_customers_report(client, pipeline)
     (cluster,) = _clusters()
     (tech,) = [p for p in seed_data.DEMO_STAFF if p["role"] == "technician"]

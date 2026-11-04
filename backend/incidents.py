@@ -20,7 +20,7 @@
 Department routing: departments owning the tickets' categories plus the
 AI's candidates, but only when the AI's confidence reaches
 INCIDENT_ROUTING_CONFIDENCE; otherwise the cluster is "Needs routing" for
-the admin or a manager to assign. Manager corrections are never
+a manager to assign. Manager corrections are never
 overwritten by later AI runs.
 
 Correlation runs in the background after every new ticket or chat
@@ -384,9 +384,10 @@ def confirmed_incident_for(conn, ticket_id: str) -> bool:
 # ---------------------------------------------------------------------------
 # Access
 # ---------------------------------------------------------------------------
-_reviewer = auth.require_user("manager", "admin")
-# Technicians see (and can resolve) only incidents assigned to them.
-_viewer = auth.require_user("technician", "manager", "admin")
+# Incidents belong to managers; the admin has no access. Technicians see
+# (and can resolve) only incidents a manager assigned to them.
+_reviewer = auth.require_user("manager")
+_viewer = auth.require_user("technician", "manager")
 
 
 def manager_department_ids(conn, manager_id: str) -> set[str]:
@@ -405,12 +406,10 @@ def _cluster_departments(conn, incident_id: str) -> list[dict]:
 
 
 def _can_see(conn, cluster, user: dict) -> bool:
-    """Admin sees every cluster. A manager sees clusters linked to one of
+    """A manager sees clusters linked to one of
     their departments, plus unrouted ("Needs routing") ones so they can
     claim them for the right department. A technician sees the clusters
     assigned to them."""
-    if user["role"] == "admin":
-        return True
     if user["role"] == "technician":
         return cluster["assigned_technician_id"] == user["id"]
     if cluster["needs_routing"]:
@@ -434,10 +433,10 @@ def manager_can_see_ticket(conn, manager_id: str, ticket_id: str) -> bool:
 
 
 def can_resolve(cluster, user: dict, conn) -> bool:
-    """Resolving needs a manager who can see it, the admin, or the
-    technician it's assigned to."""
+    """Resolving needs a manager who can see it, or the technician it's
+    assigned to."""
     return _can_see(conn, cluster, user) and (
-        user["role"] in ("manager", "admin") or cluster["assigned_technician_id"] == user["id"]
+        user["role"] == "manager" or cluster["assigned_technician_id"] == user["id"]
     )
 
 
@@ -548,7 +547,7 @@ def incident_detail(incident_id: str, user: dict = Depends(_viewer)):
             (incident_id,))}
         for t in tickets:
             t["delivery"] = deliveries.get(t["ticket_id"])
-        staff_view = user["role"] in ("manager", "admin")
+        staff_view = user["role"] == "manager"
         return {
             **_cluster_row(conn, cluster),
             "summary": json.loads(cluster["summary"]),
@@ -616,8 +615,7 @@ def set_incident_departments(
 ):
     """Correct the department association: replaces every link with
     confirmed ones (source 'manager') that later AI runs won't touch. A
-    manager must keep at least one of their own departments on it; only
-    the admin can clear it back to Needs routing."""
+    manager must keep at least one of their own departments on it."""
     conn = db.get_connection()
     try:
         _cluster_or_404(conn, incident_id, user)
@@ -626,9 +624,9 @@ def set_incident_departments(
             "SELECT department_id, name FROM departments")}
         if not wanted <= known.keys():
             raise HTTPException(status_code=404, detail="Unknown department")
-        if user["role"] == "manager" and not wanted & manager_department_ids(conn, user["id"]):
+        if not wanted & manager_department_ids(conn, user["id"]):
             raise HTTPException(
-                status_code=400, detail="Keep at least one of your departments, or ask the admin to reroute it")
+                status_code=400, detail="Keep at least one of your departments on it")
         conn.execute("DELETE FROM incident_departments WHERE incident_id = ?", (incident_id,))
         conn.executemany(
             "INSERT INTO incident_departments (incident_id, department_id, source, confirmed) "
@@ -678,5 +676,5 @@ def set_incident_assignee(
 
 @router.post("/api/incidents/run")
 def run_now(user: dict = Depends(_reviewer)):
-    """Run a correlation pass now (managers and admin)."""
+    """Run a correlation pass now (managers)."""
     return {"touched": run_correlation()}

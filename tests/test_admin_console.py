@@ -313,11 +313,12 @@ def test_audit_records_incident_reviews(client, monkeypatch):
         confidence=0.8))
     for _ in range(3):
         _raise(client, _signup(client)[0])
-    (incident,) = client.get("/api/incidents", headers=_admin(client)).json()
+    (incident,) = client.get("/api/incidents", headers=_demo(client, "manager")).json()
     client.post(f"/api/incidents/{incident['incident_id']}/review", json={"action": "confirm", "note": "ok"},
                 headers=_demo(client, "manager"))
     client.put(f"/api/incidents/{incident['incident_id']}/departments",
-               json={"department_ids": [_departments(client)["Network"]]}, headers=_admin(client))
+               json={"department_ids": [_departments(client)["Infrastructure"], _departments(client)["Network"]]},
+               headers=_demo(client, "manager"))
     actions = [e["action"] for e in _audit(client, entity="incident")]
     assert actions[:2] == ["incident.departments_changed", "incident.confirm"]
 

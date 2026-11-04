@@ -18,7 +18,7 @@
      closed or merged. The incident becomes resolved / sent and is
      remembered (backend/incident_memory.py).
 
-Who: a manager who can see the incident, the admin, or the technician the
+Who: a manager who can see the incident, or the technician the
 incident is assigned to. Every step is in the audit log.
 """
 
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_staff = auth.require_user("technician", "manager", "admin")
+_staff = auth.require_user("technician", "manager")
 
 UPDATE_SUBJECT = "Update on a service issue you reported"
 AI_UNAVAILABLE = (

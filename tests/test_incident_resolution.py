@@ -127,10 +127,6 @@ def _login(client, email, password):
     return _bearer(res.json()["token"])
 
 
-def _admin(client):
-    return _login(client, "admin@example.com", "admin-dev-password")
-
-
 def _manager(client):
     (p,) = [p for p in seed_data.DEMO_STAFF if p["role"] == "manager"]
     return _login(client, p["email"], p["password"])
@@ -172,7 +168,7 @@ def _incident(client, confirm=True):
     (cluster,) = _query("SELECT * FROM incident_clusters")
     if confirm:
         res = client.post(f"/api/incidents/{cluster['incident_id']}/review",
-                          json={"action": "confirm", "note": "Real outage"}, headers=_admin(client))
+                          json={"action": "confirm", "note": "Real outage"}, headers=_manager(client))
         assert res.status_code == 200, res.text
     return cluster["incident_id"], reporters
 
@@ -236,7 +232,7 @@ def test_cannot_resolve_an_unconfirmed_incident(client, model):
     assert _send(client, incident_id, _manager(client)).status_code == 400
 
 
-def test_only_manager_admin_or_assigned_technician_can_resolve(client, model):
+def test_only_manager_or_assigned_technician_can_resolve(client, model):
     incident_id, reporters = _incident(client)
     assert _draft(client, incident_id, reporters[0][0]).status_code == 403  # customer
     tech_headers, tech = _tech(client)
@@ -485,7 +481,7 @@ def test_dismissed_incident_is_forgotten(client):
     (cluster,) = _query("SELECT incident_id FROM incident_clusters")
     _exec("UPDATE incident_clusters SET status = 'detected'")
     client.post(f"/api/incidents/{cluster['incident_id']}/review",
-                json={"action": "dismiss", "note": "False alarm"}, headers=_admin(client))
+                json={"action": "dismiss", "note": "False alarm"}, headers=_manager(client))
     assert _query("SELECT * FROM incident_memory") == []
 
 

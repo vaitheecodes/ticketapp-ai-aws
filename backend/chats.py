@@ -580,9 +580,9 @@ def escalate_chat(
 
 
 # ---------------------------------------------------------------------------
-# Internal review of AI-resolved chats (technicians and admin)
+# Internal review of AI-resolved chats (technicians and managers, not the admin)
 # ---------------------------------------------------------------------------
-_get_reviewer = auth.require_role("technician", "admin")
+_get_reviewer = auth.require_role("technician", "manager")
 
 _REVIEW_TRANSITIONS = {"pending_review": {"verified", "closed"}, "verified": {"closed"}}
 

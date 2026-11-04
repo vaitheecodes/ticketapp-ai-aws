@@ -1,6 +1,6 @@
 """Admin console API (admin role only, enforced on every endpoint).
 
-  Tickets      all tickets, technician list, reassign, pipeline simulator
+  Tickets      all tickets, technician list, reassign
   Team         technicians and managers: create, edit (name, email, role,
                the manager's one department), deactivate, reset password
   Customers    create, edit, deactivate, reset password
@@ -30,10 +30,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from backend import ai_failures, app_settings, audit, auth, db, graph, runtime, sla
 from backend import ticket_lifecycle as lifecycle
-from backend.ai_service import AIError
 from backend.ai_service import backends as ai_backends
 from backend.conversation import insert_ticket_message
-from backend.email_utils import clean_email
 
 router = APIRouter()
 
@@ -43,12 +41,6 @@ _admin = auth.get_current_admin
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
-class SimulateTicketRequest(BaseModel):
-    ticket_text: str
-    channel: str = "chat"
-    customer_id: str | None = None
-
-
 class ReassignRequest(BaseModel):
     technician_id: str | None = None
 
@@ -186,26 +178,6 @@ def admin_reassign_ticket(ticket_id: str, body: ReassignRequest, admin_id: str =
         return {"ticket_id": ticket_id, "assigned_technician_id": body.technician_id}
     finally:
         conn.close()
-
-
-@router.post("/api/admin/simulate-ticket")
-def admin_simulate_ticket(body: SimulateTicketRequest, admin_id: str = Depends(_admin)):
-    """Run a ticket through the pipeline without persisting it — the
-    per-ticket classify/route trace view."""
-    ticket_text = body.ticket_text.strip()
-    if not ticket_text:
-        raise HTTPException(status_code=400, detail="ticket_text cannot be empty")
-    if body.channel == "email":
-        ticket_text = clean_email(ticket_text)
-    try:
-        return runtime.get_graph().invoke({
-            "ticket_id": f"SIM-{uuid.uuid4().hex[:8]}",
-            "customer_id": body.customer_id or f"SIM-CUST-{uuid.uuid4().hex[:6]}",
-            "channel": body.channel,
-            "ticket_text": ticket_text,
-        })
-    except AIError as exc:
-        raise HTTPException(status_code=503, detail="The AI provider is unavailable right now") from exc
 
 
 # ---------------------------------------------------------------------------

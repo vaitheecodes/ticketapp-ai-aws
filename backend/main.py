@@ -24,6 +24,7 @@ from backend import admin, admin_reports, admin_users, ai_failures, app_settings
 from backend import handoff_signals
 from backend import incidents
 from backend import db_postgres, incident_memory, incident_resolution, rate_limit, runtime, staff_tickets, storage
+from backend import try_ticket
 from backend.ai_service import backends as ai_backends
 from backend.ai_service import provider as ai_provider
 from backend import ticket_lifecycle as lifecycle
@@ -104,6 +105,7 @@ app.include_router(admin.router)
 app.include_router(admin_users.router)
 app.include_router(admin_reports.router)
 app.include_router(incident_resolution.router)
+app.include_router(try_ticket.router)
 
 
 @app.get("/health")
@@ -1115,10 +1117,12 @@ def meta():
 
 
 # ---------------------------------------------------------------------------
-# Debug (dev-only, unauthenticated)
+# Routing policy (public, read-only: the /docs page; /api/debug/... is the
+# older path, kept for existing links)
 # ---------------------------------------------------------------------------
+@app.get("/api/public/routing-policy")
 @app.get("/api/debug/routing-policy")
-def debug_routing_policy():
+def routing_policy():
     """The live routing policy (admin settings applied)."""
     policy = app_settings.get("routing")
     return {

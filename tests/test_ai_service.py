@@ -23,7 +23,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import db, graph, main, runtime
+from backend import db, graph, main, runtime, seed_data
 from backend.ai_service import (
     backends,
     AIError,
@@ -209,9 +209,10 @@ def test_provider_failure_on_new_ticket_still_creates_it_for_a_human(client):
 
 
 def test_simulator_reports_provider_failure_as_503(client):
-    admin = client.post("/api/auth/login", json={"email": "admin@example.com", "password": "admin-dev-password"})
-    res = client.post("/api/admin/simulate-ticket", json={"ticket_text": "agent offline"},
-                      headers={"Authorization": f"Bearer {admin.json()['token']}"})
+    (tech,) = [p for p in seed_data.DEMO_STAFF if p["role"] == "technician"]
+    login = client.post("/api/auth/login", json={"email": tech["email"], "password": tech["password"]})
+    res = client.post("/api/try-a-ticket", json={"ticket_text": "agent offline"},
+                      headers={"Authorization": f"Bearer {login.json()['token']}"})
     assert res.status_code == 503
 
 

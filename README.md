@@ -304,10 +304,10 @@ incident summary, post-incident summary draft, incident-question parsing):
 | Role | Signs in at | Can |
 |---|---|---|
 | Customer | `/login` → `/customer` | chat with the AI, raise tickets with attachments, follow up, reopen, see chat history |
-| Technician | → `/technician` | unassigned / mine / recent / open queues, claim, reply, internal notes, status, AI hand-off panel, chat reviews, incidents assigned to them (resolve & send summary) |
-| Manager (one department) | → `/manager` | incidents for their department (confirm / investigate / dismiss, correct departments, assign a technician, resolve & send the post-incident summary), department tickets and workload (read-only) |
-| Anyone | `/incidents` | public incident history (no login) |
-| Admin (single account) | → `/admin` | ticket dashboard, all tickets (reassign, priority), SLA targets and compliance, users (customers, technicians, managers: create, edit, deactivate, reset password), departments, settings, incidents, activity/audit log, pipeline simulator |
+| Technician | → `/technician` | unassigned / mine / recent / open queues, claim, reply, internal notes, status, AI hand-off panel, chat reviews, incidents assigned to them (resolve & send summary), Try a ticket (`/try-a-ticket`) |
+| Manager (one department) | → `/manager` | incidents for their department (confirm / investigate / dismiss, correct departments, assign a technician, resolve & send the post-incident summary), department tickets and workload (read-only), chat reviews, Try a ticket (`/try-a-ticket`) |
+| Anyone | `/incidents`, `/docs` | public incident history and the read-only docs (routing policy, ticket statuses), no login |
+| Admin (single account) | → `/admin` | ticket dashboard, all tickets (reassign, priority), SLA targets and compliance, users (customers, technicians, managers: create, edit, deactivate, reset password), departments, settings, activity/audit log. No access to chat reviews, incidents or Try a ticket (403) |
 
 **Chat.** A chat is not a ticket. If the customer confirms it's solved, it
 closes with an AI summary and an internal review record (no ticket). If it

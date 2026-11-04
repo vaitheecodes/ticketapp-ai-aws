@@ -39,7 +39,7 @@ There is no signup for staff or the admin: the admin is created from
 |---|---|---|
 | `GET /meta` | public | `{status_labels:{open, in_progress, pending_customer, resolved, closed}, categories:[...]}` |
 | `GET /categories` | public | `["ACCOUNT", "AGENT", ...]` (the 17 KB categories) |
-| `GET /debug/routing-policy` | public (dev aid) | live routing policy: thresholds, high-risk categories, escalation tags, max clarifying rounds, decision order |
+| `GET /public/routing-policy` | public, read-only | live routing policy: thresholds, high-risk categories, escalation tags, max clarifying rounds, decision order (the `/docs/routing-policy` page). `GET /debug/routing-policy` is the older path, same response. |
 
 ## AI chat (customer)
 
@@ -79,8 +79,8 @@ message is kept and nothing else changed.
 | `POST /staff/tickets/{id}/claim` | T | — | workspace. 409 if someone else claimed it first (atomic). |
 | `POST /staff/tickets/{id}/status` | T (owner) | `{status}` | workspace; adds a customer-visible status event |
 | `POST /staff/tickets/{id}/messages` | T | `{body, visibility:"public_reply"\|"internal_note", subject?, set_status?}` | workspace. Public replies: owner only. Notes: any technician; never shown to customers. |
-| `GET /chat-reviews?status=` | T, A | — | AI-resolved chats with summary + transcript |
-| `POST /chat-reviews/{id}` | T, A | `{status:"verified"\|"closed"}` | `pending_review → verified → closed` |
+| `GET /chat-reviews?status=` | T, M | — | AI-resolved chats with summary + transcript |
+| `POST /chat-reviews/{id}` | T, M | `{status:"verified"\|"closed"}` | `pending_review → verified → closed` |
 
 ## Manager
 
@@ -89,21 +89,27 @@ message is kept and nothing else changed.
 | `GET /manager/departments` | M | `[{department_id, name, categories, manager_ids}]` (zero or one) |
 | `GET /manager/overview` | M | `{categories, tickets:[...], workload:[{staff_id, name, open, in_progress, pending_customer, resolved}], unassigned}` for the manager's department. Read-only. |
 
-## Incidents (manager, admin; technician for incidents assigned to them)
+## Incidents (managers; technicians for incidents assigned to them; the admin gets 403)
 
 | Method & path | Request | Response / notes |
 |---|---|---|
 | `GET /incidents?include_dismissed=` | — | `[{incident_id, title, status, category, confidence, started_at, resolved_at, summary_status, visibility, needs_routing, ticket_count, customer_count, first_report, latest_report, departments}]` — managers see their department's clusters and unrouted ones, technicians only those assigned to them; open first, then resolved, then dismissed |
 | `GET /incidents/{id}` | — | list fields + `summary` (narrative, why_related, common_symptoms, affected_services, observed_facts, hypotheses, possible_shared_cause, confidence_reasons, suggested_next_steps), `tickets` (each with `delivery: {status:"sent"\|"failed", error, attempted_at}` once a summary was sent), `affected_customers`, `reviews`, `all_departments`, `assignee`, `technicians`, `resolution` {resolution_note, root_cause, customer_summary, internal_summary, resolved_by}, `can` {review, departments, assign, resolve, visibility} |
-| `POST /incidents/{id}/review` | `{action:"confirm"\|"investigate"\|"dismiss", note}` | M/A. detail. Never changes the linked tickets; not on a resolved incident. |
-| `PUT /incidents/{id}/assignee` | `{technician_id \| null}` | M/A. The technician who may resolve it. |
-| `POST /incidents/{id}/resolution/draft` | `{resolution_note, fixed_at, root_cause?}` | Manager, admin or the assigned technician; **confirmed incidents only**. `fixed_at` is ISO; no offset = IST. Saves the inputs and asks the AI for a draft (customer + internal summary) from the incident facts and the note only. Returns detail + `ai_error` (null, or a message: inputs kept, write the summary by hand). |
+| `POST /incidents/{id}/review` | `{action:"confirm"\|"investigate"\|"dismiss", note}` | M. detail. Never changes the linked tickets; not on a resolved incident. |
+| `PUT /incidents/{id}/assignee` | `{technician_id \| null}` | M. The technician who may resolve it. |
+| `POST /incidents/{id}/resolution/draft` | `{resolution_note, fixed_at, root_cause?}` | A manager or the assigned technician; **confirmed incidents only**. `fixed_at` is ISO; no offset = IST. Saves the inputs and asks the AI for a draft (customer + internal summary) from the incident facts and the note only. Returns detail + `ai_error` (null, or a message: inputs kept, write the summary by hand). |
 | `PUT /incidents/{id}/resolution/summary` | `{customer_summary, internal_summary?, visibility?}` | Edit the draft before it's sent. |
 | `POST /incidents/{id}/resolution/send` | `{customer_summary, mark_tickets_resolved=false}` | Approve & send. `customer_summary` must equal the saved text (409 otherwise). Posts it as a public reply from the Support Team on every linked ticket (email too if `EMAIL_ENABLED=true`), one delivery record per ticket; already-sent tickets are skipped, failures are recorded and don't stop the rest; calling again retries failures only. Incident → `resolved`, summary → `sent`. Optional: mark linked tickets Resolved. Never closes or merges tickets. |
-| `PUT /incidents/{id}/visibility` | `{visibility:"affected_only"\|"public"}` | M/A. |
+| `PUT /incidents/{id}/visibility` | `{visibility:"affected_only"\|"public"}` | M. |
 | `GET /public/incidents` | — | **No login.** Public incidents still in memory: `[{reference, status, category, started_at, resolved_at, summary}]` — nothing about customers or tickets. |
-| `PUT /incidents/{id}/departments` | `{department_ids:[...]}` | detail. Managers must keep their own department; empty = Needs routing (admin). |
-| `POST /incidents/run` | — | `{touched:[incident_id,...]}` — one correlation pass now |
+| `PUT /incidents/{id}/departments` | `{department_ids:[...]}` | M. detail. The manager must keep their own department on it. |
+| `POST /incidents/run` | — | M. `{touched:[incident_id,...]}` — one correlation pass now |
+
+## Try a ticket (technicians, managers)
+
+| Method & path | Request | Response / notes |
+|---|---|---|
+| `POST /try-a-ticket` | `{ticket_text, channel?, customer_id?}` | pipeline trace without saving (category, confidence, route, route_reason, language_tags, ai_response); 503 if the AI is down. Customers and the admin get 403. The page is `/try-a-ticket`. |
 
 ## Admin
 
@@ -128,7 +134,6 @@ and the account must change it at first sign-in.
 | `GET /admin/tickets` | — | every ticket, every field, plus `sla` |
 | `GET /admin/technicians` | — | active technicians with active/resolved counts |
 | `POST /admin/tickets/{id}/reassign` | `{technician_id\|null}` | null returns it to the unassigned queue |
-| `POST /admin/simulate-ticket` | `{ticket_text, channel?, customer_id?}` | pipeline trace without saving; 503 if the AI is down |
 | `GET /admin/staff` | — | `[{staff_id, name, email, role, active, must_change_password, department_id, department_name}]` |
 | `POST /admin/staff` | `{name, email, role:"technician"\|"manager", department_id?}` | plus `temporary_password` (once); forced change at first sign-in |
 | `PATCH /admin/staff/{id}` | any of `{name, email, role, department_id}` | 409 if a technician with open tickets would change role; a role change signs them out |

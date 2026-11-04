@@ -296,7 +296,9 @@ def test_review_workflow_is_staff_only_with_valid_transitions(client, ai_summari
     client.post(f"/api/chats/{chat['session_id']}/resolve", headers=headers)
 
     assert client.get("/api/chat-reviews", headers=headers).status_code == 403
-    assert client.get("/api/chat-reviews", headers=_login(client, "manager")).status_code == 403
+    # The admin has no access to chat reviews; technicians and managers do.
+    assert client.get("/api/chat-reviews", headers=_admin(client)).status_code == 403
+    assert client.get("/api/chat-reviews", headers=_login(client, "manager")).status_code == 200
 
     tech = _login(client, "technician")
     (review,) = client.get("/api/chat-reviews?status=pending_review", headers=tech).json()
@@ -306,9 +308,10 @@ def test_review_workflow_is_staff_only_with_valid_transitions(client, ai_summari
     url = f"/api/chat-reviews/{review['review_id']}"
     assert client.post(url, json={"status": "verified"}, headers=tech).json()["status"] == "verified"
     assert client.post(url, json={"status": "verified"}, headers=tech).status_code == 400
-    assert client.post(url, json={"status": "closed"}, headers=_admin(client)).status_code == 200
+    assert client.post(url, json={"status": "closed"}, headers=_admin(client)).status_code == 403
+    assert client.post(url, json={"status": "closed"}, headers=_login(client, "manager")).status_code == 200
     (row,) = _query("SELECT status, reviewed_by FROM chat_reviews")
-    assert row["status"] == "closed" and row["reviewed_by"].startswith("ADMIN-")
+    assert row["status"] == "closed" and not row["reviewed_by"].startswith("ADMIN-")
 
 
 # ---------------------------------------------------------------------------
