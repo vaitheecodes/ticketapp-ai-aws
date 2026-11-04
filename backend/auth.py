@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -71,6 +72,13 @@ def validate_new_password(password: str) -> None:
             status_code=400,
             detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
         )
+
+
+def generate_temporary_password() -> str:
+    """A random temporary password for an admin-created account or a
+    reset: returned to the admin once, stored only as a bcrypt hash, and
+    the account must change it at first sign-in."""
+    return secrets.token_urlsafe(12)  # 16 characters, ~96 bits
 
 
 def create_token(subject_id: str, role: Role) -> str:

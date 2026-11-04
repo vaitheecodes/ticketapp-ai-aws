@@ -27,7 +27,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend import audit, auth, chats, db, incidents
+from backend import audit, auth, chats, db, incidents, sla
 from backend import ticket_lifecycle as lifecycle
 from backend.repositories import tickets as tickets_repo
 from backend.conversation import (
@@ -114,7 +114,9 @@ _LIST_SELECT = (
     "SELECT t.ticket_id, t.subject, t.ticket_text, t.status, t.priority, t.ticket_type, "
     "COALESCE(t.category, t.requested_category) AS category, t.created_at, "
     "t.assigned_technician_id, c.name AS customer_name, c.email AS customer_email, "
-    "s.name AS assignee_name, "
+    "s.name AS assignee_name, t.first_response_at, t.resolved_at, t.sla_first_response_minutes, "
+    "t.sla_resolution_minutes, t.sla_first_response_due, t.sla_resolution_due, t.sla_paused_at, "
+    "t.sla_paused_seconds, "
     "COALESCE((SELECT MAX(m.created_at) FROM ticket_messages m "
     "          WHERE m.ticket_id = t.ticket_id), t.created_at) AS last_activity "
     "FROM tickets t JOIN customers c ON c.customer_id = t.customer_id "
@@ -159,10 +161,11 @@ def _list_rows(conn, where: str, order: str, params: dict, *, q=None, priority=N
     ).fetchall()
     return [
         {
-            **{k: row[k] for k in row.keys() if k != "ticket_text"},
+            **{k: row[k] for k in row.keys() if k != "ticket_text" and not k.startswith("sla_")},
             "subject": subject_for(row),
             # The hand-off brief (if any) is what a technician scans for.
             "preview": row["ticket_text"].split(f"\n\n{ESCALATION_MARKER}\n", 1)[-1][:300],
+            "sla": sla.evaluate(row),
         }
         for row in rows
     ]
@@ -259,6 +262,7 @@ def _workspace(conn, ticket_id: str, user: dict) -> dict:
             "created_at": ticket["created_at"],
             "customer": {"name": ticket["contact_name"] or customer["name"], "email": customer["email"]},
             "assignee": {"id": owner, "name": names.get(owner)} if owner else None,
+            "sla": sla.evaluate(ticket),
         },
         "messages": messages,
         # Kept apart from the conversation: the technician's AI panel.

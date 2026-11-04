@@ -96,16 +96,16 @@ def _demo_manager(client):
 def _network_manager(client):
     admin = _admin(client)
     email = f"net-mgr-{next(_counter)}@example.com"
-    staff_id = client.post("/api/admin/staff", json={
-        "name": "Network Manager", "email": email, "role": "manager",
-        "temporary_password": "temp-pass-123"}, headers=admin).json()["staff_id"]
+    created = client.post("/api/admin/staff", json={
+        "name": "Network Manager", "email": email, "role": "manager"}, headers=admin).json()
+    staff_id, temp = created["staff_id"], created["temporary_password"]
     depts = client.get("/api/admin/departments", headers=admin).json()["departments"]
     network = next(d for d in depts if d["name"] == "Network")
     client.patch(f"/api/admin/staff/{staff_id}",
                  json={"department_id": network["department_id"]}, headers=admin)
-    headers = _login(client, email, "temp-pass-123")
+    headers = _login(client, email, temp)
     client.post("/api/auth/change-password",
-                json={"current_password": "temp-pass-123", "new_password": "real-pass-456"}, headers=headers)
+                json={"current_password": temp, "new_password": "real-pass-456"}, headers=headers)
     return headers
 
 

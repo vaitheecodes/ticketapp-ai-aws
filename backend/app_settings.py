@@ -1,6 +1,6 @@
 """Admin-editable application settings.
 
-Three sections, each a validated pydantic model stored as JSON in
+Four sections, each a validated pydantic model stored as JSON in
 app_settings (one row per section):
 
   routing    decide_route's escalation conditions: confidence bars,
@@ -10,6 +10,9 @@ app_settings (one row per section):
              how long resolved incidents are remembered
   statuses   display labels for the five ticket statuses (the statuses
              themselves are fixed: the workflow depends on each one)
+  sla        off by default; per priority a first-response and a
+             resolution target, the at-risk threshold and the calendar
+             (24x7 only for now; backend/sla.py)
 
 Precedence: admin value (DB) > environment variable (INCIDENT_*) > code
 default. Values are cached in memory: loaded at startup (load()) and
@@ -24,6 +27,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -85,10 +90,39 @@ class StatusLabels(BaseModel):
     closed: str = Field(default="Closed", min_length=1, max_length=40)
 
 
+_MAX_TARGET_MINUTES = 60 * 24 * 90  # 90 days
+
+
+class SLATarget(BaseModel):
+    first_response_minutes: int = Field(ge=1, le=_MAX_TARGET_MINUTES)
+    resolution_minutes: int = Field(ge=1, le=_MAX_TARGET_MINUTES)
+
+    @model_validator(mode="after")
+    def _resolution_not_before_response(self):
+        if self.resolution_minutes < self.first_response_minutes:
+            raise ValueError("The resolution target can't be shorter than the first-response target")
+        return self
+
+
+class SLASettings(BaseModel):
+    """Applied to tickets created while enabled (backend/sla.py)."""
+
+    enabled: bool = False
+    # Only "24x7" today; business hours go in sla.add_working_time.
+    calendar: Literal["24x7"] = "24x7"
+    # A running target with at least this much of its time used is "at risk".
+    at_risk_percent: int = Field(default=75, ge=1, le=99)
+    urgent: SLATarget = SLATarget(first_response_minutes=30, resolution_minutes=4 * 60)
+    high: SLATarget = SLATarget(first_response_minutes=60, resolution_minutes=8 * 60)
+    medium: SLATarget = SLATarget(first_response_minutes=4 * 60, resolution_minutes=24 * 60)
+    low: SLATarget = SLATarget(first_response_minutes=8 * 60, resolution_minutes=72 * 60)
+
+
 SECTIONS: dict[str, type[BaseModel]] = {
     "routing": RoutingSettings,
     "incidents": IncidentSettings,
     "statuses": StatusLabels,
+    "sla": SLASettings,
 }
 
 _ENV = {

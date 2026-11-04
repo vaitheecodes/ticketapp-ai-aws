@@ -459,6 +459,15 @@ _ADDED_COLUMNS = {
         ("chat_session_id", "TEXT REFERENCES chat_sessions(session_id)"),
         ("ai_summary", "TEXT"),
         ("ai_suggestions", "TEXT"),
+        # SLA and response times (backend/sla.py); Postgres: 0002_sla.sql.
+        ("first_response_at", "TIMESTAMP"),
+        ("resolved_at", "TIMESTAMP"),
+        ("sla_first_response_minutes", "INTEGER"),
+        ("sla_resolution_minutes", "INTEGER"),
+        ("sla_first_response_due", "TIMESTAMP"),
+        ("sla_resolution_due", "TIMESTAMP"),
+        ("sla_paused_at", "TIMESTAMP"),
+        ("sla_paused_seconds", "INTEGER NOT NULL DEFAULT 0"),
     ],
     "customers": [
         ("active", "INTEGER NOT NULL DEFAULT 1"),
@@ -486,12 +495,33 @@ _ADDED_COLUMNS = {
 }
 
 
+# Same backfill as migrations/postgres/0002_sla.sql; idempotent (only
+# NULLs are filled).
+_SLA_BACKFILL = """
+-- First response: the first public reply by a staff member (an incident
+-- broadcast has no author), or by the AI on a ticket it handled.
+UPDATE tickets SET first_response_at = (
+  SELECT MIN(m.created_at) FROM ticket_messages m
+  WHERE m.ticket_id = tickets.ticket_id AND m.visibility = 'public_reply'
+    AND ((m.sender = 'staff' AND m.author_id IS NOT NULL)
+         OR (m.sender = 'ai' AND tickets.route <> 'human')))
+WHERE first_response_at IS NULL;
+-- Resolved: the latest move to Resolved/Closed of a ticket that is still so.
+UPDATE tickets SET resolved_at = COALESCE((
+  SELECT MAX(h.changed_at) FROM ticket_status_history h
+  WHERE h.ticket_id = tickets.ticket_id AND h.to_status IN ('resolved', 'closed')), created_at)
+WHERE resolved_at IS NULL AND status IN ('resolved', 'closed');
+"""
+
+
 def _add_missing_columns(conn) -> None:
     for table, columns in _ADDED_COLUMNS.items():
         existing = _columns(conn, table)
         for name, ddl in columns:
             if name not in existing:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+    conn.executescript(_SLA_BACKFILL)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tickets_created ON tickets(created_at)")
     for old, new in _LEGACY_STATUSES.items():
         conn.execute("UPDATE tickets SET status = ? WHERE status = ?", (new, old))
     # One department per manager: keep each manager's first legacy mapping.

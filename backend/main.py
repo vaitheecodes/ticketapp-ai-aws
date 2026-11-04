@@ -20,7 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
-from backend import admin, ai_failures, app_settings, auth, chats, db, email_utils, graph, handoff_signals
+from backend import admin, admin_reports, admin_users, ai_failures, app_settings, auth, chats, db, email_utils, graph
+from backend import handoff_signals
 from backend import incidents
 from backend import db_postgres, incident_memory, incident_resolution, rate_limit, runtime, staff_tickets, storage
 from backend.ai_service import backends as ai_backends
@@ -100,6 +101,8 @@ app.include_router(chats.router)
 app.include_router(staff_tickets.router)
 app.include_router(incidents.router)
 app.include_router(admin.router)
+app.include_router(admin_users.router)
+app.include_router(admin_reports.router)
 app.include_router(incident_resolution.router)
 
 

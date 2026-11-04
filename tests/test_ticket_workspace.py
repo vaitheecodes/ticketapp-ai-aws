@@ -74,12 +74,12 @@ def _admin(client):
 def _new_technician(client):
     email = f"tech-{next(_counter)}@example.com"
     res = client.post("/api/admin/staff", json={
-        "name": f"Tech {email}", "email": email, "role": "technician", "temporary_password": "temp-pass-123"},
-        headers=_admin(client))
+        "name": f"Tech {email}", "email": email, "role": "technician"}, headers=_admin(client))
     assert res.status_code == 200, res.text
-    headers = _login(client, email, "temp-pass-123")
+    temp = res.json()["temporary_password"]
+    headers = _login(client, email, temp)
     client.post("/api/auth/change-password",
-                json={"current_password": "temp-pass-123", "new_password": "real-pass-456"}, headers=headers)
+                json={"current_password": temp, "new_password": "real-pass-456"}, headers=headers)
     return headers, res.json()["staff_id"]
 
 

@@ -6,12 +6,17 @@
   Customers    create, edit, deactivate, reset password
   Departments  names and KB-category mapping (a category belongs to at
                most one department)
-  Settings     routing policy, incident correlation, status labels
-               (backend/app_settings.py)
+  Settings     routing policy, incident correlation, status labels, SLA
+               targets (backend/app_settings.py)
   Audit log    filterable view of audit_events
 
 Every change here is written to the audit log (backend/audit.py) with
 field names and ids only — never passwords.
+
+Temporary passwords (new accounts, resets) are generated here, returned
+once in the response (`temporary_password`, Cache-Control: no-store) and
+stored only as a hash; the account must change it at first sign-in. The
+unified Users API (backend/admin_users.py) uses the same functions.
 """
 
 from __future__ import annotations
@@ -20,10 +25,10 @@ import json
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
-from backend import ai_failures, app_settings, audit, auth, db, graph, runtime
+from backend import ai_failures, app_settings, audit, auth, db, graph, runtime, sla
 from backend import ticket_lifecycle as lifecycle
 from backend.ai_service import AIError
 from backend.ai_service import backends as ai_backends
@@ -52,7 +57,6 @@ class CreateStaffRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: str = Field(min_length=3, max_length=254)
     role: Literal["technician", "manager"]
-    temporary_password: str
     department_id: str | None = None
 
 
@@ -69,16 +73,11 @@ class UpdateStaffRequest(BaseModel):
 class CreateCustomerRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: str = Field(min_length=3, max_length=254)
-    temporary_password: str
 
 
 class UpdateCustomerRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     email: str | None = Field(default=None, min_length=3, max_length=254)
-
-
-class ResetPasswordRequest(BaseModel):
-    temporary_password: str
 
 
 class DepartmentRequest(BaseModel):
@@ -99,6 +98,14 @@ def _email_taken(conn, email: str, except_id: str | None = None) -> bool:
     return False
 
 
+def with_temporary_password(row: dict, password: str, response: Response | None) -> dict:
+    """The account plus its temporary password, shown to the admin once:
+    the response must not be cached anywhere."""
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store"
+    return {**row, "temporary_password": password}
+
+
 def _department_exists(conn, department_id: str) -> bool:
     return conn.execute(
         "SELECT 1 FROM departments WHERE department_id = ?", (department_id,)
@@ -114,7 +121,7 @@ def admin_tickets(admin_id: str = Depends(_admin)):
     AI hand-off and history come from GET /api/staff/tickets/{id})."""
     conn = db.get_connection()
     try:
-        return [dict(row) for row in conn.execute(
+        return [{**dict(row), "sla": sla.evaluate(row)} for row in conn.execute(
             "SELECT t.*, c.name AS customer_name, c.email AS customer_email, "
             "s.name AS technician_name FROM tickets t "
             "JOIN customers c ON c.customer_id = t.customer_id "
@@ -236,11 +243,15 @@ def admin_list_staff(admin_id: str = Depends(_admin)):
 
 
 @router.post("/api/admin/staff")
-def admin_create_staff(body: CreateStaffRequest, admin_id: str = Depends(_admin)):
+def admin_create_staff(body: CreateStaffRequest, response: Response, admin_id: str = Depends(_admin)):
     """Create a technician or manager (optionally with the manager's
-    department) and a temporary password they must change at first
-    sign-in."""
-    auth.validate_new_password(body.temporary_password)
+    department) with a generated temporary password, returned once, that
+    they must change at first sign-in."""
+    return create_staff(body, admin_id, response)
+
+
+def create_staff(body: CreateStaffRequest, admin_id: str, response: Response | None = None) -> dict:
+    password = auth.generate_temporary_password()
     email = body.email.strip()
     conn = db.get_connection()
     try:
@@ -255,19 +266,23 @@ def admin_create_staff(body: CreateStaffRequest, admin_id: str = Depends(_admin)
         conn.execute(
             "INSERT INTO staff (staff_id, name, email, password_hash, role, active, "
             "must_change_password, department_id) VALUES (?, ?, ?, ?, ?, 1, 1, ?)",
-            (staff_id, body.name.strip(), email, auth.hash_password(body.temporary_password),
+            (staff_id, body.name.strip(), email, auth.hash_password(password),
              body.role, body.department_id),
         )
         audit.record(conn, admin_id, "staff.created", "staff", staff_id,
                      role=body.role, department_id=body.department_id)
         conn.commit()
-        return _staff_rows(conn, staff_id)[0]
+        return with_temporary_password(_staff_rows(conn, staff_id)[0], password, response)
     finally:
         conn.close()
 
 
 @router.patch("/api/admin/staff/{staff_id}")
 def admin_update_staff(staff_id: str, body: UpdateStaffRequest, admin_id: str = Depends(_admin)):
+    return update_staff(staff_id, body, admin_id)
+
+
+def update_staff(staff_id: str, body: UpdateStaffRequest, admin_id: str) -> dict:
     """Edit name/email, change role (assign or remove the Manager role),
     and set a manager's department. A technician who still owns open
     tickets can't become a manager until they're reassigned. Changing the
@@ -320,7 +335,7 @@ def admin_update_staff(staff_id: str, body: UpdateStaffRequest, admin_id: str = 
         conn.close()
 
 
-def _set_staff_active(staff_id: str, active: bool, admin_id: str) -> dict:
+def set_staff_active(staff_id: str, active: bool, admin_id: str) -> dict:
     conn = db.get_connection()
     try:
         _staff_or_404(conn, staff_id)
@@ -336,27 +351,33 @@ def _set_staff_active(staff_id: str, active: bool, admin_id: str) -> dict:
 def admin_deactivate_staff(staff_id: str, admin_id: str = Depends(_admin)):
     """Blocks login and invalidates live sessions immediately. Tickets
     already assigned to them stay put; reassign them from All Tickets."""
-    return _set_staff_active(staff_id, False, admin_id)
+    return set_staff_active(staff_id, False, admin_id)
 
 
 @router.post("/api/admin/staff/{staff_id}/activate")
 def admin_activate_staff(staff_id: str, admin_id: str = Depends(_admin)):
-    return _set_staff_active(staff_id, True, admin_id)
+    return set_staff_active(staff_id, True, admin_id)
 
 
 @router.post("/api/admin/staff/{staff_id}/reset-password")
-def admin_reset_staff_password(staff_id: str, body: ResetPasswordRequest, admin_id: str = Depends(_admin)):
-    auth.validate_new_password(body.temporary_password)
+def admin_reset_staff_password(staff_id: str, response: Response, admin_id: str = Depends(_admin)):
+    """A new generated temporary password, returned once; the old one
+    stops working and the person must change it at next sign-in."""
+    return reset_staff_password(staff_id, admin_id, response)
+
+
+def reset_staff_password(staff_id: str, admin_id: str, response: Response | None = None) -> dict:
+    password = auth.generate_temporary_password()
     conn = db.get_connection()
     try:
         _staff_or_404(conn, staff_id)
         conn.execute(
             "UPDATE staff SET password_hash = ?, must_change_password = 1 WHERE staff_id = ?",
-            (auth.hash_password(body.temporary_password), staff_id),
+            (auth.hash_password(password), staff_id),
         )
         audit.record(conn, admin_id, "staff.password_reset", "staff", staff_id)
         conn.commit()
-        return _staff_rows(conn, staff_id)[0]
+        return with_temporary_password(_staff_rows(conn, staff_id)[0], password, response)
     finally:
         conn.close()
 
@@ -401,10 +422,15 @@ def admin_list_customers(q: str | None = Query(default=None, max_length=200),
 
 
 @router.post("/api/admin/customers")
-def admin_create_customer(body: CreateCustomerRequest, admin_id: str = Depends(_admin)):
-    """Create a customer account with a temporary password they must
-    change at first sign-in (customers can also sign up themselves)."""
-    auth.validate_new_password(body.temporary_password)
+def admin_create_customer(body: CreateCustomerRequest, response: Response, admin_id: str = Depends(_admin)):
+    """Create a customer account with a generated temporary password,
+    returned once, that they must change at first sign-in (customers can
+    also sign up themselves)."""
+    return create_customer(body, admin_id, response)
+
+
+def create_customer(body: CreateCustomerRequest, admin_id: str, response: Response | None = None) -> dict:
+    password = auth.generate_temporary_password()
     email = body.email.strip()
     conn = db.get_connection()
     try:
@@ -414,17 +440,22 @@ def admin_create_customer(body: CreateCustomerRequest, admin_id: str = Depends(_
         conn.execute(
             "INSERT INTO customers (customer_id, name, email, password_hash, active, must_change_password) "
             "VALUES (?, ?, ?, ?, 1, 1)",
-            (customer_id, body.name.strip(), email, auth.hash_password(body.temporary_password)),
+            (customer_id, body.name.strip(), email, auth.hash_password(password)),
         )
         audit.record(conn, admin_id, "customer.created", "customer", customer_id)
         conn.commit()
-        return _customer_rows(conn, "WHERE c.customer_id = ?", (customer_id,))[0]
+        return with_temporary_password(
+            _customer_rows(conn, "WHERE c.customer_id = ?", (customer_id,))[0], password, response)
     finally:
         conn.close()
 
 
 @router.patch("/api/admin/customers/{customer_id}")
 def admin_update_customer(customer_id: str, body: UpdateCustomerRequest, admin_id: str = Depends(_admin)):
+    return update_customer(customer_id, body, admin_id)
+
+
+def update_customer(customer_id: str, body: UpdateCustomerRequest, admin_id: str) -> dict:
     changes = body.model_dump(exclude_unset=True)
     conn = db.get_connection()
     try:
@@ -450,7 +481,7 @@ def admin_update_customer(customer_id: str, body: UpdateCustomerRequest, admin_i
         conn.close()
 
 
-def _set_customer_active(customer_id: str, active: bool, admin_id: str) -> dict:
+def set_customer_active(customer_id: str, active: bool, admin_id: str) -> dict:
     conn = db.get_connection()
     try:
         _customer_or_404(conn, customer_id)
@@ -466,28 +497,33 @@ def _set_customer_active(customer_id: str, active: bool, admin_id: str) -> dict:
 @router.post("/api/admin/customers/{customer_id}/deactivate")
 def admin_deactivate_customer(customer_id: str, admin_id: str = Depends(_admin)):
     """Blocks sign-in and live sessions. Their tickets and chats are kept."""
-    return _set_customer_active(customer_id, False, admin_id)
+    return set_customer_active(customer_id, False, admin_id)
 
 
 @router.post("/api/admin/customers/{customer_id}/activate")
 def admin_activate_customer(customer_id: str, admin_id: str = Depends(_admin)):
-    return _set_customer_active(customer_id, True, admin_id)
+    return set_customer_active(customer_id, True, admin_id)
 
 
 @router.post("/api/admin/customers/{customer_id}/reset-password")
-def admin_reset_customer_password(customer_id: str, body: ResetPasswordRequest,
-                                  admin_id: str = Depends(_admin)):
-    auth.validate_new_password(body.temporary_password)
+def admin_reset_customer_password(customer_id: str, response: Response, admin_id: str = Depends(_admin)):
+    """A new generated temporary password, returned once."""
+    return reset_customer_password(customer_id, admin_id, response)
+
+
+def reset_customer_password(customer_id: str, admin_id: str, response: Response | None = None) -> dict:
+    password = auth.generate_temporary_password()
     conn = db.get_connection()
     try:
         _customer_or_404(conn, customer_id)
         conn.execute(
             "UPDATE customers SET password_hash = ?, must_change_password = 1 WHERE customer_id = ?",
-            (auth.hash_password(body.temporary_password), customer_id),
+            (auth.hash_password(password), customer_id),
         )
         audit.record(conn, admin_id, "customer.password_reset", "customer", customer_id)
         conn.commit()
-        return _customer_rows(conn, "WHERE c.customer_id = ?", (customer_id,))[0]
+        return with_temporary_password(
+            _customer_rows(conn, "WHERE c.customer_id = ?", (customer_id,))[0], password, response)
     finally:
         conn.close()
 
@@ -619,7 +655,7 @@ def admin_get_settings(admin_id: str = Depends(_admin)):
 
 @router.put("/api/admin/settings/{section}")
 def admin_save_settings(
-    section: Literal["routing", "incidents", "statuses"], values: dict, admin_id: str = Depends(_admin)
+    section: Literal["routing", "incidents", "statuses", "sla"], values: dict, admin_id: str = Depends(_admin)
 ):
     """Save a whole section (validated). Applies to the next message,
     correlation run or page load."""
@@ -642,7 +678,7 @@ def admin_save_settings(
 
 
 @router.delete("/api/admin/settings/{section}")
-def admin_reset_settings(section: Literal["routing", "incidents", "statuses"], admin_id: str = Depends(_admin)):
+def admin_reset_settings(section: Literal["routing", "incidents", "statuses", "sla"], admin_id: str = Depends(_admin)):
     """Back to the environment/default values."""
     conn = db.get_connection()
     try:

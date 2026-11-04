@@ -75,10 +75,11 @@ def _headers_for(client, role: str) -> dict:
     return _bearer(res.json()["token"])
 
 
-def _create_staff(client, role="manager", email="new-manager@example.com", password="temp-pass-123"):
+def _create_staff(client, role="manager", email="new-manager@example.com"):
+    """The response carries the generated temporary password, once."""
     return client.post(
         "/api/admin/staff",
-        json={"name": "New Person", "email": email, "role": role, "temporary_password": password},
+        json={"name": "New Person", "email": email, "role": role},
         headers=_admin_headers(client),
     )
 
@@ -240,8 +241,10 @@ def test_admin_creates_manager_who_must_change_password_first(client):
     created = res.json()
     assert created["role"] == "manager"
     assert created["must_change_password"] is True
+    temp = created["temporary_password"]
+    assert len(temp) >= 12 and res.headers["cache-control"] == "no-store"
 
-    login = _login(client, "new-manager@example.com", "temp-pass-123")
+    login = _login(client, "new-manager@example.com", temp)
     assert login.status_code == 200
     body = login.json()
     assert body["role"] == "manager"
@@ -254,7 +257,7 @@ def test_admin_creates_manager_who_must_change_password_first(client):
 
     changed = client.post(
         "/api/auth/change-password",
-        json={"current_password": "temp-pass-123", "new_password": "my-own-pass-456"},
+        json={"current_password": temp, "new_password": "my-own-pass-456"},
         headers=headers,
     )
     assert changed.status_code == 200, changed.text
@@ -268,8 +271,7 @@ def test_only_admin_can_create_users(client, role):
     headers = _headers_for(client, role)
     res = client.post(
         "/api/admin/staff",
-        json={"name": "x", "email": "sneaky@example.com", "role": "manager",
-              "temporary_password": "temp-pass-123"},
+        json={"name": "x", "email": "sneaky@example.com", "role": "manager"},
         headers=headers,
     )
     assert res.status_code == 403
@@ -298,17 +300,15 @@ def test_deactivated_staff_cannot_log_in_and_live_token_stops_working(client):
 
 
 def test_reset_password_forces_change_on_next_login(client):
-    staff_id = _create_staff(client, role="technician", email="t2@example.com").json()["staff_id"]
-    res = client.post(
-        f"/api/admin/staff/{staff_id}/reset-password",
-        json={"temporary_password": "reset-pass-789"},
-        headers=_admin_headers(client),
-    )
+    created = _create_staff(client, role="technician", email="t2@example.com").json()
+    res = client.post(f"/api/admin/staff/{created['staff_id']}/reset-password", headers=_admin_headers(client))
     assert res.status_code == 200
-    login = _login(client, "t2@example.com", "reset-pass-789")
+    reset = res.json()["temporary_password"]
+    assert reset != created["temporary_password"]
+    login = _login(client, "t2@example.com", reset)
     assert login.status_code == 200
     assert login.json()["must_change_password"] is True
-    assert _login(client, "t2@example.com", "temp-pass-123").status_code == 401
+    assert _login(client, "t2@example.com", created["temporary_password"]).status_code == 401
 
 
 # ---------------------------------------------------------------------------

@@ -18,7 +18,6 @@ from fastapi.testclient import TestClient
 from backend import db, email_utils, graph, incidents, main, runtime, seed_data
 
 _counter = itertools.count()
-TEMP_PASSWORD = "temp-secret-pass-123"
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
 
@@ -82,17 +81,17 @@ def _raise(client, headers):
 # ---------------------------------------------------------------------------
 def test_admin_creates_customer_who_must_change_password(client):
     res = client.post("/api/admin/customers", json={
-        "name": "Erin Admin-Made", "email": "erin@example.com", "temporary_password": TEMP_PASSWORD},
-        headers=_admin(client))
+        "name": "Erin Admin-Made", "email": "erin@example.com"}, headers=_admin(client))
     assert res.status_code == 200, res.text
     assert res.json()["must_change_password"] is True
+    temp = res.json()["temporary_password"]
 
-    login = _login(client, "erin@example.com", TEMP_PASSWORD).json()
+    login = _login(client, "erin@example.com", temp).json()
     assert login["role"] == "customer" and login["must_change_password"] is True
     headers = _bearer(login["token"])
     assert client.get("/api/tickets/mine", headers=headers).status_code == 403
     client.post("/api/auth/change-password",
-                json={"current_password": TEMP_PASSWORD, "new_password": "erin-own-pass"}, headers=headers)
+                json={"current_password": temp, "new_password": "erin-own-pass"}, headers=headers)
     assert client.get("/api/tickets/mine", headers=headers).status_code == 200
 
 
@@ -111,8 +110,9 @@ def test_admin_updates_deactivates_and_resets_customers(client):
     client.post(f"{url}/activate", headers=admin)
     assert _login(client, email, "password123").status_code == 200
 
-    client.post(f"{url}/reset-password", json={"temporary_password": TEMP_PASSWORD}, headers=admin)
-    assert _login(client, email, TEMP_PASSWORD).json()["must_change_password"] is True
+    temp = client.post(f"{url}/reset-password", headers=admin).json()["temporary_password"]
+    assert _login(client, email, "password123").status_code == 401  # the old password stops working
+    assert _login(client, email, temp).json()["must_change_password"] is True
 
 
 def test_only_admin_manages_accounts(client):
@@ -129,22 +129,22 @@ def test_admin_creates_manager_with_one_department(client):
     depts = _departments(client)
     res = client.post("/api/admin/staff", json={
         "name": "Nia Network", "email": "nia@example.com", "role": "manager",
-        "temporary_password": TEMP_PASSWORD, "department_id": depts["Network"]}, headers=_admin(client))
+        "department_id": depts["Network"]}, headers=_admin(client))
     assert res.status_code == 200, res.text
     assert res.json()["department_name"] == "Network"
+    temp = res.json()["temporary_password"]
 
-    headers = _bearer(_login(client, "nia@example.com", TEMP_PASSWORD).json()["token"])
+    headers = _bearer(_login(client, "nia@example.com", temp).json()["token"])
     client.post("/api/auth/change-password",
-                json={"current_password": TEMP_PASSWORD, "new_password": "nia-own-pass"}, headers=headers)
+                json={"current_password": temp, "new_password": "nia-own-pass"}, headers=headers)
     assert [d["name"] for d in client.get("/api/manager/departments", headers=headers).json()] == ["Network"]
 
 
 def test_admin_assigns_manager_role_and_department(client):
     admin = _admin(client)
     tech = client.post("/api/admin/staff", json={
-        "name": "Tom", "email": "tom@example.com", "role": "technician", "temporary_password": TEMP_PASSWORD},
-        headers=admin).json()
-    token = _login(client, "tom@example.com", TEMP_PASSWORD).json()["token"]
+        "name": "Tom", "email": "tom@example.com", "role": "technician"}, headers=admin).json()
+    token = _login(client, "tom@example.com", tech["temporary_password"]).json()["token"]
 
     res = client.patch(f"/api/admin/staff/{tech['staff_id']}",
                        json={"role": "manager", "department_id": _departments(client)["Network"]}, headers=admin)
@@ -263,19 +263,19 @@ def test_audit_records_ticket_work(client):
 def test_audit_records_admin_changes_without_secrets(client):
     admin = _admin(client)
     staff = client.post("/api/admin/staff", json={
-        "name": "Audit Me", "email": "audit-me@example.com", "role": "technician",
-        "temporary_password": TEMP_PASSWORD}, headers=admin).json()
+        "name": "Audit Me", "email": "audit-me@example.com", "role": "technician"}, headers=admin).json()
+    passwords = [staff["temporary_password"]]
     client.patch(f"/api/admin/staff/{staff['staff_id']}", json={"name": "Audited"}, headers=admin)
-    client.post(f"/api/admin/staff/{staff['staff_id']}/reset-password",
-                json={"temporary_password": TEMP_PASSWORD}, headers=admin)
+    passwords.append(client.post(f"/api/admin/staff/{staff['staff_id']}/reset-password",
+                                 headers=admin).json()["temporary_password"])
     client.post(f"/api/admin/staff/{staff['staff_id']}/deactivate", headers=admin)
     dept = client.post("/api/admin/departments", json={"name": "Escalations", "categories": []},
                        headers=admin).json()
     client.put(f"/api/admin/departments/{dept['department_id']}",
                json={"name": "Escalations Team", "categories": []}, headers=admin)
     client.delete(f"/api/admin/departments/{dept['department_id']}", headers=admin)
-    client.post("/api/admin/customers", json={"name": "C", "email": "c-audit@example.com",
-                                              "temporary_password": TEMP_PASSWORD}, headers=admin)
+    passwords.append(client.post("/api/admin/customers", json={"name": "C", "email": "c-audit@example.com"},
+                                 headers=admin).json()["temporary_password"])
     client.put("/api/admin/settings/incidents", json={"window_hours": 6, "min_tickets": 3,
                                                        "similarity": 0.15, "routing_confidence": 0.6},
                headers=admin)
@@ -290,7 +290,8 @@ def test_audit_records_admin_changes_without_secrets(client):
     assert updated["detail"]["fields"] == ["name"]
     settings = next(e for e in events if e["action"] == "settings.updated")
     assert settings["detail"]["fields"] == ["window_hours"]
-    assert TEMP_PASSWORD not in json.dumps(events)
+    for password in passwords:  # generated temporary passwords are never in the audit log
+        assert password not in json.dumps(events)
 
 
 def test_audit_records_login_failures(client):

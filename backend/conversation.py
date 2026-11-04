@@ -10,7 +10,7 @@ from typing import Literal
 
 from fastapi import BackgroundTasks
 
-from backend import email_utils, graph, handoff_signals
+from backend import email_utils, graph, handoff_signals, sla
 from backend.ai_service import AIError, grounding, suggest_steps, summarize_conversation, summarize_ticket
 from backend.ai_service.schemas import HandoffSummary, KBCandidate, SuggestStepsInput
 from backend.closing_ack import is_closing_acknowledgment
@@ -105,12 +105,14 @@ def insert_ticket_message(conn, ticket_id: str, sender: str, message: str,
     if visibility is None:
         visibility = "system_event" if sender == "system" else "public_reply"
     message_id = f"MSG-{uuid.uuid4().hex[:8]}"
+    at = now()
     conn.execute(
         "INSERT INTO ticket_messages (message_id, ticket_id, sender, message, created_at, "
         "author_id, visibility, customer_visible, subject) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (message_id, ticket_id, sender, message, now(), author_id, visibility,
+        (message_id, ticket_id, sender, message, at, author_id, visibility,
          int(customer_visible), subject),
     )
+    sla.note_first_response(conn, ticket_id, sender, author_id, visibility, at)
     return message_id
 
 
