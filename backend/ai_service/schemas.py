@@ -48,6 +48,7 @@ class KBCandidate(BaseModel):
     score: float
     handling: str = "answer"
     collect: list[str] = []
+    kind: str | None = None
 
 
 class HistoryItem(BaseModel):

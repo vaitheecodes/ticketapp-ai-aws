@@ -310,6 +310,7 @@ def _kb_candidates_to_dicts(candidates: list[kb_retrieval.KBCandidate]) -> list[
             "score": round(c.score, 3),
             "handling": c.entry.handling,
             "collect": list(c.entry.collect),
+            "kind": c.entry.kind,
         }
         for c in candidates
     ]
@@ -377,10 +378,13 @@ def shares_customer_words(candidate: dict, customer_text: str) -> bool:
 def answers_how_to(candidate: dict, customer_text: str) -> bool:
     """A KB entry that can answer a how-to: about doing something (not a
     fault, not e.g. "how long are APM traces kept"), on the customer's
-    subject."""
+    subject. An entry's own `kind` ("how-to" / "troubleshooting", new
+    entries only) beats the guess from its question's wording."""
     instruction = candidate["instruction"]
-    return (not request_kind.is_fault(instruction) and request_kind.mentions_task(instruction)
-            and shares_customer_words(candidate, customer_text))
+    kind = candidate.get("kind")
+    about_a_task = (kind == "how-to" if kind else
+                    not request_kind.is_fault(instruction) and request_kind.mentions_task(instruction))
+    return about_a_task and shares_customer_words(candidate, customer_text)
 
 
 def handoff_kb_candidates(customer_text: str) -> list[dict]:

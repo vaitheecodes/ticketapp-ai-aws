@@ -338,12 +338,100 @@ credentials, and REPORTING for status pages. Review these when you approve.
 - **Collect:** Exact error text; Endpoint host and method (no tokens); A HAR file of the failing add-monitor attempt, with cookies and tokens removed
 - **Draft answer:** yes, from [/portal/en/kb/articles/how-to-generate-a-har-file](https://support.site24x7.com/portal/en/kb/articles/how-to-generate-a-har-file) (support KB)
 
+## Getting started (how-to)
+
+Setup tasks the canonical KB has no steps for: on the live demo, "how to add a monitor in the monitoring agent" found no entry, and "how to generate a report" matched an entry with no steps. Each entry has `kind: "how-to"` and numbered steps taken only from the page in `source_url`.
+
+### Linux server agent (KB-N0141, `AGENT` / `agent_installation`)
+
+- **Handling:** `answer`, kind `how-to`
+- **Questions:** "How do I install the Site24x7 agent on a Linux server?" · "how to add a linux server monitor" · "set up monitoring for my linux box with the agent" · "add a monitor in the monitoring agent on linux"
+- **Collect:** Linux distribution and version; Whether the agent must run as root or non-root; Exact error shown by the install command, if any
+- **Draft answer:** yes, from [/help/admin/adding-a-monitor/linux-server-monitoring.html](https://www.site24x7.com/help/admin/adding-a-monitor/linux-server-monitoring.html)
+
+### Windows server agent (KB-N0142, `AGENT` / `agent_installation`)
+
+- **Handling:** `answer`, kind `how-to`
+- **Questions:** "How do I install the Site24x7 agent on a Windows server?" · "how to add a windows server monitor" · "set up windows server monitoring with the agent" · "where do I download the windows agent"
+- **Collect:** Windows Server version; Whether a proxy is needed; Exact error shown by the installer, if any
+- **Draft answer:** yes, from [/help/admin/adding-a-monitor/windows-server-monitoring.html](https://www.site24x7.com/help/admin/adding-a-monitor/windows-server-monitoring.html)
+
+### Website (KB-N0143, `WEB_MONITORING` / `website_monitoring`)
+
+- **Handling:** `answer`, kind `how-to`
+- **Questions:** "How do I add a website monitor?" · "how to monitor my website uptime" · "add a URL to monitor" · "set up a website check"
+- **Collect:** The URL to monitor; Check frequency wanted; Error shown by Check and Save, if any
+- **Draft answer:** yes, from [/help/admin/adding-a-monitor/website-monitoring.html](https://www.site24x7.com/help/admin/adding-a-monitor/website-monitoring.html)
+
+### Custom report (KB-N0144, `REPORTING` / `report_dashboard`)
+
+- **Handling:** `answer`, kind `how-to`
+- **Questions:** "How do I generate a report?" · "how to create a custom report" · "make a report of my monitors' metrics" · "how do I export a report as CSV"
+- **Collect:** What the report should show (monitors and metrics); Time period
+- **Draft answer:** yes, from [/help/reports/custom-report.html](https://www.site24x7.com/help/reports/custom-report.html)
+
+### Scheduled report (KB-N0145, `REPORTING` / `report_dashboard`)
+
+- **Handling:** `answer`, kind `how-to`
+- **Questions:** "How do I schedule a report to be emailed?" · "how to send a weekly report automatically" · "set up a scheduled report in PDF" · "email reports every month"
+- **Collect:** Report type; Format (CSV or PDF); How often it should be sent
+- **Draft answer:** yes, from [/help/admin/reports-settings/scheduled-reports.html](https://www.site24x7.com/help/admin/reports-settings/scheduled-reports.html)
+
+### Users (KB-N0146, `ACCOUNT` / `user_management`)
+
+- **Handling:** `answer`, kind `how-to`
+- **Questions:** "How do I add a user to my account?" · "how to invite a team member" · "add a new user and give them a role" · "create a login for a colleague"
+- **Collect:** Role the new user needs; Which monitors they should see; Whether the user is outside the organization
+- **Draft answer:** yes, from [/help/admin/user-management/users.html](https://www.site24x7.com/help/admin/user-management/users.html)
+
+### Notification profile (KB-N0147, `ALERTS` / `alert_configuration`)
+
+- **Handling:** `answer`, kind `how-to`
+- **Questions:** "How do I configure alerts and notifications?" · "how to set up a notification profile" · "choose how and when alerts are sent" · "set an alert delay or escalation"
+- **Collect:** Which statuses should alert; Notification mediums wanted; Delay or escalation wanted
+- **Draft answer:** yes, from [/help/admin/configuration-profiles/notification-profile.html](https://www.site24x7.com/help/admin/configuration-profiles/notification-profile.html)
+
+### User alert group (KB-N0148, `ALERTS` / `alert_configuration`)
+
+- **Handling:** `answer`, kind `how-to`
+- **Questions:** "How do I choose who receives alerts?" · "how to create a user alert group" · "send alerts to my team" · "add people to an alert group"
+- **Collect:** Who should receive the alerts; Which monitors they are for
+- **Draft answer:** yes, from [/help/admin/user-management/user-groups.html](https://www.site24x7.com/help/admin/user-management/user-groups.html)
+
+### Monitor group (KB-N0149, `MONITORING` / `monitor_groups`)
+
+- **Handling:** `answer`, kind `how-to`
+- **Questions:** "How do I create a monitor group?" · "how to group my monitors" · "add monitors to a group" · "organize monitors by application"
+- **Collect:** Which monitors go in the group; Whether subgroups or a dependency are needed
+- **Draft answer:** yes, from [/help/admin/monitor-groups.html](https://www.site24x7.com/help/admin/monitor-groups.html)
+
+### iOS app (KB-N0150, `APM` / `mobile_apm`)
+
+- **Handling:** `answer`, kind `how-to`
+- **Questions:** "How do I add my iOS app for monitoring?" · "how to monitor an iPhone app" · "set up mobile APM for iOS" · "add an IOS app"
+- **Collect:** App name; Whether the project uses CocoaPods; Error shown by pod install or the build, if any
+- **Draft answer:** yes, from [/help/apm/ios-app-optimization.html](https://www.site24x7.com/help/apm/ios-app-optimization.html)
+
+### Android app (KB-N0151, `APM` / `mobile_apm`)
+
+- **Handling:** `answer`, kind `how-to`
+- **Questions:** "How do I add my Android app for monitoring?" · "how to monitor an android app" · "set up mobile APM for Android" · "add an android application"
+- **Collect:** App name; Error shown by the Gradle build, if any
+- **Draft answer:** yes, from [/help/apm/android-app-optimization.html](https://www.site24x7.com/help/apm/android-app-optimization.html)
+
+### APM Insight .NET agent (KB-N0152, `APM` / `apm_setup`)
+
+- **Handling:** `answer`, kind `how-to`
+- **Questions:** "How do I add an APM monitor?" · "how to set up APM Insight for my .NET application" · "install the APM agent on my IIS server" · "monitor my ASP.NET app performance"
+- **Collect:** Windows and IIS version; Error shown by the installer, if any
+- **Draft answer:** yes, from [/help/admin/adding-a-monitor/apm-insight-using-dotnet-agent.html](https://www.site24x7.com/help/admin/adding-a-monitor/apm-insight-using-dotnet-agent.html)
+
 ## Not drafted yet
 
 These are obvious gaps that have no draft. They're good candidates for the next round:
 
 - Azure-specific connection errors (Azure exists in the KB only as a general topic).
 - SMTP, POP and mail delivery monitors.
-- Monitor groups and dependencies (stopping duplicate alerts when a parent is down).
-- Reports and SLA definitions.
+- Monitor dependencies (stopping duplicate alerts when a parent is down); creating a monitor group is drafted (KB-N0149).
+- SLA definitions (custom and scheduled reports are drafted: KB-N0144, KB-N0145).
 - The mobile app and push notifications.

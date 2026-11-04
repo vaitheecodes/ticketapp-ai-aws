@@ -874,6 +874,289 @@
       "source_url": "https://support.site24x7.com/portal/en/kb/articles/how-to-generate-a-har-file",
       "reviewed_at": "2026-11-02T07:52:38+00:00",
       "edited_at": "2026-11-03T06:14:36+00:00"
+    },
+    {
+      "kb_entry_id": "KB-N0141",
+      "status": "draft",
+      "area": "Getting started (how-to)",
+      "category": "AGENT",
+      "intent": "agent_installation",
+      "monitor_type": "Linux server agent",
+      "handling": "answer",
+      "kind": "how-to",
+      "questions": [
+        "How do I install the Site24x7 agent on a Linux server?",
+        "how to add a linux server monitor",
+        "set up monitoring for my linux box with the agent",
+        "add a monitor in the monitoring agent on linux"
+      ],
+      "collect": [
+        "Linux distribution and version",
+        "Whether the agent must run as root or non-root",
+        "Exact error shown by the install command, if any"
+      ],
+      "answer": "1. Go to Server > Server Monitor > Servers (+) > Linux (or Admin > Inventory > Add Monitor > Linux Server Monitoring).\n2. Use the toggle to choose whether the agent is installed and run as root or non-root.\n3. Click Copy to Clipboard, then paste and run the commands on your server to download and install the agent. The same commands work on 32-bit and 64-bit systems.\n4. Once the agent is installed, the server appears under Server > Server Monitor > Servers.",
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/linux-server-monitoring.html",
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+    },
+    {
+      "kb_entry_id": "KB-N0142",
+      "status": "draft",
+      "area": "Getting started (how-to)",
+      "category": "AGENT",
+      "intent": "agent_installation",
+      "monitor_type": "Windows server agent",
+      "handling": "answer",
+      "kind": "how-to",
+      "questions": [
+        "How do I install the Site24x7 agent on a Windows server?",
+        "how to add a windows server monitor",
+        "set up windows server monitoring with the agent",
+        "where do I download the windows agent"
+      ],
+      "collect": [
+        "Windows Server version",
+        "Whether a proxy is needed",
+        "Exact error shown by the installer, if any"
+      ],
+      "answer": "1. Go to Server > Server Monitor > Servers (+) > Windows.\n2. Click Download Site24x7 Windows Server Agent, review the license agreement and click I Accept.\n3. Open the downloaded installer and, when prompted, enter the device key shown on the Add a Windows Server page.\n4. If your organization policy requires it, enter the proxy configuration, then choose the installation folder.\n5. Once the agent is installed, the server appears under Server > Server Monitor > Servers.",
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/windows-server-monitoring.html",
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+    },
+    {
+      "kb_entry_id": "KB-N0143",
+      "status": "draft",
+      "area": "Getting started (how-to)",
+      "category": "WEB_MONITORING",
+      "intent": "website_monitoring",
+      "monitor_type": "Website",
+      "handling": "answer",
+      "kind": "how-to",
+      "questions": [
+        "How do I add a website monitor?",
+        "how to monitor my website uptime",
+        "add a URL to monitor",
+        "set up a website check"
+      ],
+      "collect": [
+        "The URL to monitor",
+        "Check frequency wanted",
+        "Error shown by Check and Save, if any"
+      ],
+      "answer": "1. Go to Web > Website (+).\n2. Enter a Display Name and the Webpage URL to monitor.\n3. Choose the Check Frequency.\n4. Choose the Monitoring Locations; at least one primary location is required.\n5. Click Save, or Check and Save to test the configuration before saving.",
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/website-monitoring.html",
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+    },
+    {
+      "kb_entry_id": "KB-N0144",
+      "status": "draft",
+      "area": "Getting started (how-to)",
+      "category": "REPORTING",
+      "intent": "report_dashboard",
+      "monitor_type": "Custom report",
+      "handling": "answer",
+      "kind": "how-to",
+      "questions": [
+        "How do I generate a report?",
+        "how to create a custom report",
+        "make a report of my monitors' metrics",
+        "how do I export a report as CSV"
+      ],
+      "collect": [
+        "What the report should show (monitors and metrics)",
+        "Time period"
+      ],
+      "answer": "1. Go to Reports > Custom Report (Beta) and click +Create Custom Report.\n2. Choose a Category; all monitors in that category are included.\n3. Click the pencil icon to enter the Report name and Description.\n4. Under Columns, add the Attributes and Resources and set the Time period; under Filter, add any Inventory Filter or Data Filter.\n5. Click Save to open the report in Sheet View.\n6. To export it, click Share This and choose Export CSV, or Email to send it now.",
+      "source_url": "https://www.site24x7.com/help/reports/custom-report.html",
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+    },
+    {
+      "kb_entry_id": "KB-N0145",
+      "status": "draft",
+      "area": "Getting started (how-to)",
+      "category": "REPORTING",
+      "intent": "report_dashboard",
+      "monitor_type": "Scheduled report",
+      "handling": "answer",
+      "kind": "how-to",
+      "questions": [
+        "How do I schedule a report to be emailed?",
+        "how to send a weekly report automatically",
+        "set up a scheduled report in PDF",
+        "email reports every month"
+      ],
+      "collect": [
+        "Report type",
+        "Format (CSV or PDF)",
+        "How often it should be sent"
+      ],
+      "answer": "1. Go to Admin > Report Settings > Scheduled Reports and click Schedule Report.\n2. Enter a Display Name and choose the Report Type (Preview shows the report first).\n3. Choose the resource type and the Report Format: CSV or PDF.\n4. Set the Reporting Period, the Frequency (daily, weekly, monthly or quarterly) and the Reporting Time.\n5. Under Send Report to, choose the contact or user alert group.\n6. Click Save, or Send Now to send the report straight away.",
+      "source_url": "https://www.site24x7.com/help/admin/reports-settings/scheduled-reports.html",
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+    },
+    {
+      "kb_entry_id": "KB-N0146",
+      "status": "draft",
+      "area": "Getting started (how-to)",
+      "category": "ACCOUNT",
+      "intent": "user_management",
+      "monitor_type": "Users",
+      "handling": "answer",
+      "kind": "how-to",
+      "questions": [
+        "How do I add a user to my account?",
+        "how to invite a team member",
+        "add a new user and give them a role",
+        "create a login for a colleague"
+      ],
+      "collect": [
+        "Role the new user needs",
+        "Which monitors they should see",
+        "Whether the user is outside the organization"
+      ],
+      "answer": "1. Go to Admin > User and Alert Management > Users and Alerts and click Add User.\n2. Enter the Contact Name and Email (a Mobile Number is needed for SMS and voice alerts).\n3. Choose a User Role for each product and the resources under Allowed to Access.\n4. Under Associate to User Groups, pick a user alert group, and choose the Notify Medium.\n5. Click Save. A contact outside your organization gets an invitation email to create an account.\nAdding users needs Organization Account Admin rights; Super Admin alone is not enough.",
+      "source_url": "https://www.site24x7.com/help/admin/user-management/users.html",
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving. ACCOUNT is a high-risk category: the AI answers it only above the stricter confidence bar."
+    },
+    {
+      "kb_entry_id": "KB-N0147",
+      "status": "draft",
+      "area": "Getting started (how-to)",
+      "category": "ALERTS",
+      "intent": "alert_configuration",
+      "monitor_type": "Notification profile",
+      "handling": "answer",
+      "kind": "how-to",
+      "questions": [
+        "How do I configure alerts and notifications?",
+        "how to set up a notification profile",
+        "choose how and when alerts are sent",
+        "set an alert delay or escalation"
+      ],
+      "collect": [
+        "Which statuses should alert",
+        "Notification mediums wanted",
+        "Delay or escalation wanted"
+      ],
+      "answer": "A notification profile decides when and how alerts go out.\n1. Go to Admin > Configuration Profiles > Notification Profile and select Add Notification Profile.\n2. Enter a Display Name.\n3. Under Alert Configuration, choose for each status the alerting period and one or more notification mediums.\n4. Optionally set a Notification Delay (polls to wait before alerting), a Persistent Alert and Escalation Settings.\n5. Click Save. Every monitor must be associated with a notification profile; you can use the default one.",
+      "source_url": "https://www.site24x7.com/help/admin/configuration-profiles/notification-profile.html",
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+    },
+    {
+      "kb_entry_id": "KB-N0148",
+      "status": "draft",
+      "area": "Getting started (how-to)",
+      "category": "ALERTS",
+      "intent": "alert_configuration",
+      "monitor_type": "User alert group",
+      "handling": "answer",
+      "kind": "how-to",
+      "questions": [
+        "How do I choose who receives alerts?",
+        "how to create a user alert group",
+        "send alerts to my team",
+        "add people to an alert group"
+      ],
+      "collect": [
+        "Who should receive the alerts",
+        "Which monitors they are for"
+      ],
+      "answer": "A user alert group decides who receives a monitor's alerts.\n1. Go to Admin > User and Alert Management > User Alert Group and click Add Group.\n2. Enter a Display Name and choose the Product.\n3. Under Add Users, pick the users. Users must first be added under Users & Alerts > Add User.\n4. Click Save.\nA user alert group is chosen when you add or edit a monitor, and each group needs at least one user.",
+      "source_url": "https://www.site24x7.com/help/admin/user-management/user-groups.html",
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+    },
+    {
+      "kb_entry_id": "KB-N0149",
+      "status": "draft",
+      "area": "Getting started (how-to)",
+      "category": "MONITORING",
+      "intent": "monitor_groups",
+      "monitor_type": "Monitor group",
+      "handling": "answer",
+      "kind": "how-to",
+      "questions": [
+        "How do I create a monitor group?",
+        "how to group my monitors",
+        "add monitors to a group",
+        "organize monitors by application"
+      ],
+      "collect": [
+        "Which monitors go in the group",
+        "Whether subgroups or a dependency are needed"
+      ],
+      "answer": "1. Go to Admin > Inventory > Monitor Groups and click the (+) icon, or choose Create Group from the dropdown in the top-right corner.\n2. Enter a Display name and Description.\n3. Under Select Monitors, choose at least one monitor; the group's status is based on its monitors.\n4. Optionally add Subgroups (comma-separated names), a Dependency Configuration and the User Alert Group for the group.\n5. Click Save. The group appears in the Monitor Groups list.",
+      "source_url": "https://www.site24x7.com/help/admin/monitor-groups.html",
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+    },
+    {
+      "kb_entry_id": "KB-N0150",
+      "status": "draft",
+      "area": "Getting started (how-to)",
+      "category": "APM",
+      "intent": "mobile_apm",
+      "monitor_type": "iOS app",
+      "handling": "answer",
+      "kind": "how-to",
+      "questions": [
+        "How do I add my iOS app for monitoring?",
+        "how to monitor an iPhone app",
+        "set up mobile APM for iOS",
+        "add an IOS app"
+      ],
+      "collect": [
+        "App name",
+        "Whether the project uses CocoaPods",
+        "Error shown by pod install or the build, if any"
+      ],
+      "answer": "1. Go to the iOS section under the APM tab and click Add Application.\n2. Enter an application name and an Apdex threshold, then save.\n3. On the application screen, click the hamburger icon next to the app name to copy the application key.\n4. Add pod 'Site24x7APM' to your Podfile inside your target block, then run pod install.\n5. In your AppDelegate's didFinishLaunchingWithOptions, start the SDK with your application key: S24APM.start(withAppKey:\"App_Key\", interval: 15)",
+      "source_url": "https://www.site24x7.com/help/apm/ios-app-optimization.html",
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+    },
+    {
+      "kb_entry_id": "KB-N0151",
+      "status": "draft",
+      "area": "Getting started (how-to)",
+      "category": "APM",
+      "intent": "mobile_apm",
+      "monitor_type": "Android app",
+      "handling": "answer",
+      "kind": "how-to",
+      "questions": [
+        "How do I add my Android app for monitoring?",
+        "how to monitor an android app",
+        "set up mobile APM for Android",
+        "add an android application"
+      ],
+      "collect": [
+        "App name",
+        "Error shown by the Gradle build, if any"
+      ],
+      "answer": "1. Go to the Android OS section under the APM tab and click Add Application.\n2. Enter an application name and an Apdex threshold, then click Save.\n3. On the application screen, click the hamburger icon near the application name and copy the key.\n4. In your app-level build.gradle, add implementation 'com.zoho.site24x7:mobileapm:2.2.2', and add https://maven.zohodl.com to the repositories blocks.\n5. In onCreate() of your Application subclass, call Apm.startMonitoring(getApplicationContext(), \"appKey\", uploadInterval), then build the project.",
+      "source_url": "https://www.site24x7.com/help/apm/android-app-optimization.html",
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving. The SDK version (2.2.2) is the one on the page; check it is still current."
+    },
+    {
+      "kb_entry_id": "KB-N0152",
+      "status": "draft",
+      "area": "Getting started (how-to)",
+      "category": "APM",
+      "intent": "apm_setup",
+      "monitor_type": "APM Insight .NET agent",
+      "handling": "answer",
+      "kind": "how-to",
+      "questions": [
+        "How do I add an APM monitor?",
+        "how to set up APM Insight for my .NET application",
+        "install the APM agent on my IIS server",
+        "monitor my ASP.NET app performance"
+      ],
+      "collect": [
+        "Windows and IIS version",
+        "Error shown by the installer, if any"
+      ],
+      "answer": "These steps are for the APM Insight .NET agent on Windows.\n1. Go to APM > APM Insight, click the .NET tab and download the agent .msi file.\n2. Run the .msi file, click Browse to choose the installation folder, and click Next.\n3. Under Startup Options, check Start the Agent if it should start after installation, and click Next.\n4. In the .NET Agent Configuration window, paste the license key from the APM Insight home page and click Save.\n5. All ASP.NET applications on the server are then monitored; data should appear on the APM Insight Edition page within a few minutes.",
+      "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/apm-insight-using-dotnet-agent.html",
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving. Other languages (Java, Node.js, Ruby, ...) have their own help pages; add entries for them separately."
     }
   ]
 }

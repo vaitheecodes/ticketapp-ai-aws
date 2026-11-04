@@ -86,6 +86,7 @@ customer. It logs one warning that points you to the validator.
 | `area` | draft: yes | The group the drafts report uses, such as "Databases". |
 | `monitor_type` | no | The monitor or product the entry is about. |
 | `handling` | no | `answer` (the answer resolves the question) or `escalate_with_info` (it needs someone with account access: collect the details, then hand over). |
+| `kind` | no | `how-to` (doing a task: add, set up, configure, generate) or `troubleshooting` (fixing a fault). A how-to question is answered only from an entry about doing that task; `kind` says so directly instead of leaving it to the wording of the questions (a question with a fault word such as "missing" otherwise counts as troubleshooting). |
 | `collect` | no | A list of what to ask the customer for. These are details the customer can give, never account identifiers. |
 | `example` | no | `true` marks a sample entry. It's checked for shape only and never used. |
 | `notes` | no | Internal notes, such as the source or reviewer. Customers and the AI never see them. |

@@ -31,10 +31,13 @@ NEW_ENTRIES_PATH = Path(__file__).resolve().parent.parent / "data" / "kb" / "new
 
 ID_PATTERN = re.compile(r"^KB-N\d{4}$")
 REQUIRED = ("kb_entry_id", "category", "intent", "questions", "status")
-OPTIONAL = ("example", "notes", "answer", "source_url", "area", "monitor_type", "handling", "collect",
+OPTIONAL = ("example", "notes", "answer", "source_url", "area", "monitor_type", "handling", "kind", "collect",
             "reviewed_at", "retagged_at", "edited_at")
 STATUSES = ("draft", "approved")
 HANDLING = ("answer", "escalate_with_info")
+# "how-to": doing a task (add, set up, configure); "troubleshooting": fixing
+# a fault. Overrides the question-wording guess (request_kind) in retrieval.
+KINDS = ("how-to", "troubleshooting")
 # Official Site24x7 documentation: the help site and the support knowledge base.
 SOURCE_HOSTS = ("www.site24x7.com", "site24x7.com", "support.site24x7.com")
 MIN_ANSWER_CHARS = 40
@@ -149,6 +152,8 @@ def validate(data, existing: list[dict], registry: dict | None = None) -> Report
             problems.append("a draft needs an area (used to group the drafts report)")
         if "handling" in entry and entry["handling"] not in HANDLING:
             problems.append('handling must be "answer" or "escalate_with_info"')
+        if "kind" in entry and entry["kind"] not in KINDS:
+            problems.append('kind must be "how-to" or "troubleshooting"')
         if "collect" in entry and (not isinstance(entry["collect"], list) or not entry["collect"]
                                    or not all(isinstance(c, str) and c.strip() for c in entry["collect"])):
             problems.append("collect must be a non-empty list of text items")
@@ -226,6 +231,7 @@ def validate(data, existing: list[dict], registry: dict | None = None) -> Report
             report.entries.append({"kb_entry_id": kb_id, "category": category, "intent": intent,
                                    "instruction": q, "response": answer.strip(),
                                    "handling": entry.get("handling") or "answer",
+                                   "kind": entry.get("kind"),
                                    "collect": list(entry.get("collect") or [])})
     return report
 

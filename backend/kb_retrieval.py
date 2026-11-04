@@ -133,6 +133,15 @@ class KBEntry:
     # generate_response); `collect` lists those details.
     handling: str = "answer"
     collect: tuple[str, ...] = ()
+    # data/kb/new_entries.json only: "how-to" or "troubleshooting" (None:
+    # guessed from the question's wording, request_kind.is_fault).
+    kind: str | None = None
+
+    @property
+    def is_fault(self) -> bool:
+        if self.kind:
+            return self.kind == "troubleshooting"
+        return request_kind.is_fault(self.instruction)
 
 
 @dataclass(frozen=True)
@@ -168,7 +177,7 @@ class _KBIndex:
         self.entries = entries
         self.topics = topic_ids(entries)
         self._doc_tokens = [_index_tokens(e.instruction) for e in entries]
-        self._faults = [request_kind.is_fault(e.instruction) for e in entries]
+        self._faults = [e.is_fault for e in entries]
 
         doc_freq: Counter = Counter()
         for tokens in self._doc_tokens:
@@ -217,7 +226,8 @@ def build_index(entries: list[dict]) -> "_KBIndex":
     return _KBIndex([
         KBEntry(kb_entry_id=e["kb_entry_id"], category=e["category"], intent=e["intent"],
                 instruction=e["instruction"], response=e["response"] or "",
-                handling=e.get("handling") or "answer", collect=tuple(e.get("collect") or ()))
+                handling=e.get("handling") or "answer", collect=tuple(e.get("collect") or ()),
+                kind=e.get("kind"))
         for e in entries
     ])
 

@@ -99,7 +99,7 @@ def card(entry: dict, registry: dict) -> str:
         "=" * 72,
         f"{entry.get('kb_entry_id')}  [{entry.get('status')}]  area: {entry.get('area')}",
         f"category: {entry.get('category')}   intent: {intent}   monitor type: {entry.get('monitor_type', '-')}",
-        f"handling: {entry.get('handling', '-')}   specific to: "
+        f"handling: {entry.get('handling', '-')}   kind: {entry.get('kind', '-')}   specific to: "
         + ("not registered yet" if specific is None else (", ".join(specific) or "nothing (generic)")),
         "questions:",
         *[f"  - {q}" for q in entry.get("questions", [])],
