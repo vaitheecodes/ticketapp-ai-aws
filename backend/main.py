@@ -405,7 +405,7 @@ def _decide_followup(f: _Followup, message_text: str) -> _FollowupOutcome:
         ai_response = reply["ai_response"]
         # Steps to collect what support needs: the ticket goes to the team now.
         if reply.get("needs_info"):
-            return escalate("kb_needs_info", {"route": "human", "message": ai_response},
+            return escalate(graph.handoff_reason(reply["needs_info"]), {"route": "human", "message": ai_response},
                             _with_ai_line(f.transcript, ai_response),
                             ticket["category"], ticket["confidence"], text=ai_response)
         # An answer that concedes it can't actually help hasn't resolved anything.
@@ -421,7 +421,8 @@ def _decide_followup(f: _Followup, message_text: str) -> _FollowupOutcome:
                         recent_ai_replies=f.recent_ai)
     )
     if result["route"] == "ai" and result.get("needs_info"):
-        return escalate("kb_needs_info", {"route": "human", "message": result["ai_response"]},
+        return escalate(graph.handoff_reason(result["needs_info"]),
+                        {"route": "human", "message": result["ai_response"]},
                         _with_ai_line(f.transcript, result["ai_response"]),
                         result.get("category"), result.get("confidence"),
                         text=result["ai_response"])
@@ -720,7 +721,8 @@ def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_ta
     # the follow-up check in _decide_followup.
     # Steps to collect what support needs ("escalate_with_info" KB entry)
     # go to the team the same way.
-    reason_key = "kb_needs_info" if route == "ai" and result.get("needs_info") else "ai_cannot_resolve"
+    reason_key = (graph.handoff_reason(result["needs_info"]) if route == "ai" and result.get("needs_info")
+                  else "ai_cannot_resolve")
     escalate_for_limitation = route == "ai" and (
         bool(result.get("needs_info")) or handoff_signals.admits_limitation(ai_response or "")
     )
@@ -1126,8 +1128,12 @@ def debug_routing_policy():
         "decision_order": [
             "escalation language tags (hard override -> human, always)",
             f"high-risk category ({'/'.join(policy.high_risk_categories) or 'none'}) "
-            "below its stricter confidence bar -> human immediately, no "
-            "clarify round at all",
+            "below its stricter confidence bar -> an escalate_with_info KB entry "
+            "gives its steps and collect list, then a ticket; a vague first "
+            "report (no error, not a how-to) gets ONE clarifying question, then "
+            "a human; anything else -> human",
+            "a clear how-to request below the base bar -> ai: answered from the "
+            "KB, or 'no KB article' and a ticket (never a clarifying question)",
             "other categories below the base confidence threshold -> "
             "clarify, up to max_clarification_attempts rounds",
             "still below the bar after max attempts -> force human",

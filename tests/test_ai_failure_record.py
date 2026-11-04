@@ -171,7 +171,8 @@ def test_our_filter_rejecting_the_reply_is_not_ai_unavailable(app_client, strict
     res = app_client.post("/api/chats", json={"issue": "My Linux agent stopped sending data"},
                           headers=headers).json()
     assert res["ai_error"] is None and res["status"] == "active"
-    assert res["messages"][-1]["content"] == chat_response.DETAIL_QUESTION
+    # No error was reported ("stopped sending data"): never the exact error message.
+    assert res["messages"][-1]["content"] == chat_response.STEP_QUESTION
     outcomes = [(json.loads(r["detail"])["kind"], json.loads(r["detail"])["outcome"])
                 for r in _audit_rows(res["session_id"]) if r["action"] == "chat.ai_failure"]
     assert outcomes == [("filter_rejected", "regenerated"), ("filter_rejected", "fallback")]

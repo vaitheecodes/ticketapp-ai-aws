@@ -107,15 +107,16 @@ def test_high_risk_category_below_high_risk_bar_escalates_immediately_no_clarify
     assert result["clarification_attempts"] == 0
 
 
-def test_vague_high_risk_ticket_escalates_on_first_call_without_clarifying():
-    """A genuinely vague (low-confidence) high-risk-category ticket must
-    escalate to human on the very first decide_route call — no clarify
-    round at all, clarification_attempts stays at 0."""
+def test_high_risk_ticket_with_nothing_to_clarify_escalates_on_first_call():
+    """A low-confidence high-risk-category ticket with no report to pin
+    down (no ticket text here) escalates to human on the first call: no
+    clarify round, clarification_attempts stays at 0. A vague first report
+    gets one clarifying question first (tests/test_live_chat_review.py)."""
     result = decide_route(
         _state(category="DATA", confidence=0.5, clarification_attempts=0)
     )
     assert result["route"] == "human"
-    assert "no clarification for licensing/data risk" in result["route_reason"]
+    assert "no further clarification for licensing/data risk" in result["route_reason"]
     assert result["clarification_attempts"] == 0
 
 

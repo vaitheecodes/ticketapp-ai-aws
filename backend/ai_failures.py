@@ -5,7 +5,8 @@ Every AIFailure of a turn (provider.start_failure_log) is written to the
 audit log as `chat.ai_failure` / `ticket.ai_failure`: kind, error code
 name, attempts, latency, operation and outcome ("failed" showed the
 customer the "AI unavailable" message; "regenerated" / "fallback" were
-rejected by our own checks and recovered). Never provider message text,
+rejected by our own checks and recovered; "filtered": the reply was sent
+without the steps the KB doesn't support, code ungrounded_steps). Never provider message text,
 secrets or customer text. GET /api/admin/chats/{id} and the admin
 Activity tab show them.
 """

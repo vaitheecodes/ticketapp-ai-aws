@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Literal
@@ -10,7 +11,7 @@ from typing import Literal
 from fastapi import BackgroundTasks
 
 from backend import email_utils, graph, handoff_signals
-from backend.ai_service import AIError, suggest_steps, summarize_conversation, summarize_ticket
+from backend.ai_service import AIError, grounding, suggest_steps, summarize_conversation, summarize_ticket
 from backend.ai_service.schemas import HandoffSummary, KBCandidate, SuggestStepsInput
 from backend.closing_ack import is_closing_acknowledgment
 
@@ -25,6 +26,10 @@ ESCALATION_REASONS = {
     "customer_raised_ticket": "The customer raised a ticket from the chat.",
     "customer_reopened": "The customer reopened a ticket the AI had resolved.",
     "ai_cannot_resolve": "The AI assistant could not resolve the issue.",
+    "kb_no_match": (
+        "No knowledge-base article covers this request; the AI told the customer so "
+        "instead of improvising steps."
+    ),
     "kb_needs_info": (
         "The knowledge base says support needs details from the customer to "
         "investigate; the AI told the customer what to collect and add to this ticket."
@@ -36,13 +41,42 @@ ESCALATION_REASONS = {
 }
 
 
+NO_KB_STEPS = "No KB match - needs triage"
+
+
+def _kb_lines(candidate: KBCandidate, limit: int = 4) -> list[str]:
+    """The KB entry's own sentences, as steps that are grounded by definition."""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", candidate.response) if s.strip()]
+    return sentences[:limit]
+
+
+def handoff_steps(customer_text: str, summary: HandoffSummary, category: str | None) -> list[str]:
+    """Suggested next steps from the KB entries that match what the
+    customer wrote (graph.handoff_kb_candidates), never anything else:
+    "No KB match - needs triage" without one. Model steps the entry doesn't
+    support are dropped; if none are left, the entry's own sentences are
+    the steps. [] when the AI is unavailable."""
+    candidates = [KBCandidate(**c) for c in graph.handoff_kb_candidates(customer_text)]
+    if not candidates:
+        return [NO_KB_STEPS]
+    try:
+        steps = suggest_steps.suggest_steps(
+            SuggestStepsInput(summary=summary, category=category, kb_candidates=candidates)
+        ).steps
+    except AIError:
+        return []
+    return grounding.grounded_steps(steps, grounding.kb_text(candidates[:1])) or _kb_lines(candidates[0])
+
+
 def handoff_brief(kind: Literal["chat", "ticket"], conversation: str, reason_key: str,
                   issue: str, category: str | None) -> tuple[HandoffSummary, list[str]]:
     """The technician's brief for an escalation: an AI summary of the
-    (public) conversation plus KB-grounded next steps. Each part falls
-    back independently, so a hand-off never waits on, or fails because
-    of, the AI provider."""
+    (public) conversation, tidied in code (summarize_conversation.
+    tidy_handoff), plus next steps from matching KB entries only
+    (handoff_steps). Each part falls back independently, so a hand-off
+    never waits on, or fails because of, the AI provider."""
     reason = ESCALATION_REASONS[reason_key]
+    customer_text = graph.customer_authored_text(conversation) or issue
     try:
         if kind == "chat":
             summary = summarize_conversation.summarize_escalation(conversation, reason)
@@ -50,14 +84,8 @@ def handoff_brief(kind: Literal["chat", "ticket"], conversation: str, reason_key
             summary = summarize_ticket.summarize_ticket(conversation, reason)
     except AIError:
         summary = summarize_conversation.fallback_handoff(issue, reason)
-    try:
-        candidates = [KBCandidate(**c) for c in graph.kb_candidates_for(f"{issue}\n{summary.issue}")]
-        steps = suggest_steps.suggest_steps(
-            SuggestStepsInput(summary=summary, category=category, kb_candidates=candidates)
-        ).steps
-    except AIError:
-        steps = []
-    return summary, steps
+    summary = summarize_conversation.tidy_handoff(summary, customer_text)
+    return summary, handoff_steps(customer_text, summary, category)
 
 
 def now() -> str:

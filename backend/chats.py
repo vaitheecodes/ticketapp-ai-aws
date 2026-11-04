@@ -357,14 +357,15 @@ def _decide(turn: _Turn, message_text: str) -> _Outcome:
         return _Outcome("escalate", result=result, summary=summary, steps=steps,
                         reason_key="routing_policy")
 
-    # Steps to collect what support needs ("escalate_with_info" KB entry):
-    # the ticket is raised in the same turn.
+    # Steps to collect what support needs ("escalate_with_info" KB entry),
+    # or a how-to with no KB entry: the ticket is raised in the same turn.
     if result["route"] == "ai" and result.get("needs_info"):
+        reason_key = graph.handoff_reason(result["needs_info"])
         transcript = f"{turn.transcript}\nAgent (AI): {result['ai_response']}"
-        summary, steps = _handoff(transcript, session, "kb_needs_info", result.get("category"))
+        summary, steps = _handoff(transcript, session, reason_key, result.get("category"))
         return _Outcome("escalate", text=result["ai_response"], result=result,
                         last_route=result["route"], summary=summary, steps=steps,
-                        reason_key="kb_needs_info")
+                        reason_key=reason_key)
     # An answer that concedes it can't actually do the thing ("I don't have
     # access to your billing") is a hand-off, not a resolution.
     if result["route"] == "ai" and handoff_signals.admits_limitation(result["ai_response"]):

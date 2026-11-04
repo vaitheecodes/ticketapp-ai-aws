@@ -54,8 +54,10 @@ class _ScriptedModel:
             })
         if "Suggest 2-5 concrete next steps" in system:
             self.calls.append("suggest_steps")
-            return json.dumps({"steps": ["Check agent logs for collector timeouts.",
-                                         "Confirm outbound 443 to the eu-west collector."]})
+            # The second step's port isn't in the KB entry: it is dropped.
+            return json.dumps({"steps": ["Verify that the agent service is running.",
+                                         "Confirm outbound 443 to the eu-west collector.",
+                                         "Confirm the server can reach the required Site24x7 endpoints."]})
         if "spot incidents" in system:
             self.calls.append("correlate")
             ids = re.findall(r"ticket_id: (\S+)", user)
@@ -123,7 +125,8 @@ def test_customer_to_technician_to_manager_journey(client):
     assert row["assignee_name"] is None and row["status"] == "open"
     workspace = client.get(f"/api/staff/tickets/{ticket_id}", headers=tech).json()
     assert workspace["ai"]["summary"]["issue"] == "Server monitors stopped collecting data at 10:00 UTC."
-    assert workspace["ai"]["suggestions"][0] == "Check agent logs for collector timeouts."
+    assert workspace["ai"]["suggestions"] == ["Verify that the agent service is running.",
+                                              "Confirm the server can reach the required Site24x7 endpoints."]
     assert [m["role"] for m in workspace["chat"]["transcript"]] == ["customer", "ai", "customer", "ai"]
 
     # --- 4. Technician claims, replies publicly, adds a private note --------
@@ -142,7 +145,7 @@ def test_customer_to_technician_to_manager_journey(client):
     messages = detail.json()["messages"]
     assert any(m["sender"] == "staff" and "agent log" in m["message"] for m in messages)
     assert PRIVATE_NOTE not in body
-    assert "Check agent logs for collector timeouts" not in body
+    assert "Verify that the agent service is running" not in body
     assert detail.json()["ticket"]["status"] == "pending_customer"
     reply = client.post(f"/api/tickets/{ticket_id}/reply", json={"message": "Log attached shortly."}, headers=ana)
     assert reply.json()["status"] == "open"                      # back with the support team

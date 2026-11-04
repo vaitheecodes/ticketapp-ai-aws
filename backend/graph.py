@@ -47,7 +47,7 @@ from typing import Literal, TypedDict
 from langgraph.graph import END, StateGraph
 from typing_extensions import NotRequired
 
-from backend import app_settings, db, kb_retrieval, topic_terms
+from backend import app_settings, db, email_utils, kb_retrieval, request_kind, topic_terms
 from backend.ai_service import categorize_ticket as categorize_op
 from backend.ai_service import chat_response
 from backend.ai_service.schemas import CATEGORIES as _CATEGORIES
@@ -153,8 +153,10 @@ class TicketState(TypedDict):
 
     ai_response: NotRequired[str]
     # Set by generate_response when the reply was grounded on an
-    # "escalate_with_info" KB entry ({kb_entry_id, collect}): the caller
-    # raises the ticket in the same turn (chats._decide, main.py).
+    # "escalate_with_info" KB entry ({kb_entry_id, collect}), or when a
+    # how-to request has no KB entry at all ({reason: "kb_no_match"}): the
+    # caller raises the ticket in the same turn (chats._decide, main.py;
+    # handoff_reason gives the reason key).
     needs_info: NotRequired[dict | None]
 
 
@@ -253,6 +255,9 @@ def _customer_authored_text(ticket_text: str) -> str:
     return "\n".join(_customer_messages(ticket_text))
 
 
+customer_authored_text = _customer_authored_text  # public: the hand-off brief uses it
+
+
 # Words that say there is a problem without saying what it is. A customer
 # whose messages hold nothing else ("I have an issue", "help", "it's not
 # working") hasn't described a symptom yet.
@@ -310,20 +315,83 @@ def _kb_candidates_to_dicts(candidates: list[kb_retrieval.KBCandidate]) -> list[
     ]
 
 
+def is_how_to(ticket_text: str) -> bool:
+    """The customer wants to add, set up or configure something, with no
+    sign of a fault (backend/request_kind.py), judged on the same text the
+    KB search uses (the latest message, with earlier ones when it is short)."""
+    return request_kind.is_how_to(retrieval_query(ticket_text))
+
+
+def error_reported(ticket_text: str) -> bool:
+    """The customer mentioned an error somewhere in their messages: only
+    then may a reply ask for the exact error message."""
+    return request_kind.error_reported(_customer_authored_text(ticket_text))
+
+
 def retrieve_kb_candidates(state: TicketState) -> dict:
     """Runs before classify_ticket so classification, clarification, and
     response generation can all be grounded in the same retrieved
     evidence instead of each guessing independently. See
-    backend/kb_retrieval.py."""
+    backend/kb_retrieval.py. A how-to request is never matched to a
+    troubleshooting entry."""
     query = retrieval_query(state["ticket_text"])
-    candidates = kb_retrieval.retrieve_candidates(query, top_k=3)
+    candidates = kb_retrieval.retrieve_candidates(query, top_k=3, skip_faults=request_kind.is_how_to(query))
     return {"kb_candidates": _kb_candidates_to_dicts(candidates)}
 
 
-def kb_candidates_for(text: str, top_k: int = 3, category: str | None = None) -> list[dict]:
+def kb_candidates_for(text: str, top_k: int = 3, category: str | None = None,
+                      skip_faults: bool = False) -> list[dict]:
     """KB retrieval for arbitrary text (e.g. grounding a technician's
     suggested next steps in the hand-off brief)."""
-    return _kb_candidates_to_dicts(kb_retrieval.retrieve_candidates(text, top_k=top_k, category=category))
+    return _kb_candidates_to_dicts(kb_retrieval.retrieve_candidates(
+        text, top_k=top_k, category=category, skip_faults=skip_faults))
+
+
+# A KB entry grounds a how-to answer or a technician's suggested steps
+# only if it shares at least half of the customer's informative words, and
+# at least this many when there are three or more: "unable to login after changing
+# license" shares only "license" with the license-usage entry, and "set up
+# APM" only "apm" with the APM trace retention entry: no evidence.
+MIN_SHARED_WORDS = 2
+
+
+def _stems(words) -> set[str]:
+    return {w[:-1] if len(w) > 4 and w.endswith("s") else w for w in words}
+
+
+def _object_words(text: str) -> set[str]:
+    return _stems(w for w in informative_words(text) if w not in request_kind.TASK_WORDS)
+
+
+def shares_customer_words(candidate: dict, customer_text: str) -> bool:
+    """The entry shares half of the customer's informative words, and at
+    least MIN_SHARED_WORDS of three or more, task verbs ("add", "set up")
+    aside."""
+    customer = _object_words(customer_text)
+    needed = min(MIN_SHARED_WORDS, (len(customer) + 1) // 2)
+    entry = _object_words(kb_retrieval._MONITOR_NAME.sub(
+        " ", f"{candidate['instruction']} {candidate['response']}"))
+    return bool(needed) and len(customer & entry) >= needed
+
+
+def answers_how_to(candidate: dict, customer_text: str) -> bool:
+    """A KB entry that can answer a how-to: about doing something (not a
+    fault, not e.g. "how long are APM traces kept"), on the customer's
+    subject."""
+    instruction = candidate["instruction"]
+    return (not request_kind.is_fault(instruction) and request_kind.mentions_task(instruction)
+            and shares_customer_words(candidate, customer_text))
+
+
+def handoff_kb_candidates(customer_text: str) -> list[dict]:
+    """The KB entries that match what the customer wrote, for the
+    technician's suggested next steps: above KB_MIN_SCORE, no topic the
+    customer hasn't mentioned (topic_terms), no troubleshooting entry for
+    a how-to, and enough of the customer's own words in common."""
+    how_to = request_kind.is_how_to(customer_text)
+    return [c for c in kb_candidates_for(customer_text, skip_faults=how_to)
+            if (answers_how_to(c, customer_text) if how_to else shares_customer_words(c, customer_text))
+            and not topic_terms.missing_terms(c, customer_text)]
 
 
 def retrieve_kb_candidates_for_continuation(transcript: str, top_k: int = 3) -> list[dict]:
@@ -335,7 +403,8 @@ def retrieve_kb_candidates_for_continuation(transcript: str, top_k: int = 3) -> 
     the customer's earlier messages carry the topic. Searching on the AI's
     previous reply instead fed the AI's own wording back into retrieval
     and inflated the score of whatever it had already said."""
-    return kb_candidates_for(retrieval_query(transcript), top_k=top_k)
+    query = retrieval_query(transcript)
+    return kb_candidates_for(query, top_k=top_k, skip_faults=request_kind.is_how_to(query))
 
 
 def is_continuation_of_prior_response(message_text: str, prior_ai_response: str) -> bool:
@@ -407,11 +476,24 @@ def classify_ticket(state: TicketState) -> dict:
     }
 
 
+def _info_entry(state: TicketState) -> dict | None:
+    """The top usable KB candidate when it is an "escalate_with_info"
+    entry with an answer (its steps, collect list and safety note are the
+    reply, and the ticket is raised in the same turn)."""
+    if not state.get("ticket_text") or is_vague(state["ticket_text"]):
+        return None
+    usable, _ = grounding_candidates(state)
+    top = usable[0] if usable else None
+    return top if top and top.get("handling") == "escalate_with_info" and top.get("response", "").strip() else None
+
+
 def decide_route(state: TicketState) -> dict:
     confidence = state["confidence"]
     category = state["category"]
     tags = set(state.get("language_tags", []))
     clarification_attempts = state.get("clarification_attempts", 0)
+    ticket_text = state.get("ticket_text", "")
+    how_to = bool(ticket_text) and is_how_to(ticket_text)
 
     policy = app_settings.get("routing")
     max_attempts = policy.max_clarification_attempts
@@ -429,16 +511,45 @@ def decide_route(state: TicketState) -> dict:
             f"escalation language tag(s) present: {sorted(triggered_tags)}"
         )
         clarification_attempts_out = clarification_attempts
+    elif high_risk_below_bar and _info_entry(state):
+        # The KB says what support needs for this: its steps, collect list
+        # and safety note are the reply, and the ticket is raised in the
+        # same turn (generate_response -> needs_info).
+        route, reason = "ai", (
+            f"high-risk category {category!r} below its bar, but the matching KB "
+            "entry is escalate_with_info: its steps and collect list, then a ticket"
+        )
+        clarification_attempts_out = clarification_attempts
+    elif high_risk_below_bar and clarification_attempts == 0 and not how_to \
+            and not error_reported(ticket_text) and ticket_text and not is_vague(ticket_text):
+        # A vague first report ("unable to login after changing license"):
+        # ONE question to pin down what the customer means (which login,
+        # what they see), then the ticket. The AI never answers or
+        # suggests causes on licensing/data (ask_clarifying_question with
+        # high_risk); the next turn still below the bar goes to a human.
+        route, reason = "clarify", (
+            f"high-risk category {category!r} requires confidence >= "
+            f"{policy.high_risk_confidence_threshold}, got {confidence:.2f} — one "
+            "clarifying question on the first message, then a human"
+        )
+        clarification_attempts_out = clarification_attempts + 1
     elif high_risk_below_bar:
-        # Licensing/billing and data-retention ambiguity goes straight to
-        # a human — no clarify round, regardless of clarification_attempts
-        # so far. An AI probing "did you mean upgrading your license or
-        # deleting your data?" on a high-risk ticket is exactly the wrong
-        # place to let the AI keep guessing.
+        # Licensing/billing and data-retention ambiguity goes to a human:
+        # a clear request, a reported error, or the answer to the one
+        # clarifying question. The AI never keeps guessing here.
         route, reason = "human", (
             f"high-risk category {category!r} requires confidence >= "
             f"{policy.high_risk_confidence_threshold}, got {confidence:.2f} — "
-            "escalating immediately, no clarification for licensing/data risk"
+            "escalating, no further clarification for licensing/data risk"
+        )
+        clarification_attempts_out = clarification_attempts
+    elif below_base_bar and how_to:
+        # "How do I add X?" is clear: answer it from the KB, or say there's
+        # no KB entry and hand off (generate_response). Never "are you
+        # referring to...?".
+        route, reason = "ai", (
+            f"confidence {confidence:.2f} for category {category!r} is below the bar, "
+            "but a how-to request is clear: answer from the KB or hand off, no clarifying question"
         )
         clarification_attempts_out = clarification_attempts
     elif below_base_bar and clarification_attempts < max_attempts:
@@ -544,10 +655,14 @@ def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dic
     customer_text = _customer_authored_text(state["ticket_text"])
     candidates = state.get("kb_candidates", [])
     requested = state.get("requested_category")
+    how_to = is_how_to(state["ticket_text"])
     if requested in CATEGORIES:
-        narrowed = kb_candidates_for(retrieval_query(state["ticket_text"]), category=requested)
+        narrowed = kb_candidates_for(retrieval_query(state["ticket_text"]), category=requested,
+                                     skip_faults=how_to)
         if narrowed:
             candidates = narrowed
+    if how_to:  # a how-to is answered only by an entry about doing that task
+        candidates = [c for c in candidates if answers_how_to(c, customer_text)]
     usable, unconfirmed = [], []
     for c in candidates:
         missing = topic_terms.missing_terms(c, customer_text)
@@ -585,13 +700,28 @@ def _reply_context(state: TicketState) -> dict:
         "vague": vague,
         "recent_ai_replies": list(state.get("recent_ai_replies") or [])[-2:],
         "latest_message": messages[-1] if messages else "",
+        "how_to": is_how_to(state["ticket_text"]),
+        "error_reported": error_reported(state["ticket_text"]),
     }
+
+
+NO_KB_REPLY_CHAT = ("There's no article in our knowledge base that covers this yet, so I won't "
+                    "guess at the steps.")
+NO_KB_REPLY_EMAIL = ("There's no article in our knowledge base that covers this yet, so rather than "
+                     "guess at the steps, our support team will look into it and reply here.")
+
+
+def handoff_reason(needs_info: dict | None) -> str:
+    """The escalation reason key for a generate_response `needs_info`."""
+    return "kb_no_match" if (needs_info or {}).get("reason") == "kb_no_match" else "kb_needs_info"
 
 
 def generate_response(state: TicketState) -> dict:
     """The answer, or, when the best grounding is an "escalate_with_info"
     KB entry, numbered steps to collect what support needs plus
-    `needs_info` so the caller raises the ticket in the same turn."""
+    `needs_info` so the caller raises the ticket in the same turn. A clear
+    how-to request with no KB entry gets an honest "no article" reply (no
+    model call, no improvised steps) and is handed off the same way."""
     data = AnswerInput(
         ticket_text=state["ticket_text"],
         category=state.get("category"),
@@ -603,6 +733,11 @@ def generate_response(state: TicketState) -> dict:
         **_reply_context(state),
     )
     top = data.kb_candidates[0] if data.kb_candidates else None
+    if top is None and data.how_to and not data.vague:
+        text = NO_KB_REPLY_EMAIL if data.reply_format == "email" else NO_KB_REPLY_CHAT
+        if data.reply_format == "email":
+            text = email_utils.format_email_reply(data.customer_name, text)
+        return {"ai_response": text, "needs_info": {"kb_entry_id": None, "collect": [], "reason": "kb_no_match"}}
     if top is not None and top.handling == "escalate_with_info" and top.response.strip():
         reply = chat_response.info_request(data)
         return {"ai_response": reply.text,
@@ -617,6 +752,14 @@ def ask_clarifying_question(state: TicketState) -> dict:
     applies) rather than a free-floating meta-question about categories
     that don't exist in this taxonomy. Stored via `ai_response` so it
     flows through the same message path as generate_response's output."""
+    policy = app_settings.get("routing")
+    high_risk = (state.get("category") in policy.high_risk_categories
+                 and state.get("confidence", 0.0) < policy.high_risk_confidence_threshold)
+    context = _reply_context(state)
+    if high_risk:
+        # Licensing/data: no KB topics to choose between and no monitor
+        # type to ask about; one question about what the customer means.
+        context.update(kb_candidates=[], unconfirmed_topics=[], monitor_type_known=True)
     reply = chat_response.clarify(
         ClarifyInput(
             ticket_text=state["ticket_text"],
@@ -624,7 +767,8 @@ def ask_clarifying_question(state: TicketState) -> dict:
             confidence=state.get("confidence", 0.0),
             reply_format=state.get("reply_format", "chat"),
             customer_name=state.get("customer_name"),
-            **_reply_context(state),
+            high_risk=high_risk,
+            **context,
         )
     )
     return {"ai_response": reply.text}

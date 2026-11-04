@@ -53,7 +53,8 @@ class AIFailure:
     (backends.FAILURE_KINDS), an error code name, attempts, latency, the
     operation, and what happened next ("failed": the caller saw an
     AIError; "regenerated"/"fallback": our own check rejected a reply and
-    the chat recovered). Never provider message text or customer text."""
+    the chat recovered; "filtered": steps the KB doesn't support were
+    dropped from a reply that was then sent). Never provider message text or customer text."""
 
     kind: str
     operation: str

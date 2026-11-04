@@ -97,6 +97,11 @@ class AnswerInput(BaseModel):
     # customer's latest message (answered first when it asks a question).
     recent_ai_replies: list[str] = []
     latest_message: str = ""
+    # A how-to request (backend/request_kind.py): no troubleshooting
+    # boilerplate. error_reported: the customer mentioned an error, so a
+    # reply may ask for the exact error text (never otherwise).
+    how_to: bool = False
+    error_reported: bool = True
 
 
 class ClarifyInput(BaseModel):
@@ -121,6 +126,14 @@ class ClarifyInput(BaseModel):
     # customer's latest message (answered first when it asks a question).
     recent_ai_replies: list[str] = []
     latest_message: str = ""
+    # A how-to request (backend/request_kind.py): no troubleshooting
+    # boilerplate. error_reported: the customer mentioned an error, so a
+    # reply may ask for the exact error text (never otherwise).
+    how_to: bool = False
+    error_reported: bool = True
+    # ACCOUNT/DATA below the stricter bar: one question to pin down what
+    # the customer means, then the ticket (graph.decide_route).
+    high_risk: bool = False
 
 
 class ChatReply(BaseModel):

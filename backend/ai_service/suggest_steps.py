@@ -1,6 +1,8 @@
 """suggest_steps: next actions for the technician, grounded in the hand-off
 brief and the closest KB guidance. They are things to check or ask, never
-claimed results."""
+claimed results. Only called with a matching KB entry
+(conversation.handoff_brief), and every step must come from it: steps the
+entry doesn't support are dropped there (ai_service/grounding.py)."""
 
 from __future__ import annotations
 
@@ -13,9 +15,10 @@ def suggest_steps(data: SuggestStepsInput) -> SuggestedSteps:
     return provider.complete_json(
         "Suggest 2-5 concrete next steps for a Site24x7 support technician "
         "picking up this case, in the order they should do them. Phrase each as "
-        "something to check, ask, or try ('Confirm the agent can reach "
-        "plus.site24x7.com on 443'), never as a finding. Skip anything the brief "
-        "says was already tried. Use the kb_guidance block where it applies. "
+        "something to check, ask, or try, never as a finding. Skip anything the "
+        "brief says was already tried. Every step must come from the kb_guidance "
+        "block: never add a hostname, port, limit, number, menu path or setting it "
+        "doesn't contain; a step it doesn't support is removed. "
         f"{GROUNDING_RULES}",
         {
             "category": data.category or "unknown",

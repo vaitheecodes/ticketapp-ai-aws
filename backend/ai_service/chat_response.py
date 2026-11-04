@@ -7,6 +7,12 @@
 - clarify: one targeted question naming the real candidate topics.
 - is_continuation: does a follow-up refer back to the AI's last answer?
 
+Every reply is filtered by code: a request for the exact error message is
+dropped unless the customer reported an error; a how-to answer loses the
+"if you encounter issues..." boilerplate; numbered or bulleted steps the
+top KB entry doesn't support are dropped (ai_service/grounding.py), so an
+answer's steps always come from the knowledge base.
+
 Email-format replies (ticket-type requests) are body-only from the model
 and wrapped here with the fixed greeting/closing/signature, so every
 email has the same frame. Chat replies are a live conversation: no
@@ -20,7 +26,7 @@ import re
 from contextlib import nullcontext
 
 from backend import email_utils
-from backend.ai_service import backends, provider
+from backend.ai_service import backends, grounding, provider
 from backend.ai_service._format import GROUNDING_RULES, history_text, kb_guidance_text
 from backend.ai_service.schemas import (
     AnswerInput,
@@ -54,11 +60,14 @@ _ASKING_RULES = (
     "with account access could use it, even if the kb_guidance block lists it as "
     "a detail to provide). Ask instead for something the customer can tell you "
     "and you can use: the monitor type (website, server, API, ping, port, DNS, "
-    "SSL, cloud, network device, ...), the exact error text, the screen or step "
+    "SSL, cloud, network device, ...), {detail}, the screen or step "
     "where it happens, or what they have already tried. Ask which type of "
     "monitor it is, never which monitor, and never ask the customer to confirm "
     "something they have already told you."
 )
+_ERROR_DETAIL = "the exact error text"
+_NO_ERROR_DETAIL = ("what they see on the screen (the customer hasn't reported an error, so "
+                    "never ask for an error message)")
 # The answer op only: the asking rules above made Nova Lite ask before
 # answering requests the KB guidance fully covered.
 _ANSWER_FIRST = (
@@ -114,7 +123,16 @@ _ASKING = re.compile(r"\b(provide|share|send|give|tell|confirm|let (me|us) know)
                      re.IGNORECASE)
 MONITOR_TYPE_QUESTION = ("What type of monitor is it: website, server, API, ping, port, DNS, "
                          "cloud or network device?")
+# Only when the customer reported an error (request_kind.error_reported).
 DETAIL_QUESTION = "What is the exact error message, and at which screen or step does it appear?"
+STEP_QUESTION = "At which screen or step are you, and what do you see there?"
+# A sentence asking about an error message the customer never mentioned.
+_ERROR_REQUEST = re.compile(r"\berror (message|text|code|details?)s?\b|\bexact error\b|\berror (you|that) (see|get)",
+                            re.IGNORECASE)
+# How-to closing boilerplate: "If you encounter issues, ...", "Let me know if ...".
+_BOILERPLATE = re.compile(
+    r"^\s*(if you (encounter|run into|face|have|experience|hit|get|see|need)\b|feel free\b|let me know if\b"
+    r"|(please )?do(n't| not) hesitate\b|hope this helps\b)", re.IGNORECASE)
 
 
 def _drop_identifier_requests(lines: list[str]) -> tuple[list[str], bool]:
@@ -132,6 +150,29 @@ def _drop_identifier_requests(lines: list[str]) -> tuple[list[str], bool]:
             continue
         out.append(new)
     return out, dropped
+
+
+def _drop_sentences(lines: list[str], unwanted) -> list[str]:
+    """Drop the sentences `unwanted(sentence)` is true for; a line left
+    with nothing but a list marker goes too."""
+    out = []
+    for line in lines:
+        new = " ".join(s for s in _SENTENCE_END.split(line) if not unwanted(s))
+        if new != line and (not new.strip() or _LIST_MARKER_ONLY.match(new)):
+            continue
+        out.append(new)
+    return out
+
+
+def drop_unasked(text: str, error_reported: bool = True, how_to: bool = False) -> str:
+    """Drop requests for an error message the customer never mentioned,
+    and, for a how-to, the "if you encounter issues..." boilerplate."""
+    lines = text.splitlines()
+    if not error_reported:
+        lines = _drop_sentences(lines, lambda s: bool(_ERROR_REQUEST.search(s)))
+    if how_to:
+        lines = _drop_sentences(lines, lambda s: bool(_BOILERPLATE.match(s)))
+    return "\n".join(lines)
 
 
 def _first_question_only(lines: list[str]) -> list[str]:
@@ -153,17 +194,28 @@ def _first_question_only(lines: list[str]) -> list[str]:
     return out
 
 
-def clean_chat_reply(text: str, monitor_type_known: bool = True) -> str:
+def detail_question(monitor_type_known: bool, error_reported: bool) -> str:
+    """The follow-up question to ask: the monitor type when it isn't
+    known, the exact error only when the customer reported one, else
+    where they are and what they see."""
+    if not monitor_type_known:
+        return MONITOR_TYPE_QUESTION
+    return DETAIL_QUESTION if error_reported else STEP_QUESTION
+
+
+def clean_chat_reply(text: str, monitor_type_known: bool = True, error_reported: bool = True,
+                     how_to: bool = False) -> str:
     """Strip greeting lines, the sign-off and signature, [Placeholder]
-    text, requests for identifiers, and every question after the first
-    from a chat reply. A dropped identifier request is replaced by a
-    useful question (the monitor type when it isn't known, else the exact
-    error and where it appears) unless the reply still asks one. A reply
-    with nothing left (only placeholders and pleasantries) is an AI
-    failure."""
+    text, requests for identifiers, error-message requests the customer
+    gave no reason for (drop_unasked), and every question after the
+    first from a chat reply. A dropped identifier request is replaced by
+    a useful question (detail_question) unless the reply still asks one.
+    A reply with nothing left (only placeholders and pleasantries) is an
+    AI failure."""
+    text = drop_unasked(text, error_reported, how_to)
     lines, dropped = _drop_identifier_requests(_PLACEHOLDER.sub("", text).splitlines())
     if dropped and not any("?" in line for line in lines):
-        lines.append(DETAIL_QUESTION if monitor_type_known else MONITOR_TYPE_QUESTION)
+        lines.append(detail_question(monitor_type_known, error_reported))
     lines = _first_question_only(lines)
     while lines and (not lines[0].strip() or _GREETING_LINE.match(lines[0])):
         lines.pop(0)
@@ -184,17 +236,37 @@ def clean_chat_reply(text: str, monitor_type_known: bool = True) -> str:
     return cleaned
 
 
-def _frame(text: str, data: AnswerInput | ClarifyInput) -> ChatReply:
+def _ground(text: str, data: AnswerInput, operation: str) -> str:
+    """An answer's steps must come from the KB entry it was given (the
+    top candidate, the one in the kb_guidance block): unsupported steps
+    are dropped and the drop is recorded for the admin."""
+    grounded, dropped = grounding.ground_steps(text, grounding.kb_text(data.kb_candidates[:1]))
+    if dropped:
+        provider.note_failure(provider.AIFailure(
+            kind="filter_rejected", operation=operation, code="ungrounded_steps", outcome="filtered"))
+    if not re.search(r"[A-Za-z0-9]", grounded):
+        raise provider.AIError("AI reply was only ungrounded steps",
+                               provider.AIFailure(kind="filter_rejected", operation=operation,
+                                                  code="only_ungrounded_steps"))
+    return grounded
+
+
+def _frame(text: str, data: AnswerInput | ClarifyInput, operation: str = "") -> ChatReply:
+    if isinstance(data, AnswerInput):
+        text = _ground(text, data, operation or "answer")
     if data.reply_format == "email":
-        text = email_utils.format_email_reply(data.customer_name, text)
+        text = email_utils.format_email_reply(
+            data.customer_name, drop_unasked(text, data.error_reported, data.how_to))
     else:
-        text = clean_chat_reply(text, monitor_type_known=data.monitor_type_known)
+        text = clean_chat_reply(text, monitor_type_known=data.monitor_type_known,
+                                error_reported=data.error_reported, how_to=data.how_to)
     return ChatReply(text=text)
 
 
 def _asking_rules(data: AnswerInput | ClarifyInput, answering: bool) -> str:
     ask_type_first = not data.monitor_type_known and not (answering and data.kb_candidates)
-    return ((_ANSWER_FIRST if answering and data.kb_candidates else "") + _ASKING_RULES
+    rules = _ASKING_RULES.format(detail=_ERROR_DETAIL if data.error_reported else _NO_ERROR_DETAIL)
+    return ((_ANSWER_FIRST if answering and data.kb_candidates else "") + rules
             + (_MONITOR_TYPE_FIRST if ask_type_first else ""))
 
 
@@ -253,12 +325,16 @@ def _fallback_reply(data: AnswerInput | ClarifyInput) -> ChatReply:
     """A useful question that doesn't repeat a recent reply, else an offer
     of a ticket (chat) or a note that the team will look into it (email)."""
     options = ([open_question(data.monitor_type)] if data.vague else []) + (
-        [MONITOR_TYPE_QUESTION] if not data.monitor_type_known else []) + [DETAIL_QUESTION, TRIED_QUESTION]
+        [MONITOR_TYPE_QUESTION] if not data.monitor_type_known else []) + [
+        DETAIL_QUESTION if data.error_reported else STEP_QUESTION, TRIED_QUESTION]
     for question in options:
-        reply = _frame(question, data)
+        reply = ChatReply(text=email_utils.format_email_reply(data.customer_name, question)
+                          if data.reply_format == "email" else clean_chat_reply(question))
         if not repeats(reply.text, data.recent_ai_replies):
             return reply
-    return _frame(OFFER_TICKET_CHAT if data.reply_format == "chat" else OFFER_TICKET_EMAIL, data)
+    if data.reply_format == "email":
+        return ChatReply(text=email_utils.format_email_reply(data.customer_name, OFFER_TICKET_EMAIL))
+    return ChatReply(text=clean_chat_reply(OFFER_TICKET_CHAT))
 
 
 def _reply(instructions: str, blocks: dict[str, str], data: AnswerInput | ClarifyInput,
@@ -272,7 +348,7 @@ def _reply(instructions: str, blocks: dict[str, str], data: AnswerInput | Clarif
     for attempt in (1, 2):
         try:
             reply = _frame(provider.complete_text(instructions + note, {**blocks, **extra},
-                                                  operation=operation), data)
+                                                  operation=operation), data, operation)
         except provider.AIError as exc:
             if exc.failure is None or exc.failure.kind not in ("parse_schema", "filter_rejected"):
                 raise
@@ -318,6 +394,12 @@ def answer(data: AnswerInput) -> ChatReply:
             "to answer well, ask exactly one short clarifying question instead of "
             f"guessing.{continuation_note}"
         )
+    how_to_note = (
+        "\n\nThis is a how-to request (the customer wants to add, set up or configure "
+        "something), not a fault: nothing is broken. Give the steps the kb_guidance block "
+        "gives and nothing else: no troubleshooting, no request for an error message, and "
+        "no closing line such as 'if you encounter issues...'."
+        if data.how_to else "")
     no_match_note = ""
     if not data.kb_candidates:
         offer = ("offer to raise a ticket so the support team can look into it"
@@ -331,7 +413,7 @@ def answer(data: AnswerInput) -> ChatReply:
     # The customer-facing chat answer may use its own model
     # (BEDROCK_MODEL_ID_CHAT); every other call keeps BEDROCK_MODEL_ID.
     with backends.model_task("chat") if data.reply_format == "chat" else nullcontext():
-        return _answer_reply(data, role, no_match_note)
+        return _answer_reply(data, role, no_match_note + how_to_note)
 
 
 def _answer_reply(data: AnswerInput, role: str, no_match_note: str) -> ChatReply:
@@ -345,7 +427,9 @@ def _answer_reply(data: AnswerInput, role: str, no_match_note: str) -> ChatReply
         "source of truth for order facts. If answering would need a specific fact "
         "you weren't given (an order status, account detail, setting value), say "
         "plainly that you don't have access to it and ask for it, or say a person "
-        f"will need to check — never guess. {GROUNDING_RULES}\n\n"
+        f"will need to check — never guess. {GROUNDING_RULES} Every step you give must "
+        "come from the kb_guidance block: never add a menu path, setting, hostname, port "
+        "or number it doesn't contain; steps it doesn't support are removed.\n\n"
         f"{_asking_rules(data, answering=True)}\n\n{_ASSUMPTION_RULES}",
         {
             "category": data.category or "unknown",
@@ -368,9 +452,29 @@ def _vague_reply(data: AnswerInput | ClarifyInput) -> ChatReply:
     return _fallback_reply(data) if repeats(reply.text, data.recent_ai_replies) else reply
 
 
+_HIGH_RISK_CLARIFY = (
+    "A Site24x7 (infrastructure monitoring product) customer reported a problem about "
+    "their account, licensing, billing or data, and it isn't clear yet what they mean. "
+    "A support ticket will be raised after their answer. Ask exactly ONE short question "
+    "that pins down what is still unknown, using their own words: for a sign-in problem, "
+    "which login (the web console or the mobile app) and what appears on the screen; for "
+    "a vague phrase such as 'changing license', what exactly they changed. Do not suggest "
+    "causes or solutions, do not mention knowledge-base topics, and do not answer the "
+    "request.")
+
+
 def clarify(data: ClarifyInput) -> ChatReply:
     if data.vague:
         return _vague_reply(data)
+    if data.high_risk:
+        return _reply(
+            f"{_HIGH_RISK_CLARIFY}"
+            f"{_EMAIL_BODY_NOTE if data.reply_format == 'email' else ' ' + _CHAT_STYLE}\n\n"
+            f"{_asking_rules(data, answering=False)}",
+            {"customer_details": data.customer_details or "(none)", "ticket": data.ticket_text},
+            data,
+            "clarify",
+        )
     if data.kb_candidates:
         topics = "\n".join(
             f'{i + 1}. [{c.category} / {c.intent}]: e.g. "{c.instruction}"'

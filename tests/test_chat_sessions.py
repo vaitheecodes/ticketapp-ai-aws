@@ -23,7 +23,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import db, graph, main, runtime, seed_data
+from backend import conversation, db, graph, main, runtime, seed_data
 from backend.ai_service import AIError, provider, suggest_steps
 from backend.ai_service import summarize_conversation as summaries
 from backend.ai_service.schemas import ChatResolutionSummary, HandoffSummary, SuggestedSteps
@@ -177,9 +177,11 @@ def test_escalated_chat_creates_unassigned_linked_ticket_with_brief(client, ai_s
     assert ticket["assigned_technician_id"] is None
     assert ticket["chat_session_id"] == chat["session_id"]
     assert json.loads(ticket["ai_summary"])["unresolved_questions"] == ["Is outbound 443 open?"]
-    assert json.loads(ticket["ai_suggestions"]) == _STEPS
+    # No KB entry matches "cancel my licence and refund me": the
+    # technician gets no invented steps, only the triage note.
+    assert json.loads(ticket["ai_suggestions"]) == [conversation.NO_KB_STEPS]
     # Technicians see the brief (incl. next steps) in the queue text.
-    assert "Check the agent log for proxy errors." in ticket["ticket_text"]
+    assert conversation.NO_KB_STEPS in ticket["ticket_text"]
 
     # The customer is told the reference.
     assert ticket_id in chat["messages"][-1]["content"]

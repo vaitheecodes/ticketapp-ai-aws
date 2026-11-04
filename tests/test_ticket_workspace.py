@@ -15,7 +15,7 @@ import threading
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import db, email_utils, main, runtime, seed_data
+from backend import db, email_utils, graph, main, runtime, seed_data
 
 _counter = itertools.count()
 _HUMAN = {"route": "human", "category": "SERVER_MONITORING", "confidence": 0.4, "clarification_attempts": 0}
@@ -337,6 +337,11 @@ def test_escalated_chat_shows_ai_panel_and_transcript_to_technician(client, monk
 
     brief = HandoffSummary(issue="Monitor down")
     monkeypatch.setattr(summarize_conversation, "summarize_escalation", lambda t, r: brief)
+    # Suggested steps come only from a matching KB entry (one is given here).
+    monkeypatch.setattr(graph, "handoff_kb_candidates", lambda text: [{
+        "kb_entry_id": "KB-T1", "category": "MONITORING", "intent": "monitor_down",
+        "instruction": "my monitor is down", "response": "Check probe locations for the monitor.",
+        "score": 0.9, "handling": "answer", "collect": []}])
     monkeypatch.setattr(suggest_steps, "suggest_steps",
                         lambda data: SuggestedSteps(steps=["Check probe locations."]))
     customer = _customer(client)
