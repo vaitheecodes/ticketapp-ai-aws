@@ -307,7 +307,7 @@ incident summary, post-incident summary draft, incident-question parsing):
 | Technician | → `/technician` | unassigned / mine / recent / open queues, claim, reply, internal notes, status, AI hand-off panel, chat reviews, incidents assigned to them (resolve & send summary) |
 | Manager (one department) | → `/manager` | incidents for their department (confirm / investigate / dismiss, correct departments, assign a technician, resolve & send the post-incident summary), department tickets and workload (read-only) |
 | Anyone | `/incidents` | public incident history (no login) |
-| Admin (single account) | → `/admin` | all tickets and reassignment, team and customer accounts, departments, settings, incidents, activity/audit log, pipeline simulator |
+| Admin (single account) | → `/admin` | ticket dashboard, all tickets (reassign, priority), SLA targets and compliance, users (customers, technicians, managers: create, edit, deactivate, reset password), departments, settings, incidents, activity/audit log, pipeline simulator |
 
 **Chat.** A chat is not a ticket. If the customer confirms it's solved, it
 closes with an AI summary and an internal review record (no ticket). If it
@@ -423,8 +423,13 @@ and clicking through each portal in a browser at desktop and phone widths.
 - Post-incident summaries (AI draft, staff edit, approve & send to every
   linked ticket, idempotent with per-ticket delivery status), incident
   memory answering "was there an outage?", public incident history page.
-- Admin console: tickets, team, customers, departments, settings (routing
-  policy, incident settings, status labels), incidents, audit log.
+- Admin console: ticket dashboard (status, priority, per-day volume, open
+  work by technician, first-response and resolution times), users with
+  one-time temporary passwords, optional SLA per priority (24x7 clock,
+  paused while waiting on the customer, compliance and at-risk lists, SLA
+  shown on staff ticket cards), departments, settings, incidents, audit log.
+- Light and dark themes (follows the OS, or forced from the header);
+  design tokens and contrast checks in `docs/DESIGN_SYSTEM.md`.
 - Modular, validated AI service; graceful AI failure everywhere.
 
 ## Known limitations

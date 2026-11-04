@@ -377,16 +377,49 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   parent `/uploads`) with random names. Covered by
   `tests/test_customer_tickets.py`.
 
+- **Admin area: users, dashboard, SLA** (`backend/admin_users.py`,
+  `backend/admin_reports.py`, `backend/sla.py`; `UsersPanel`,
+  `DashboardPanel`, `SlaPanel`, `OneTimePassword`, `ui/SlaChip`). Every
+  endpoint admin-only on the server. **Users**: one list of customers,
+  technicians and managers (`/api/admin/users`, same functions as the
+  older `/api/admin/staff` and `/api/admin/customers`); never the admin
+  (env-seeded) and never role `admin`. Create and reset generate the
+  temporary password server-side (`auth.generate_temporary_password`),
+  returned once with `Cache-Control: no-store`, stored only hashed, never
+  in a list or the audit log; forced change at first sign-in.
+  Deactivated users can't sign in, tickets kept. **Dashboard**
+  (`/api/admin/dashboard`): counts by status/priority, created/resolved
+  per day, open by priority and technician, average first-response and
+  resolution time per priority, date range + priority filters; aggregated
+  in Python so it runs the same on SQLite and Postgres. **SLA** (settings
+  section `sla`, off by default): per priority a first-response and a
+  resolution target; a ticket gets targets and due times at creation
+  (`ticket_lifecycle.record_created` -> `sla.on_created`), a priority
+  change recalculates from creation (`set_priority`); first response =
+  first public reply by a staff member (or the AI on an AI-handled
+  ticket), via `conversation.insert_ticket_message`; the resolution clock
+  pauses in Pending Customer and Resolved/Closed (`set_status` ->
+  `sla.on_status_changed`). Calendar 24x7 only; `sla.add_working_time` /
+  `working_seconds` are where business hours go. States on_track /
+  at_risk (`at_risk_percent`, default 75) / breached / met / paused;
+  `/api/admin/sla` gives compliance, totals and the near-breach list;
+  `sla` is on admin and staff ticket payloads, never customer ones. New
+  ticket columns (`first_response_at`, `resolved_at`, `sla_*`):
+  `db._ADDED_COLUMNS` + backfill for SQLite,
+  `migrations/postgres/0002_sla.sql` for Postgres. Covered by
+  `tests/test_admin_area.py` (run on Postgres with
+  `DB_BACKEND=postgres`).
 - **Admin portal** (`frontend/src/pages/AdminPortal.jsx`): the single
-  admin (see Auth) — four tabs: **All Tickets** (`GET /api/admin/tickets`,
+  admin (see Auth). Tabs: **Dashboard**, **All Tickets** (`GET /api/admin/tickets`,
   every field, every customer — including a **Technician** column with a live dropdown to
   (re)assign or unassign any human-routed ticket via
   `POST /api/admin/tickets/{id}/reassign`; picking "Unassigned" sends it
-  back to the open queue), **Team** (`components/TeamPanel.jsx`: create
-  technicians/managers with a temporary password, deactivate/reactivate,
-  reset password, edit role and the manager's one department; create/edit/delete
+  back to the open queue; a **Priority** dropdown and the **SLA** state),
+  **SLA**, **Users** (see the admin-area bullet above), **Departments**
+  (`components/DepartmentsPanel.jsx`: create/edit/delete
   departments and their KB-category mapping — each category belongs to
-  at most one department, enforced server-side), **Try a Ticket**
+  at most one department, enforced server-side), Chat Reviews, Incidents,
+  Activity, Settings, **Try a Ticket**
   (`POST /api/admin/simulate-ticket` — runs a ticket through the live
   pipeline with real Azure OpenAI calls without persisting it, and shows
   category/confidence/route/route_reason/language_tags; this is the
@@ -397,8 +430,14 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   an ai/clarify ticket was never queued for a human, so there's nothing
   to hand off.
 
-- **Frontend design system** (`frontend/src/index.css`,
-  `components/Icons.jsx`): Fira Sans (Google Fonts, loaded in
+- **Frontend design system** (`frontend/src/styles/tokens.css`,
+  `index.css`, `components/Icons.jsx`; spec and contrast table in
+  `docs/DESIGN_SYSTEM.md`): two themes, light by default, dark from
+  `prefers-color-scheme`, `[data-theme]` on `<html>` forcing either
+  (`components/ThemeToggle.jsx` System/Light/Dark, `utils/theme.js`, a
+  boot script in `index.html` so a forced theme doesn't flash); a neutral
+  graphite/paper palette with one restrained blue accent, rectangular
+  status/priority/SLA lozenges. Fira Sans (Google Fonts, loaded in
   `index.html`) — chosen over Inter/Roboto/the usual defaults, which
   read as generic in AI-generated UIs. Real hand-authored SVG icons
   (`Icons.jsx`) instead of emoji/unicode glyphs — every icon there is
