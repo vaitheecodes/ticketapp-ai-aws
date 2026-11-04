@@ -20,6 +20,13 @@ best-matching entry, so the top results are distinct topics.
 
 A best score below KB_MIN_SCORE (default 0.35) is not a match: nothing
 is returned, and callers treat that as "no close KB match".
+
+Monitor names the data pipeline filled into KB questions
+("App-Server-04", "API-Gateway-EU") are not topic words: "I need to add
+IOS app" matched three unrelated entries on "app" alone. They are left
+out of the index. A how-to search (skip_faults) leaves out entries whose
+question reports a fault, so "add an APM monitor" isn't answered from
+"APM monitor is showing down".
 """
 
 from __future__ import annotations
@@ -34,6 +41,8 @@ from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+
+from backend import request_kind
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +108,16 @@ def _tokenize(text: str) -> list[str]:
     return [t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS]
 
 
+# A filled-in monitor name: two or more hyphenated parts, each starting
+# with a capital letter or a digit ("App-Server-04", "K8s-Cluster-Prod").
+# Lower-case words such as "third-party" are kept.
+_MONITOR_NAME = re.compile(r"\b[A-Z0-9][A-Za-z0-9]*(?:-[A-Z0-9][A-Za-z0-9]*)+\b")
+
+
+def _index_tokens(instruction: str) -> list[str]:
+    return _tokenize(_MONITOR_NAME.sub(" ", instruction))
+
+
 tokenize = _tokenize  # public: also used for incident lexical similarity
 
 
@@ -148,7 +167,8 @@ class _KBIndex:
     def __init__(self, entries: list[KBEntry]):
         self.entries = entries
         self.topics = topic_ids(entries)
-        self._doc_tokens = [_tokenize(e.instruction) for e in entries]
+        self._doc_tokens = [_index_tokens(e.instruction) for e in entries]
+        self._faults = [request_kind.is_fault(e.instruction) for e in entries]
 
         doc_freq: Counter = Counter()
         for tokens in self._doc_tokens:
@@ -168,9 +188,10 @@ class _KBIndex:
         return Counter({t: c * self._idf.get(t, 1.0) for t, c in tf.items()})
 
     def search(self, text: str, top_k: int = 3, min_score: float = 0.0,
-               category: str | None = None) -> list[KBCandidate]:
+               category: str | None = None, skip_faults: bool = False) -> list[KBCandidate]:
         """Up to top_k distinct topics scoring at least min_score, each as
-        its best-matching entry; only entries of `category` when given."""
+        its best-matching entry; only entries of `category` when given;
+        no entry whose question reports a fault with skip_faults."""
         query_vec = self._vectorize(_tokenize(text))
         if not query_vec:
             return []
@@ -179,10 +200,10 @@ class _KBIndex:
             return []
 
         best: dict[int, KBCandidate] = {}
-        for entry, topic, doc_vec, doc_norm in zip(
-            self.entries, self.topics, self._doc_vectors, self._doc_norms
+        for entry, topic, doc_vec, doc_norm, fault in zip(
+            self.entries, self.topics, self._doc_vectors, self._doc_norms, self._faults
         ):
-            if doc_norm == 0 or (category is not None and entry.category != category):
+            if doc_norm == 0 or (category is not None and entry.category != category) or (skip_faults and fault):
                 continue
             dot = sum(w * doc_vec.get(t, 0.0) for t, w in query_vec.items())
             score = dot / (query_norm * doc_norm)
@@ -218,15 +239,17 @@ def _load_index() -> "_KBIndex | None":
 
 
 def retrieve_candidates(ticket_text: str, top_k: int = 3, min_score: float | None = None,
-                        category: str | None = None) -> list[KBCandidate]:
+                        category: str | None = None, skip_faults: bool = False) -> list[KBCandidate]:
     """Top-k distinct KB topics (by TF-IDF cosine similarity) for
     `ticket_text`, none scoring below `min_score` (default KB_MIN_SCORE).
     Returns [] if data/kb/kb_entries.json hasn't been exported yet or
     nothing matches closely enough — callers must treat an empty list as
     "no close KB match": no grounding, not an error. `category` limits the
-    search to that category's entries."""
+    search to that category's entries; `skip_faults` (a how-to request)
+    leaves out entries whose question reports a fault."""
     index = _load_index()
     if index is None:
         return []
     floor = kb_min_score() if min_score is None else min_score
-    return index.search(ticket_text, top_k=top_k, min_score=floor, category=category)
+    return index.search(ticket_text, top_k=top_k, min_score=floor, category=category,
+                        skip_faults=skip_faults)
