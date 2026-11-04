@@ -1,99 +1,38 @@
 /* ===========================================================================
-   Design tokens — Site24x7 Ticket Resolution Agent
+   Design tokens — ticketapp-ai (Site24x7-style help desk)
    ===========================================================================
-   Dark-committed: this is an operations console (support agents triaging a
-   queue, an admin scanning hundreds of rows), and the whole genre it belongs
-   to — Linear, Vercel, the Intercom/Zendesk agent inbox — is read in a dark
-   room on a second monitor. One theme, tuned properly, beats two tuned
-   halfway.
+   Two themes, one vocabulary. Light is the default; dark follows the OS;
+   [data-theme="light"|"dark"] on <html> forces either (see ThemeToggle).
+   Every text token clears WCAG AA 4.5:1 on every surface it may sit on, and
+   every border/ring/chart token used as the only boundary clears 3:1 —
+   ratios in docs/DESIGN_SYSTEM.md §3.
 
-   Contrast is measured, not eyeballed. Every foreground token below clears
-   WCAG AA 4.5:1 against every surface it is allowed to sit on. Two results
-   worth knowing before you reach for a color:
-
-     - accent-500 (#6366f1) is 4.09:1 on the card surface. It is a FILL, never
-       text. Accent text and icons use accent-400 (#818cf8, 6.12:1).
-     - White on accent-500 is 4.47:1 — just short. The primary button fills
-       with accent-600 (#5457ea, 5.2:1) and lightens to accent-550 on hover,
-       so the label passes in every state.
+   Rule that survives from the dark-only era: accent-500/550/600/700 are
+   FILLS. Accent TEXT and icons use accent-400 (which is dark blue in light
+   mode and light blue in dark mode).
    ========================================================================= */
 
+/* --- theme-independent: type, space, radius, motion, semantic aliases ---- */
 :root {
-  color-scheme: dark;
-
-  /* --- surfaces -----------------------------------------------------------
-     A ladder off one cool near-black, ~7-10 RGB points per rung, so panels
-     read as layered without any rung announcing itself. `input` sits BELOW
-     `raised`: a field should look recessed into its card, not stacked on it. */
-  --surface-page: #0b0d12;
-  --surface-raised: #12151c;
-  --surface-overlay: #191d26;
-  --surface-input: #0e1116;
-  --surface-hover: rgba(255, 255, 255, 0.035);
-  --surface-active: rgba(255, 255, 255, 0.06);
-
-  /* --- borders ----------------------------------------------------------- */
-  --border-subtle: #1c212a;
-  --border-default: #262c38;
-  --border-strong: #343b4a;
-
-  /* --- text -------------------------------------------------------------- */
-  --text-primary: #e8eaf0;
-  --text-secondary: #a9b1c0;
-  --text-tertiary: #868fa0;
-  --text-on-accent: #ffffff;
-
-  /* --- accent ------------------------------------------------------------ */
-  --accent-300: #a5b4fc;
-  --accent-400: #818cf8; /* accent text + icons */
-  --accent-500: #6366f1; /* identity: active rails, dots, soft fills */
-  --accent-550: #6063f0; /* primary button hover */
-  --accent-600: #5457ea; /* primary button rest */
-  --accent-700: #4338ca; /* primary button pressed */
-  --accent-soft: rgba(99, 102, 241, 0.14);
-  --accent-soft-strong: rgba(99, 102, 241, 0.22);
-  --accent-ring: rgba(129, 140, 248, 0.4);
-
-  /* --- status ------------------------------------------------------------
-     One vocabulary, used everywhere a ticket appears: the customer's past
-     tickets, the agent queue, the admin table, the simulator trace. */
-  --status-ok: #34d399;
-  --status-ok-soft: rgba(52, 211, 153, 0.12);
-  --status-warn: #fbbf24;
-  --status-warn-soft: rgba(251, 191, 36, 0.12);
-  --status-info: #60a5fa;
-  --status-info-soft: rgba(96, 165, 250, 0.12);
-  --status-neutral: #8b93a4;
-  --status-neutral-soft: rgba(255, 255, 255, 0.06);
-  --status-danger: #f87171;
-  --status-danger-soft: rgba(248, 113, 113, 0.12);
-
-  /* --- type --------------------------------------------------------------
-     Fixed rem, ~1.15 ratio. Product UI has more type roles than a brand
-     surface, so the steps stay close; weight carries the rest. */
-  /* Fira Mono is Fira Sans's own companion face — the mono here carries
-     ticket IDs, confidence values and thresholds (real data, not a
-     "technical" costume), so it should read as the same voice. */
   --font-sans: "Fira Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Fira Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  --text-xs: 0.6875rem; /* 11px — chips, table headers */
-  --text-sm: 0.8125rem; /* 13px — meta, labels, dense data */
+  --text-xs: 0.6875rem;  /* 11px — chips, table headers */
+  --text-sm: 0.8125rem;  /* 13px — meta, labels, dense data */
   --text-base: 0.875rem; /* 14px — UI body */
-  --text-md: 1rem; /* 16px — prose, chat */
-  --text-lg: 1.125rem; /* 18px — section heading */
-  --text-xl: 1.375rem; /* 22px — page title */
-  --text-2xl: 1.875rem; /* 30px — landing */
+  --text-md: 1rem;       /* 16px — prose, chat */
+  --text-lg: 1.125rem;   /* 18px — section heading */
+  --text-xl: 1.375rem;   /* 22px — page title */
+  --text-2xl: 1.75rem;   /* 28px — KPI value, landing (was 30px) */
 
   --leading-tight: 1.25;
   --leading-snug: 1.45;
   --leading-relaxed: 1.6;
 
-  --tracking-label: 0.04em; /* micro-caps only */
+  --tracking-label: 0.04em;
   --tracking-tight: -0.011em;
-  --tracking-title: -0.022em;
+  --tracking-title: -0.018em;
 
-  /* --- space (4px base) -------------------------------------------------- */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -105,26 +44,298 @@
   --space-12: 3rem;
   --space-16: 4rem;
 
-  /* --- radius ------------------------------------------------------------
-     Cards 12-14, controls 6-8, pills for chips only. */
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 14px;
+  /* Tighter than before: controls 6, cards 8, dialogs 10. Pills only for
+     counters and the theme segmented control's track. */
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
   --radius-pill: 999px;
 
-  /* --- elevation ---------------------------------------------------------
-     Declared ONCE per element: a card uses its surface rung plus a border
-     and no shadow. Shadows belong to things that genuinely float, and carry
-     a real offset and blur. */
-  --shadow-overlay: 0 12px 32px -8px rgba(0, 0, 0, 0.65), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
-  --shadow-sticky: 0 1px 0 var(--border-subtle), 0 8px 24px -16px rgba(0, 0, 0, 0.8);
+  --control-h-sm: 1.75rem;   /* new — 28px */
+  --control-h-md: 2.125rem;  /* new — 34px */
+  --control-h-lg: 2.5rem;    /* new — 40px (login, dialog primary) */
 
-  /* --- motion ------------------------------------------------------------ */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 120ms;
   --dur: 180ms;
+
+  /* Semantic aliases — resolve against whichever theme block is active
+     (same element, so var() substitutes the themed value). */
+  --priority-low: var(--status-neutral);          /* new */
+  --priority-low-soft: var(--status-neutral-soft);/* new */
+  --priority-medium: var(--status-info);          /* new */
+  --priority-medium-soft: var(--status-info-soft);/* new */
+  --priority-high: var(--status-orange);          /* new */
+  --priority-high-soft: var(--status-orange-soft);/* new */
+  --priority-urgent: var(--text-on-accent);       /* new — text on solid fill */
+  --priority-urgent-soft: var(--danger-fill);     /* new — solid red lozenge */
+
+  --sla-on-track: var(--status-info);             /* new */
+  --sla-on-track-soft: var(--status-info-soft);   /* new */
+  --sla-at-risk: var(--status-warn);              /* new */
+  --sla-at-risk-soft: var(--status-warn-soft);    /* new */
+  --sla-breached: var(--status-danger);           /* new */
+  --sla-breached-soft: var(--status-danger-soft); /* new */
+  --sla-met: var(--status-ok);                    /* new */
+  --sla-met-soft: var(--status-ok-soft);          /* new */
+  --sla-paused: var(--status-neutral);            /* new */
+  --sla-paused-soft: var(--status-neutral-soft);  /* new */
+
+  --focus-ring-width: 2px;                        /* new */
+  --focus-ring-offset: 2px;                       /* new */
+}
+
+/* --- LIGHT (default) ----------------------------------------------------- */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* surfaces — paper on a cool off-white page */
+  --surface-page: #f5f6f8;
+  --surface-raised: #ffffff;
+  --surface-overlay: #eef0f3;      /* recessed/neutral fill: counts, segmented track, skeleton */
+  --surface-float: #ffffff;        /* new — toasts, dialogs, menus (true floating layer) */
+  --surface-input: #ffffff;
+  --surface-hover: rgba(23, 27, 36, 0.04);
+  --surface-active: rgba(23, 27, 36, 0.07);
+  --header-bg: #ffffff;            /* new */
+  --scrim: rgba(23, 27, 36, 0.45); /* new — dialog backdrop */
+
+  /* borders */
+  --border-subtle: #e3e6eb;        /* card / table hairlines (decorative) */
+  --border-default: #d2d7de;       /* button outlines, dividers */
+  --border-strong: #a3abb7;        /* emphasised dividers, scrollbar thumb */
+  --border-input: #868f9d;         /* new — 3.27:1 on white: field boundary */
+  --border-input-hover: #6b7482;   /* new */
+
+  /* text */
+  --text-primary: #171b24;
+  --text-secondary: #4a5262;
+  --text-tertiary: #5f6878;
+  --text-on-accent: #ffffff;
+
+  /* accent — restrained blue */
+  --accent-300: #3d7be0;
+  --accent-400: #1a5bc4;           /* accent TEXT + icons, links */
+  --accent-500: #2563d6;           /* identity fills: active tab rail, dots, focus border */
+  --accent-550: #1a52b3;           /* primary hover (darker in light) */
+  --accent-600: #1f5fcc;           /* primary rest */
+  --accent-700: #16469a;           /* primary pressed */
+  --accent-soft: #e8effc;
+  --accent-soft-strong: #d4e2f9;
+  --accent-ring: rgba(37, 99, 214, 0.28); /* soft halo around focused inputs (decorative) */
+  --focus-ring: #2563d6;           /* new — the 3:1 indicator itself */
+
+  /* status (fg = text-safe on its soft AND on raised) */
+  --status-ok: #17744a;
+  --status-ok-soft: #e5f3ec;
+  --status-warn: #875400;
+  --status-warn-soft: #fcf1db;
+  --status-info: #1b5bbf;
+  --status-info-soft: #e6eefb;
+  --status-neutral: #4f5868;
+  --status-neutral-soft: #edeff3;
+  --status-danger: #b3261e;
+  --status-danger-soft: #fceceb;
+  --status-wait: #8a3a7c;          /* new — pending customer, active chat */
+  --status-wait-soft: #f6e9f3;     /* new */
+  --status-orange: #a94a08;        /* new — priority high only */
+  --status-orange-soft: #fcede2;   /* new */
+  --danger-fill: #b3261e;          /* new — solid destructive button, urgent lozenge */
+  --danger-fill-hover: #a12019;    /* new */
+  --note-fill: var(--status-warn-soft);  /* new — internal note card */
+  --note-border: #ecd29a;          /* new */
+  --note-strong: #f5e2b5;          /* new — note avatar/tag/active mode fill */
+
+  /* tables */
+  --table-header-bg: #f5f6f8;      /* new */
+  --table-zebra: #f9fafb;          /* new — optional, wide admin tables only */
+  --table-row-hover: #eef2fa;      /* new */
+  --table-row-selected: #e3ecfb;   /* new */
+
+  /* charts — CVD-checked categorical set (see §3.3) */
+  --chart-1: #3163c9;  /* blue   */
+  --chart-2: #8a3208;  /* rust   */
+  --chart-3: #08896a;  /* teal   */
+  --chart-4: #b33188;  /* magenta*/
+  --chart-5: #b97a0c;  /* ochre  */
+  --chart-6: #43474f;  /* slate  */
+  --chart-grid: #e3e6eb;
+  --chart-axis: #868f9d;
+  --chart-label: var(--text-tertiary);
+
+  /* elevation — light mode gets a real (subtle) shadow scale */
+  --shadow-1: 0 1px 2px rgba(23, 27, 36, 0.06);                                   /* new — cards, rows */
+  --shadow-2: 0 1px 3px rgba(23, 27, 36, 0.08), 0 1px 2px rgba(23, 27, 36, 0.04); /* new — hover lift, KPI */
+  --shadow-3: 0 12px 24px -6px rgba(23, 27, 36, 0.16), 0 4px 8px -4px rgba(23, 27, 36, 0.08); /* new */
+  --shadow-overlay: var(--shadow-3);
+  --shadow-sticky: 0 1px 0 var(--border-subtle), 0 6px 16px -12px rgba(23, 27, 36, 0.25);
+
+  --selection-bg: #cfe0fb;         /* new */
+}
+
+/* --- DARK: OS preference (keep identical to the forced block below) ------ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --surface-page: #0f1114;
+    --surface-raised: #16191e;
+    --surface-overlay: #1e2228;
+    --surface-float: #1e2228;
+    --surface-input: #121418;
+    --surface-hover: rgba(255, 255, 255, 0.04);
+    --surface-active: rgba(255, 255, 255, 0.07);
+    --header-bg: #16191e;
+    --scrim: rgba(0, 0, 0, 0.6);
+
+    --border-subtle: #252930;
+    --border-default: #30353e;
+    --border-strong: #464c57;
+    --border-input: #666e7b;
+    --border-input-hover: #7c8491;
+
+    --text-primary: #e7e9ed;
+    --text-secondary: #aeb5c1;
+    --text-tertiary: #8f97a4;
+    --text-on-accent: #ffffff;
+
+    --accent-300: #9cc0f8;
+    --accent-400: #74a7f5;
+    --accent-500: #4a8af0;
+    --accent-550: #3170e0;
+    --accent-600: #2a65d4;
+    --accent-700: #2459bd;
+    --accent-soft: #172540;
+    --accent-soft-strong: #1e3156;
+    --accent-ring: rgba(116, 167, 245, 0.35);
+    --focus-ring: #74a7f5;
+
+    --status-ok: #5cc493;
+    --status-ok-soft: #15291f;
+    --status-warn: #e3b54e;
+    --status-warn-soft: #2b2312;
+    --status-info: #74a7f5;
+    --status-info-soft: #15233a;
+    --status-neutral: #a2aab6;
+    --status-neutral-soft: #23272e;
+    --status-danger: #f2847b;
+    --status-danger-soft: #331a19;
+    --status-wait: #df92cd;
+    --status-wait-soft: #2e1a2a;
+    --status-orange: #f0995c;
+    --status-orange-soft: #2f1e12;
+    --danger-fill: #c4372d;
+    --danger-fill-hover: #ad2f26;
+    --note-fill: var(--status-warn-soft);
+    --note-border: #5a4720;
+    --note-strong: #3b2f15;
+
+    --table-header-bg: #1b1f25;
+    --table-zebra: #191c22;
+    --table-row-hover: #1d2330;
+    --table-row-selected: #1f2c45;
+
+    --chart-1: #5b8def;
+    --chart-2: #e0702e;
+    --chart-3: #4fd1a8;
+    --chart-4: #d68bc8;
+    --chart-5: #d9c046;
+    --chart-6: #7a828f;
+    --chart-grid: #252930;
+    --chart-axis: #666e7b;
+    --chart-label: var(--text-tertiary);
+
+    --shadow-1: none;
+    --shadow-2: none;
+    --shadow-3: 0 12px 32px -8px rgba(0, 0, 0, 0.65), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
+    --shadow-overlay: var(--shadow-3);
+    --shadow-sticky: 0 1px 0 var(--border-subtle), 0 8px 24px -16px rgba(0, 0, 0, 0.8);
+
+    --selection-bg: #2a3a57;
+  }
+}
+
+/* --- DARK: forced (keep identical to the media block above) -------------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface-page: #0f1114;
+  --surface-raised: #16191e;
+  --surface-overlay: #1e2228;
+  --surface-float: #1e2228;
+  --surface-input: #121418;
+  --surface-hover: rgba(255, 255, 255, 0.04);
+  --surface-active: rgba(255, 255, 255, 0.07);
+  --header-bg: #16191e;
+  --scrim: rgba(0, 0, 0, 0.6);
+
+  --border-subtle: #252930;
+  --border-default: #30353e;
+  --border-strong: #464c57;
+  --border-input: #666e7b;
+  --border-input-hover: #7c8491;
+
+  --text-primary: #e7e9ed;
+  --text-secondary: #aeb5c1;
+  --text-tertiary: #8f97a4;
+  --text-on-accent: #ffffff;
+
+  --accent-300: #9cc0f8;
+  --accent-400: #74a7f5;
+  --accent-500: #4a8af0;
+  --accent-550: #3170e0;
+  --accent-600: #2a65d4;
+  --accent-700: #2459bd;
+  --accent-soft: #172540;
+  --accent-soft-strong: #1e3156;
+  --accent-ring: rgba(116, 167, 245, 0.35);
+  --focus-ring: #74a7f5;
+
+  --status-ok: #5cc493;
+  --status-ok-soft: #15291f;
+  --status-warn: #e3b54e;
+  --status-warn-soft: #2b2312;
+  --status-info: #74a7f5;
+  --status-info-soft: #15233a;
+  --status-neutral: #a2aab6;
+  --status-neutral-soft: #23272e;
+  --status-danger: #f2847b;
+  --status-danger-soft: #331a19;
+  --status-wait: #df92cd;
+  --status-wait-soft: #2e1a2a;
+  --status-orange: #f0995c;
+  --status-orange-soft: #2f1e12;
+  --danger-fill: #c4372d;
+  --danger-fill-hover: #ad2f26;
+  --note-fill: var(--status-warn-soft);
+  --note-border: #5a4720;
+  --note-strong: #3b2f15;
+
+  --table-header-bg: #1b1f25;
+  --table-zebra: #191c22;
+  --table-row-hover: #1d2330;
+  --table-row-selected: #1f2c45;
+
+  --chart-1: #5b8def;
+  --chart-2: #e0702e;
+  --chart-3: #4fd1a8;
+  --chart-4: #d68bc8;
+  --chart-5: #d9c046;
+  --chart-6: #7a828f;
+  --chart-grid: #252930;
+  --chart-axis: #666e7b;
+  --chart-label: var(--text-tertiary);
+
+  --shadow-1: none;
+  --shadow-2: none;
+  --shadow-3: 0 12px 32px -8px rgba(0, 0, 0, 0.65), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
+  --shadow-overlay: var(--shadow-3);
+  --shadow-sticky: 0 1px 0 var(--border-subtle), 0 8px 24px -16px rgba(0, 0, 0, 0.8);
+
+  --selection-bg: #2a3a57;
 }
 
 /* ===========================================================================
@@ -154,7 +365,7 @@ body {
 }
 
 ::selection {
-  background: var(--accent-soft-strong);
+  background: var(--selection-bg);
   color: var(--text-primary);
 }
 
@@ -187,8 +398,8 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent-400);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
   border-radius: var(--radius-xs);
 }
 

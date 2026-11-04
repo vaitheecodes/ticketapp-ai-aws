@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import ThemeToggle from "../components/ThemeToggle";
 import { Link, useNavigate } from "react-router-dom";
 import { api, HOME_FOR_ROLE, saveSession } from "../api";
 import { TicketIcon } from "../components/Icons";
@@ -39,6 +40,9 @@ export default function Login() {
 
   return (
     <div className="page centered">
+      <div className="page-corner">
+        <ThemeToggle />
+      </div>
       <div className="hero-brand">
         <TicketIcon className="hero-brand-icon" />
         <h1 className="hero-title">Site24x7 Support</h1>

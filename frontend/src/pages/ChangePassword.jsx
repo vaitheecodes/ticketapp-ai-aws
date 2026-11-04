@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import ThemeToggle from "../components/ThemeToggle";
 import { useNavigate } from "react-router-dom";
 import { api, clearSession, getRole, HOME_FOR_ROLE, setMustChangePassword } from "../api";
 
@@ -36,6 +37,9 @@ export default function ChangePassword() {
 
   return (
     <div className="page centered">
+      <div className="page-corner">
+        <ThemeToggle />
+      </div>
       <div className="card auth-card">
         <h1>Set a new password</h1>
         <p className="hint">

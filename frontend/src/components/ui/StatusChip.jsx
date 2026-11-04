@@ -4,7 +4,7 @@
  *
  *   warn     open              waiting on the support team, nobody on it yet
  *   info     in_progress       a technician has it
- *   accent   pending_customer  waiting on the customer's reply
+ *   wait     pending_customer  waiting on the customer's reply
  *   ok       resolved          the AI or a technician answered it
  *   neutral  closed            terminal, archived
  *
@@ -18,7 +18,7 @@ import { statusLabel } from "../../utils/statusLabels";
 const STATUS_TONE = {
   open: "warn",
   in_progress: "info",
-  pending_customer: "accent",
+  pending_customer: "wait",
   resolved: "ok",
   closed: "neutral",
 };
@@ -54,7 +54,7 @@ export function StatusChip({ status, label }) {
  * from the same tones: an active chat waits on the customer, an escalated
  * one is with the support team, a resolved one is done. */
 const CHAT_STATUS = {
-  active: { tone: "accent", label: "Active" },
+  active: { tone: "wait", label: "Active" },
   escalated: { tone: "warn", label: "Escalated" },
   resolved: { tone: "ok", label: "Resolved" },
   abandoned: { tone: "neutral", label: "Ended" },

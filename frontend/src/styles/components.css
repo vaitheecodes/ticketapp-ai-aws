@@ -65,13 +65,13 @@
 }
 
 .btn.btn-secondary {
-  background: var(--surface-overlay);
+  background: var(--surface-raised);
   color: var(--text-primary);
   border-color: var(--border-default);
 }
 
 .btn.btn-secondary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--surface-overlay) 80%, white 4%);
+  background: var(--surface-overlay);
   border-color: var(--border-strong);
 }
 
@@ -94,6 +94,23 @@
 .btn.btn-danger:hover:not(:disabled) {
   background: var(--status-danger-soft);
   border-color: var(--status-danger);
+}
+
+.btn.btn-danger-solid {
+  background: var(--danger-fill);
+  border-color: var(--danger-fill);
+  color: var(--text-on-accent);
+}
+
+.btn.btn-danger-solid:hover:not(:disabled) {
+  background: var(--danger-fill-hover);
+  border-color: var(--danger-fill-hover);
+}
+
+.btn.btn-lg {
+  min-height: var(--control-h-lg);
+  font-size: 0.9375rem;
+  padding: 0 1.125rem;
 }
 
 .btn.is-loading .btn-label {
@@ -153,7 +170,7 @@
   min-height: 2.25rem;
   color: var(--text-primary);
   background: var(--surface-input);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-input);
   border-radius: var(--radius-md);
   transition:
     border-color var(--dur-fast) var(--ease-out),
@@ -166,14 +183,14 @@
 }
 
 .control:hover:not(:disabled):not(:focus) {
-  border-color: var(--border-strong);
+  border-color: var(--border-input-hover);
 }
 
 .control:focus {
   outline: none;
-  background: var(--surface-page);
+  background: var(--surface-input);
   border-color: var(--accent-500);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 .control:disabled {
@@ -227,10 +244,11 @@
   gap: 0.375rem;
   flex-shrink: 0;
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1;
-  padding: 0.25rem 0.5rem 0.25rem 0.4375rem;
-  border-radius: var(--radius-pill);
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
 }
 
@@ -270,6 +288,16 @@
 .chip-neutral {
   background: var(--status-neutral-soft);
   color: var(--status-neutral);
+}
+
+.chip-wait {
+  background: var(--status-wait-soft);
+  color: var(--status-wait);
+}
+
+.chip-orange {
+  background: var(--status-orange-soft);
+  color: var(--status-orange);
 }
 
 .chip-danger {

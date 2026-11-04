@@ -10,8 +10,17 @@
       href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600;700&family=Fira+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <meta name="theme-color" content="#0b0d12" />
-    <title>Ticket Resolution Agent</title>
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16191e" />
+    <!-- The saved theme (utils/theme.js) before first paint, so a forced
+         light/dark choice never flashes the other one. No attribute = System. -->
+    <script>
+      try {
+        var t = localStorage.getItem("theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
+    <title>Site24x7 Help Desk</title>
   </head>
   <body>
     <div id="root"></div>
