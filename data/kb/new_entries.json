@@ -877,7 +877,7 @@
     },
     {
       "kb_entry_id": "KB-N0141",
-      "status": "draft",
+      "status": "approved",
       "area": "Getting started (how-to)",
       "category": "AGENT",
       "intent": "agent_installation",
@@ -897,7 +897,8 @@
       ],
       "answer": "1. Go to Server > Server Monitor > Servers (+) > Linux (or Admin > Inventory > Add Monitor > Linux Server Monitoring).\n2. Use the toggle to choose whether the agent is installed and run as root or non-root.\n3. Click Copy to Clipboard, then paste and run the commands on your server to download and install the agent. The same commands work on 32-bit and 64-bit systems.\n4. Once the agent is installed, the server appears under Server > Server Monitor > Servers.",
       "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/linux-server-monitoring.html",
-      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving.",
+      "reviewed_at": "2026-11-04T17:18:12+00:00"
     },
     {
       "kb_entry_id": "KB-N0142",
