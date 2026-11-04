@@ -1,7 +1,9 @@
 /* One row in a staff ticket list (technician workspace, manager
- * dashboard): ticket #, age, subject, customer · owner, status, priority. */
+ * dashboard): ticket #, age, subject, customer · owner, status, priority,
+ * SLA state (when the ticket has one). */
 
 import { absoluteTime, relativeTime } from "../utils/time";
+import SlaChip from "./ui/SlaChip";
 import { StatusChip } from "./ui/StatusChip";
 
 export default function StaffTicketRow({ t, selected, onSelect }) {
@@ -27,6 +29,7 @@ export default function StaffTicketRow({ t, selected, onSelect }) {
       <span className="my-ticket-bottom">
         <StatusChip status={t.status} />
         <span className={`priority-chip priority-${t.priority}`}>{t.priority}</span>
+        <SlaChip sla={t.sla} compact />
       </span>
     </button>
   );

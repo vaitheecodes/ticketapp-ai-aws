@@ -23,6 +23,7 @@ import { STATUS_KEYS, statusLabel } from "../utils/statusLabels";
 import { formatBytes } from "../utils/text";
 import { PaperclipIcon } from "./AttachmentPicker";
 import ChatMessage from "./ui/ChatMessage";
+import SlaChip from "./ui/SlaChip";
 import { IncidentStatusChip, StatusChip } from "./ui/StatusChip";
 
 const statusOptions = () => STATUS_KEYS.map((key) => [key, statusLabel(key)]);
@@ -355,6 +356,7 @@ export default function StaffTicketView({ ticketId, onChanged }) {
           <span className="thread-id">{ticket.ticket_id}</span>
           <StatusChip status={ticket.status} />
           <span className={`priority-chip priority-${ticket.priority}`}>{ticket.priority}</span>
+          <SlaChip sla={ticket.sla} />
           {ticket.ticket_type === "chat" && <span className="type-badge">Chat</span>}
         </div>
         {ws.incidents.length > 0 && (

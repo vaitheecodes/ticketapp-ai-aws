@@ -48,6 +48,13 @@ export function getRole() {
   return localStorage.getItem(ROLE_KEY);
 }
 
+// Query string from an object, leaving out empty values.
+function query(filters) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
+  return params.toString();
+}
+
 async function request(path, { method = "GET", body, auth = false } = {}) {
   const headers = { "Content-Type": "application/json" };
   if (auth) {
@@ -250,43 +257,29 @@ export const api = {
     }),
 
   adminStaff: () => request("/admin/staff", { auth: true }),
-  adminCreateStaff: (name, email, role, temporary_password, department_id) =>
-    request("/admin/staff", {
-      method: "POST",
-      body: { name, email, role, temporary_password, department_id: department_id || null },
-      auth: true,
-    }),
   adminUpdateStaff: (staffId, changes) =>
     request(`/admin/staff/${staffId}`, { method: "PATCH", body: changes, auth: true }),
-  adminSetStaffActive: (staffId, active) =>
-    request(`/admin/staff/${staffId}/${active ? "activate" : "deactivate"}`, {
-      method: "POST",
-      auth: true,
-    }),
-  adminResetStaffPassword: (staffId, temporary_password) =>
-    request(`/admin/staff/${staffId}/reset-password`, {
-      method: "POST",
-      body: { temporary_password },
-      auth: true,
-    }),
 
-  adminCustomers: (q) =>
-    request(`/admin/customers${q ? `?q=${encodeURIComponent(q)}` : ""}`, { auth: true }),
-  adminCreateCustomer: (name, email, temporary_password) =>
-    request("/admin/customers", { method: "POST", body: { name, email, temporary_password }, auth: true }),
-  adminUpdateCustomer: (customerId, changes) =>
-    request(`/admin/customers/${customerId}`, { method: "PATCH", body: changes, auth: true }),
-  adminSetCustomerActive: (customerId, active) =>
-    request(`/admin/customers/${customerId}/${active ? "activate" : "deactivate"}`, {
+  // Users (customers, technicians, managers). Create and reset return the
+  // generated temporary password once (temporary_password).
+  adminUsers: (filters = {}) => request(`/admin/users?${query(filters)}`, { auth: true }),
+  adminCreateUser: ({ name, email, role, department_id }) =>
+    request("/admin/users", {
       method: "POST",
+      body: { name, email, role, department_id: department_id || null },
       auth: true,
     }),
-  adminResetCustomerPassword: (customerId, temporary_password) =>
-    request(`/admin/customers/${customerId}/reset-password`, {
-      method: "POST",
-      body: { temporary_password },
-      auth: true,
-    }),
+  adminUpdateUser: (userId, changes) =>
+    request(`/admin/users/${userId}`, { method: "PATCH", body: changes, auth: true }),
+  adminSetUserActive: (userId, active) =>
+    request(`/admin/users/${userId}/${active ? "activate" : "deactivate"}`, { method: "POST", auth: true }),
+  adminResetUserPassword: (userId) =>
+    request(`/admin/users/${userId}/reset-password`, { method: "POST", auth: true }),
+
+  adminDashboard: (filters = {}) => request(`/admin/dashboard?${query(filters)}`, { auth: true }),
+  adminSla: (filters = {}) => request(`/admin/sla?${query(filters)}`, { auth: true }),
+  adminSetTicketPriority: (ticketId, priority) =>
+    request(`/admin/tickets/${ticketId}/priority`, { method: "POST", body: { priority }, auth: true }),
 
   adminSettings: () => request("/admin/settings", { auth: true }),
   adminSaveSettings: (section, values) =>

@@ -59,3 +59,21 @@ export function istInputNow() {
   const ist = new Date(Date.now() + 330 * 60 * 1000);
   return ist.toISOString().slice(0, 16);
 }
+
+/* A duration in minutes as "45m", "3h 20m" or "2d 4h". */
+export function formatMinutes(minutes) {
+  if (minutes === null || minutes === undefined) return "—";
+  const m = Math.round(minutes);
+  if (m < 60) return `${m}m`;
+  if (m < 48 * 60) return m % 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m / 60}h`;
+  const h = Math.round(m / 60);
+  return h % 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h / 24}d`;
+}
+
+/* "due in 2h 10m" or "overdue by 25m". */
+export function dueText(iso) {
+  const date = parseUtc(iso);
+  if (!date) return "";
+  const minutes = (date.getTime() - Date.now()) / 60000;
+  return minutes >= 0 ? `due in ${formatMinutes(minutes)}` : `overdue by ${formatMinutes(-minutes)}`;
+}

@@ -3,16 +3,20 @@ import { api } from "../api";
 import PortalHeader from "../components/PortalHeader";
 import AuditPanel from "../components/AuditPanel";
 import ChatReviews from "../components/ChatReviews";
-import CustomersPanel from "../components/CustomersPanel";
+import DashboardPanel from "../components/DashboardPanel";
+import DepartmentsPanel from "../components/DepartmentsPanel";
 import SettingsPanel from "../components/SettingsPanel";
 import IncidentsPanel from "../components/IncidentsPanel";
 import RoutingPolicyPanel from "../components/RoutingPolicyPanel";
-import TeamPanel from "../components/TeamPanel";
+import SlaPanel from "../components/SlaPanel";
 import StaffTicketView from "../components/StaffTicketView";
 import { RoutePill } from "../components/StatusPill";
+import UsersPanel from "../components/UsersPanel";
+import SlaChip from "../components/ui/SlaChip";
 import { ConfidenceChip, RouteChip, StatusChip } from "../components/ui/StatusChip";
 import { categoryLabel } from "../utils/categories";
 import { parseTicketText } from "../utils/parseTicketText";
+import { PRIORITIES, PRIORITY_LABELS } from "../utils/priorities";
 import { STATUS_KEYS, statusLabel } from "../utils/statusLabels";
 import { absoluteTime, relativeTime } from "../utils/time";
 
@@ -53,6 +57,45 @@ function TechnicianAssignCell({ ticket, technicians, onReassigned }) {
         ))}
       </select>
       {error && <div className="error" style={{ marginTop: "0.25rem" }}>{error}</div>}
+    </div>
+  );
+}
+
+/* Priority, editable by the admin: the SLA due times are recalculated
+ * from the ticket's creation (backend/admin_reports.py). */
+function PriorityCell({ ticket, onChanged }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleChange(e) {
+    setSaving(true);
+    setError("");
+    try {
+      await api.adminSetTicketPriority(ticket.ticket_id, e.target.value);
+      onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <select
+        className="select-compact"
+        aria-label={`Priority of ticket ${ticket.ticket_id}`}
+        value={ticket.priority}
+        onChange={handleChange}
+        disabled={saving}
+      >
+        {PRIORITIES.map((p) => (
+          <option key={p} value={p}>
+            {PRIORITY_LABELS[p]}
+          </option>
+        ))}
+      </select>
+      {error && <div className="error">{error}</div>}
     </div>
   );
 }
@@ -138,6 +181,8 @@ function AllTickets() {
               <th>Category</th>
               <th>AI route</th>
               <th>Status</th>
+              <th>Priority</th>
+              <th>SLA</th>
               <th>Technician</th>
               <th>Created</th>
               <th>
@@ -171,6 +216,10 @@ function AllTickets() {
                 <td>
                   <StatusChip status={t.status} />
                 </td>
+                <td>
+                  <PriorityCell ticket={t} onChanged={refresh} />
+                </td>
+                <td>{t.sla ? <SlaChip sla={t.sla} compact /> : <span className="hint">—</span>}</td>
                 <td>
                   <TechnicianAssignCell ticket={t} technicians={technicians} onReassigned={refresh} />
                 </td>
@@ -352,51 +401,41 @@ function TryATicket() {
   );
 }
 
+const TABS = [
+  ["dashboard", "Dashboard", DashboardPanel],
+  ["tickets", "All Tickets", AllTickets],
+  ["sla", "SLA", SlaPanel],
+  ["users", "Users", UsersPanel],
+  ["departments", "Departments", DepartmentsPanel],
+  ["reviews", "Chat Reviews", ChatReviews],
+  ["incidents", "Incidents", IncidentsPanel],
+  ["activity", "Activity", AuditPanel],
+  ["settings", "Settings", SettingsPanel],
+  ["try", "Try a Ticket", TryATicket],
+  ["policy", "Routing Policy", RoutingPolicyPanel],
+];
+
 export default function AdminPortal() {
-  const [tab, setTab] = useState("tickets");
+  const [tab, setTab] = useState("dashboard");
+  const Panel = TABS.find(([key]) => key === tab)[2];
 
   return (
     <div className="page page-portal">
       <PortalHeader title="Admin Portal" role="admin" />
-      <nav className="tabs">
-        <button className={tab === "tickets" ? "active" : ""} onClick={() => setTab("tickets")}>
-          All Tickets
-        </button>
-        <button className={tab === "team" ? "active" : ""} onClick={() => setTab("team")}>
-          Team
-        </button>
-        <button className={tab === "customers" ? "active" : ""} onClick={() => setTab("customers")}>
-          Customers
-        </button>
-        <button className={tab === "reviews" ? "active" : ""} onClick={() => setTab("reviews")}>
-          Chat Reviews
-        </button>
-        <button className={tab === "incidents" ? "active" : ""} onClick={() => setTab("incidents")}>
-          Incidents
-        </button>
-        <button className={tab === "activity" ? "active" : ""} onClick={() => setTab("activity")}>
-          Activity
-        </button>
-        <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
-          Settings
-        </button>
-        <button className={tab === "try" ? "active" : ""} onClick={() => setTab("try")}>
-          Try a Ticket
-        </button>
-        <button className={tab === "policy" ? "active" : ""} onClick={() => setTab("policy")}>
-          Routing Policy
-        </button>
+      <nav className="tabs" aria-label="Admin sections">
+        {TABS.map(([key, label]) => (
+          <button
+            key={key}
+            className={tab === key ? "active" : ""}
+            aria-current={tab === key ? "page" : undefined}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
       </nav>
       <div className="tab-content">
-        {tab === "tickets" && <AllTickets />}
-        {tab === "team" && <TeamPanel />}
-        {tab === "reviews" && <ChatReviews />}
-        {tab === "incidents" && <IncidentsPanel />}
-        {tab === "activity" && <AuditPanel />}
-        {tab === "settings" && <SettingsPanel />}
-        {tab === "customers" && <CustomersPanel />}
-        {tab === "try" && <TryATicket />}
-        {tab === "policy" && <RoutingPolicyPanel />}
+        <Panel />
       </div>
     </div>
   );

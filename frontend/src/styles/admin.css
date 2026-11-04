@@ -1,0 +1,315 @@
+/* ===========================================================================
+   Admin area: Users, Dashboard, SLA, the one-time password dialog, the
+   theme switch and the SLA chip staff see on tickets. Tokens only
+   (styles/tokens.css), so both themes work; see docs/DESIGN_SYSTEM.md §4.
+   ========================================================================= */
+
+/* ---------------------------------------------------------- theme toggle */
+
+.theme-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-overlay);
+  border-radius: var(--radius-md);
+}
+
+.theme-toggle button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.theme-toggle button:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-primary);
+}
+
+.theme-toggle button[aria-checked="true"] {
+  background: var(--surface-raised);
+  border-color: var(--border-input);
+  box-shadow: var(--shadow-1);
+  color: var(--text-primary);
+}
+
+.page-corner {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+}
+
+/* ---------------------------------------------------------------- dialog */
+
+.dialog {
+  width: min(28rem, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--surface-float);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-overlay);
+}
+
+.dialog::backdrop {
+  background: var(--scrim);
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-6);
+}
+
+.dialog-body p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.dialog-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.dialog-body .input-with-action input {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  letter-spacing: 0.04em;
+  user-select: all;
+}
+
+.dialog-actions {
+  justify-content: flex-end;
+  margin-top: var(--space-2);
+}
+
+/* ----------------------------------------------------------- KPI tiles */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}
+
+.stat-tile .stat-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.stat-tile .stat-value {
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  letter-spacing: var(--tracking-title);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-tight);
+}
+
+.stat-tile .stat-hint {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+/* --------------------------------------------------------- report cards */
+
+.report-filters {
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.report-filters input[type="date"] {
+  padding: 0.35rem 0.5rem;
+  font-size: var(--text-sm);
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
+.report-card {
+  padding: var(--space-4) var(--space-5);
+  margin: 0 0 var(--space-4);
+}
+
+.report-grid .report-card {
+  margin: 0;
+}
+
+.card-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin: 0 0 var(--space-3);
+}
+
+.report-card > .hint {
+  margin: var(--space-3) 0 0;
+}
+
+.report-table {
+  font-size: var(--text-sm);
+}
+
+.report-table th[scope="row"] {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  background: none;
+  border-bottom-color: var(--border-subtle);
+}
+
+.report-card .table-wrap {
+  box-shadow: none;
+}
+
+.bar-cell {
+  width: 45%;
+}
+
+.bar-track {
+  display: block;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-overlay);
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--chart-1);
+}
+
+/* ---------------------------------------------------------------- chart */
+
+.chart {
+  margin: 0;
+}
+
+.chart-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin: 0 0 var(--space-2);
+}
+
+.chart-legend {
+  display: flex;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chart-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.chart-svg {
+  display: block;
+  max-width: 100%;
+}
+
+.chart-grid {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-axis {
+  fill: var(--chart-label);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- users */
+
+.users-panel .section-head {
+  margin-bottom: var(--space-3);
+}
+
+.users-panel .inline-form.card {
+  margin: 0 0 var(--space-4);
+}
+
+.chip-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+tbody tr.is-muted td {
+  color: var(--text-tertiary);
+}
+
+/* ------------------------------------------------------------------ SLA */
+
+.sla-settings {
+  margin: 0 0 var(--space-6);
+}
+
+.sla-settings .report-table td {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.target-input {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.target-input input {
+  width: 6rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.target-input select {
+  padding: 0.35rem 0.5rem;
+}
+
+.field-narrow {
+  max-width: 22rem;
+  margin: var(--space-4) 0;
+}
+
+.sla-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.sla-chip-detail {
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
