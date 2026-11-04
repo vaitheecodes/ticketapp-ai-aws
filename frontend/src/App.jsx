@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { getMustChangePassword, getRole, getToken, HOME_FOR_ROLE } from "./api";
+import { getMustChangePassword, getRole, getToken, HOME_FOR_ROLE, onSessionChange } from "./api";
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
 import CustomerPortal from "./pages/CustomerPortal";
@@ -42,6 +43,10 @@ const PORTALS = [
 ];
 
 export default function App() {
+  // Another tab signed in as someone else, or out: reload, so the route
+  // guards pick the portal for the token this tab now sends.
+  useEffect(() => onSessionChange(() => window.location.reload()), []);
+
   return (
     <BrowserRouter>
       <Routes>

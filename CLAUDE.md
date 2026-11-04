@@ -177,7 +177,11 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   hand-written entries in `data/kb/new_entries.json` are loaded when
   valid and `status: approved` (`backend/kb_new_entries.py`,
   `scripts/validate_kb.py`, `docs/KB_ENTRY_TEMPLATE.md`; drafts and
-  `"example": true` entries never are); `scripts/kb_review.py` is the
+  `"example": true` entries never are; an entry's optional `kind`,
+  `how-to` / `troubleshooting`, beats the question-wording guess in the
+  how-to rule (`graph.answers_how_to`, `KBEntry.is_fault`); the
+  "Getting started (how-to)" drafts are covered by
+  `tests/test_kb_how_to_drafts.py`); `scripts/kb_review.py` is the
   interactive approve/edit/reject/skip reviewer (typed "yes" to approve,
   atomic save per decision; `--retag ID` changes an approved entry's
   category/terms and `--edit ID` its answer/source_url without
@@ -444,7 +448,12 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   data, status and the one primary action; every text token >= 4.5:1 in
   both themes. Public pages (`/docs`, `/incidents`) use `PublicShell`.
   The UI names the product "Help Desk" and the bot "Support Bot" (no
-  third-party brand in user-visible text). Pages not yet rebuilt still use
+  third-party brand in user-visible text). The portal shown is picked
+  from the role inside the token (`lib/tokenRole.js`, `api.getRole`), never
+  a separately stored role, and a sign-in/out in another tab reloads the
+  others (`api.onSessionChange`): a stale stored role once showed the admin
+  the technician workspace, all 403s (`tests/test_frontend_session.py`).
+  Pages not yet rebuilt still use
   the old stylesheets, imported into a lower cascade layer
   (`src/styles/legacy/`) until they are converted.
 

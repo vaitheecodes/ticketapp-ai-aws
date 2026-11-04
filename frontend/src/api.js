@@ -1,5 +1,9 @@
+import { roleFromToken } from "./lib/tokenRole";
+
 const TOKEN_KEY = "ticketapp_token";
-const ROLE_KEY = "ticketapp_role";
+// Older builds stored the role next to the token; it could disagree with
+// the token (another tab signed in as someone else), so it is only removed.
+const LEGACY_ROLE_KEY = "ticketapp_role";
 const MUST_CHANGE_KEY = "ticketapp_must_change_password";
 
 // Where each role lands after login. The backend enforces the same
@@ -19,16 +23,26 @@ export const HOME_FOR_ROLE = {
 // setting, not a runtime one.
 const API_BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 
-export function saveSession(token, role, mustChangePassword = false) {
+export function saveSession(token, mustChangePassword = false) {
   localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(ROLE_KEY, role);
+  localStorage.removeItem(LEGACY_ROLE_KEY);
   setMustChangePassword(mustChangePassword);
 }
 
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(ROLE_KEY);
+  localStorage.removeItem(LEGACY_ROLE_KEY);
   localStorage.removeItem(MUST_CHANGE_KEY);
+}
+
+// Another tab signed in or out (localStorage is shared by every tab): the
+// token this tab sends changed, so the portal it shows may be the wrong one.
+export function onSessionChange(callback) {
+  const listener = (event) => {
+    if (event.key === TOKEN_KEY || event.key === null) callback();
+  };
+  window.addEventListener("storage", listener);
+  return () => window.removeEventListener("storage", listener);
 }
 
 export function setMustChangePassword(value) {
@@ -44,8 +58,10 @@ export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+// The role of the token this browser sends, so the portal shown always
+// matches what the server will allow.
 export function getRole() {
-  return localStorage.getItem(ROLE_KEY);
+  return roleFromToken(getToken());
 }
 
 // Query string from an object, leaving out empty values.

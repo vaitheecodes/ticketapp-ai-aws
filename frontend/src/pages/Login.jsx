@@ -29,7 +29,7 @@ export default function Login() {
       const result = isSignup
         ? await api.customerSignup(name, email, password)
         : await api.login(email, password);
-      saveSession(result.token, result.role, result.must_change_password);
+      saveSession(result.token, result.must_change_password);
       navigate(result.must_change_password ? "/change-password" : HOME_FOR_ROLE[result.role]);
     } catch (err) {
       setError(err.message);
