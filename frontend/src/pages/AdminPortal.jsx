@@ -1,16 +1,13 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../api";
-import PortalHeader from "../components/PortalHeader";
+import { Navigate, useParams } from "react-router-dom";
+import AppShell from "../layout/AppShell";
 import AuditPanel from "../components/AuditPanel";
-import ChatReviews from "../components/ChatReviews";
 import DashboardPanel from "../components/DashboardPanel";
 import DepartmentsPanel from "../components/DepartmentsPanel";
 import SettingsPanel from "../components/SettingsPanel";
-import IncidentsPanel from "../components/IncidentsPanel";
-import RoutingPolicyPanel from "../components/RoutingPolicyPanel";
 import SlaPanel from "../components/SlaPanel";
 import StaffTicketView from "../components/StaffTicketView";
-import { RoutePill } from "../components/StatusPill";
 import UsersPanel from "../components/UsersPanel";
 import SlaChip from "../components/ui/SlaChip";
 import { ConfidenceChip, RouteChip, StatusChip } from "../components/ui/StatusChip";
@@ -260,183 +257,29 @@ function subjectOf(ticket) {
   return parseTicketText(ticket.ticket_text).original.split("\n")[0];
 }
 
-function TryATicket() {
-  const [ticketText, setTicketText] = useState("");
-  const [channel, setChannel] = useState("chat");
-  const [customerId, setCustomerId] = useState("");
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [maxAttempts, setMaxAttempts] = useState(null);
-  const textId = useId();
-  const channelId = useId();
-  const customerIdFieldId = useId();
-
-  useEffect(() => {
-    api.debugRoutingPolicy().then((p) => setMaxAttempts(p.max_clarification_attempts));
-  }, []);
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!ticketText.trim()) return;
-    setSubmitting(true);
-    setError("");
-    setResult(null);
-    try {
-      const res = await api.adminSimulateTicket(ticketText.trim(), channel, customerId.trim());
-      setResult(res);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div>
-      <p className="hint">
-        Runs a ticket through the live pipeline (real Azure OpenAI calls) without saving it —
-        for inspecting how classify_ticket / decide_route reason about a given message.
-      </p>
-      <div className="card">
-        <form className="ticket-form" onSubmit={handleSubmit}>
-          <div className="field-group">
-            <label className="field-label" htmlFor={textId}>
-              Ticket text to classify
-            </label>
-            <textarea
-              id={textId}
-              rows={4}
-              placeholder="e.g. I want a refund for my last order"
-              value={ticketText}
-              onChange={(e) => setTicketText(e.target.value)}
-              required
-            />
-          </div>
-          <div className="field-row">
-            <div className="field-group">
-              <label className="field-label" htmlFor={channelId}>
-                Channel
-              </label>
-              <select id={channelId} value={channel} onChange={(e) => setChannel(e.target.value)}>
-                <option value="chat">Chat</option>
-                <option value="email">Email</option>
-              </select>
-            </div>
-            <div className="field-group" style={{ flex: 1 }}>
-              <label className="field-label" htmlFor={customerIdFieldId}>
-                Customer ID (optional)
-              </label>
-              <input
-                id={customerIdFieldId}
-                value={customerId}
-                onChange={(e) => setCustomerId(e.target.value)}
-              />
-            </div>
-            <button type="submit" className="btn-primary" disabled={submitting}>
-              {submitting ? "Running..." : "Run pipeline"}
-            </button>
-          </div>
-        </form>
-        {error && <p className="error">{error}</p>}
-      </div>
-
-      {result && (
-        <div className="card" style={{ marginTop: "1rem" }}>
-          <div className="trace-grid">
-            <div className="trace-stat">
-              <div className="trace-stat-label">Category</div>
-              <div className="trace-stat-value">{result.category}</div>
-            </div>
-            <div className="trace-stat">
-              <div className="trace-stat-label">Confidence</div>
-              <div className="trace-stat-value">{(result.confidence * 100).toFixed(0)}%</div>
-            </div>
-            <div className="trace-stat">
-              <div className="trace-stat-label">Route</div>
-              <div className="trace-stat-value">
-                <RoutePill route={result.route} />
-              </div>
-            </div>
-          </div>
-
-          <p>
-            <strong>Language tags:</strong>{" "}
-            {result.language_tags?.length ? result.language_tags.join(", ") : "none detected"}
-          </p>
-          <p>
-            <strong>Route reason:</strong> {result.route_reason}
-          </p>
-
-          {result.route === "ai" && (
-            <div className="result-box">
-              <p className="success-text">Would auto-resolve</p>
-              <p>{result.ai_response}</p>
-            </div>
-          )}
-          {result.route === "clarify" && (
-            <div className="result-box">
-              <p className="pending-text">
-                Would ask a clarifying question (attempt {result.clarification_attempts}
-                {maxAttempts != null ? `/${maxAttempts}` : ""})
-              </p>
-              <p>{result.ai_response}</p>
-              <p className="hint" style={{ margin: 0 }}>
-                Re-invoking the graph with this question + a reply would re-run
-                classify_ticket/decide_route on the fuller transcript.
-              </p>
-            </div>
-          )}
-          {result.route === "human" && (
-            <div className="result-box">
-              <p className="pending-text">Would escalate to a human agent</p>
-              <p className="hint" style={{ margin: 0 }}>
-                Technicians would only ever see the ticket text — not this category/confidence/reasoning.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const TABS = [
-  ["dashboard", "Dashboard", DashboardPanel],
-  ["tickets", "All Tickets", AllTickets],
-  ["sla", "SLA", SlaPanel],
-  ["users", "Users", UsersPanel],
-  ["departments", "Departments", DepartmentsPanel],
-  ["reviews", "Chat Reviews", ChatReviews],
-  ["incidents", "Incidents", IncidentsPanel],
-  ["activity", "Activity", AuditPanel],
-  ["settings", "Settings", SettingsPanel],
-  ["try", "Try a Ticket", TryATicket],
-  ["policy", "Routing Policy", RoutingPolicyPanel],
-];
+/* The admin keeps Dashboard, All tickets, SLA, Users and Departments, plus
+ * Settings and Activity. Chat reviews, Incidents, Try a ticket and the
+ * routing policy moved out (tests/test_role_scope.py). */
+const SECTIONS = {
+  dashboard: ["Dashboard", DashboardPanel],
+  tickets: ["All tickets", AllTickets],
+  sla: ["SLA", SlaPanel],
+  users: ["Users", UsersPanel],
+  departments: ["Departments", DepartmentsPanel],
+  settings: ["Settings", SettingsPanel],
+  activity: ["Activity", AuditPanel],
+};
 
 export default function AdminPortal() {
-  const [tab, setTab] = useState("dashboard");
-  const Panel = TABS.find(([key]) => key === tab)[2];
+  const { section = "dashboard" } = useParams();
+  if (!SECTIONS[section]) return <Navigate to="/admin" replace />;
+  const [title, Panel] = SECTIONS[section];
 
   return (
-    <div className="page page-portal">
-      <PortalHeader title="Admin Portal" role="admin" />
-      <nav className="tabs" aria-label="Admin sections">
-        {TABS.map(([key, label]) => (
-          <button
-            key={key}
-            className={tab === key ? "active" : ""}
-            aria-current={tab === key ? "page" : undefined}
-            onClick={() => setTab(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-      <div className="tab-content">
+    <AppShell role="admin" title={title}>
+      <div className="tab-content p-4 md:p-6">
         <Panel />
       </div>
-    </div>
+    </AppShell>
   );
 }

@@ -7,10 +7,11 @@
  */
 
 import { useCallback, useEffect, useId, useState } from "react";
+import { Navigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import ChatReviews from "../components/ChatReviews";
 import IncidentsPanel from "../components/IncidentsPanel";
-import PortalHeader from "../components/PortalHeader";
+import AppShell from "../layout/AppShell";
 import StaffTicketRow from "../components/StaffTicketRow";
 import StaffTicketView from "../components/StaffTicketView";
 import { STATUS_KEYS, statusLabel } from "../utils/statusLabels";
@@ -140,27 +141,24 @@ function Workspace() {
   );
 }
 
+const SECTIONS = {
+  tickets: "Tickets",
+  "chat-reviews": "Chat reviews",
+  incidents: "Assigned incidents",
+};
+
 export default function TechnicianPortal() {
-  const [tab, setTab] = useState("workspace");
+  const { section = "tickets" } = useParams();
+  if (!SECTIONS[section]) return <Navigate to="/technician" replace />;
 
   return (
-    <div className="page page-portal">
-      <PortalHeader title="Technician Workspace" role="technician" />
-      <nav className="tabs">
-        <button className={tab === "workspace" ? "active" : ""} onClick={() => setTab("workspace")}>
-          Tickets
-        </button>
-        <button className={tab === "reviews" ? "active" : ""} onClick={() => setTab("reviews")}>
-          Chat Reviews
-        </button>
-        <button className={tab === "incidents" ? "active" : ""} onClick={() => setTab("incidents")}>
-          Incidents
-        </button>
-      </nav>
-      {tab === "workspace" && <Workspace />}
-      {tab === "reviews" && <ChatReviews />}
-      {/* Only incidents a manager assigned to this technician. */}
-      {tab === "incidents" && <IncidentsPanel canRun={false} />}
-    </div>
+    <AppShell role="technician" title={SECTIONS[section]}>
+      <div className="p-4 md:p-6">
+        {section === "tickets" && <Workspace />}
+        {section === "chat-reviews" && <ChatReviews />}
+        {/* Only incidents a manager assigned to this technician. */}
+        {section === "incidents" && <IncidentsPanel canRun={false} />}
+      </div>
+    </AppShell>
   );
 }

@@ -55,3 +55,7 @@ build/
 
 # Local throwaway Postgres data (scripts/pg_local.sh)
 .local/
+
+# Design-skill working files (taste-skill, impeccable)
+.taste-skill/
+.impeccable/

@@ -17,7 +17,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import AttachmentPicker from "../components/AttachmentPicker";
-import PortalHeader from "../components/PortalHeader";
+import { useParams } from "react-router-dom";
+import AppShell from "../layout/AppShell";
 import ChatSession from "../components/ChatSession";
 import TicketThread from "../components/TicketThread";
 import Toast from "../components/Toast";
@@ -457,7 +458,8 @@ export default function CustomerPortal() {
   // null | "chat-form" | "ticket-form" | { chat } | { chatId } | { ticketId }
   // ({ chat } carries a just-started session so it renders without a refetch.)
   const [view, setView] = useState(null);
-  const [panel, setPanel] = useState("tickets");
+  const { section } = useParams();
+  const [panel, setPanel] = useState(section === "chats" ? "chats" : "tickets");
   const [tickets, setTickets] = useState(null);
   const [listError, setListError] = useState("");
   const [chats, setChats] = useState(null);
@@ -519,9 +521,8 @@ export default function CustomerPortal() {
   }
 
   return (
-    <div className="page page-portal">
-      <PortalHeader title="Support Portal" role="customer" />
-      <div className="portal-layout">
+    <AppShell role="customer" title="Get help">
+      <div className="portal-layout p-4 md:p-6">
         <div className="portal-main">
           <div className="request-cards" role="group" aria-label="New request">
             <button
@@ -621,6 +622,6 @@ export default function CustomerPortal() {
         </SidePanel>
       </div>
       <Toast toast={toast} onDismiss={dismissToast} />
-    </div>
+    </AppShell>
   );
 }

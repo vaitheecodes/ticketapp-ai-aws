@@ -127,19 +127,20 @@ FastAPI backend (backend/main.py, :8000)
   /api/auth/login (all roles), /api/auth/customer/signup,
   /api/auth/{me,change-password}            JWT (backend/auth.py)
   /api/chats, /api/chats/{id}/{messages,resolve,escalate}   AI chat
-  /api/chat-reviews, /api/chat-reviews/{id}   technician/admin
+  /api/chat-reviews, /api/chat-reviews/{id}   technician/manager
   /api/tickets/mine, POST /api/tickets (raise ticket), GET /api/tickets/{id} (thread),
   /{id}/{reply,reopen,attachments}            customer-facing
   /api/staff/tickets[?view=unassigned|mine|recent|open_pending]
   /api/staff/tickets/{id}, /{id}/{claim,status,messages}   technician workspace
   /api/manager/overview, /api/manager/departments          manager (read-only)
   /api/incidents[/{id}[/review|/departments|/assignee|/visibility]], /run
-  /api/incidents/{id}/resolution/{draft,summary,send}      manager/admin/assigned tech
+  /api/incidents/{id}/resolution/{draft,summary,send}      manager/assigned tech (no admin)
+  /api/try-a-ticket                           technician/manager (backend/try_ticket.py)
   /api/public/incidents                       public: visibility=public history
-  /api/admin/{tickets,technicians,simulate-ticket,staff,customers,
+  /api/admin/{tickets,technicians,staff,customers,
               departments,settings,audit}            admin (backend/admin.py)
   /api/meta                                   public: status labels, categories
-  /api/debug/routing-policy                   dev-only, unauthenticated
+  /api/public/routing-policy                  public, read-only (/docs); /api/debug/... alias
         |
         v
 LangGraph pipeline (backend/graph.py)
@@ -418,39 +419,30 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   **SLA**, **Users** (see the admin-area bullet above), **Departments**
   (`components/DepartmentsPanel.jsx`: create/edit/delete
   departments and their KB-category mapping — each category belongs to
-  at most one department, enforced server-side), Chat Reviews, Incidents,
-  Activity, Settings, **Try a Ticket**
-  (`POST /api/admin/simulate-ticket` — runs a ticket through the live
-  pipeline with real Azure OpenAI calls without persisting it, and shows
-  category/confidence/route/route_reason/language_tags; this is the
-  per-ticket pipeline-trace view that `src/ui/app.py`'s Streamlit demo
-  used to show), and **Routing Policy** (same live-from-`graph.py` panel
-  as the standalone `/debug` route, via the shared `RoutingPolicyPanel`
-  component). Reassignment is restricted to `route == 'human'` tickets —
-  an ai/clarify ticket was never queued for a human, so there's nothing
+  at most one department, enforced server-side), **Settings** and
+  **Activity**. Each section is its own route (`/admin/<section>`). Chat
+  Reviews (technicians + managers), Incidents (managers), **Try a ticket**
+  (`/try-a-ticket`, `POST /api/try-a-ticket`, technicians + managers: the
+  live pipeline trace without saving) and the **routing policy** (public,
+  read-only at `/docs/routing-policy`) are not in the admin console, and
+  the admin gets 403 on their endpoints (`tests/test_role_scope.py`).
+  Reassignment is restricted to `route == 'human'` tickets — an
+  ai/clarify ticket was never queued for a human, so there's nothing
   to hand off.
 
-- **Frontend design system** (`frontend/src/styles/tokens.css`,
-  `index.css`, `components/Icons.jsx`; spec and contrast table in
-  `docs/DESIGN_SYSTEM.md`): two themes, light by default, dark from
-  `prefers-color-scheme`, `[data-theme]` on `<html>` forcing either
-  (`components/ThemeToggle.jsx` System/Light/Dark, `utils/theme.js`, a
-  boot script in `index.html` so a forced theme doesn't flash); a neutral
-  graphite/paper palette with one restrained blue accent, rectangular
-  status/priority/SLA lozenges. Fira Sans (Google Fonts, loaded in
-  `index.html`) — chosen over Inter/Roboto/the usual defaults, which
-  read as generic in AI-generated UIs. Real hand-authored SVG icons
-  (`Icons.jsx`) instead of emoji/unicode glyphs — every icon there is
-  decorative (`aria-hidden`) since a visible text label always sits next
-  to it. `--color-text-muted` is `#5b6472` in light mode specifically to
-  clear 4.5:1 contrast against `--color-bg` (the original `#6b7280` sat
-  at ~4.43:1, just under WCAG AA). Every form field has a real
-  `<label htmlFor>` (via `.field-group`/`.field-label`), not a
-  placeholder-only input. Disclosure buttons (ticket row
-  expand/collapse) carry `aria-expanded`/`aria-controls`. Verified with
-  `.agents/skills/impeccable/scripts/impeccable detect` (zero findings)
-  across the whole frontend, and manually across light/dark ×
-  375/768/1440px.
+- **Frontend design system** (`frontend/src/styles/theme.css`,
+  `src/ui/` shadcn-pattern components on Radix, `src/layout/AppShell.jsx`,
+  `PRODUCT.md`): Tailwind v4, Lucide icons, Recharts, self-hosted IBM Plex
+  Sans/Mono. "Framed sheet" layout: one tinted frame holds a grouped
+  sidebar (per role, `layout/nav.js`) and a 48px top bar (page title,
+  theme menu System/Light/Dark, user menu); the page sits on a white sheet
+  with a 1px edge. Under 768px the sidebar becomes a drawer. Colour only on
+  data, status and the one primary action; every text token >= 4.5:1 in
+  both themes. Public pages (`/docs`, `/incidents`) use `PublicShell`.
+  The UI names the product "Help Desk" and the bot "Support Bot" (no
+  third-party brand in user-visible text). Pages not yet rebuilt still use
+  the old stylesheets, imported into a lower cascade layer
+  (`src/styles/legacy/`) until they are converted.
 
 - **Routing policy** (`backend/graph.py`) starts from the same
   thresholds as `src/agent/state.py` + `src/agent/nodes/decide_route.py`
@@ -463,9 +455,9 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   regardless of confidence, category, or clarification state. Since real
   tickets arrive with no pre-decoded flags (unlike the gold dataset),
   `classify_ticket` runs a small regex heuristic to populate
-  `language_tags` itself. `/api/debug/routing-policy`'s `decision_order`
-  (shown live in `RoutingPolicyPanel`, both at `/debug` and in the admin
-  portal) is the source of truth for the exact precedence — read from
+  `language_tags` itself. `/api/public/routing-policy`'s `decision_order`
+  (shown live at `/docs/routing-policy`, public; `/debug` redirects there)
+  is the source of truth for the exact precedence — read from
   `graph.py`'s constants, not hardcoded in the frontend.
 - **Agent-facing ticket text** (`frontend/src/utils/parseTicketText.js`,
   `TicketTextDetail.jsx`): `ticket_text` sometimes has a chat case

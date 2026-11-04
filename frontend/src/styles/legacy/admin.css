@@ -11,7 +11,7 @@
   gap: 2px;
   padding: 2px;
   background: var(--surface-overlay);
-  border-radius: var(--radius-md);
+  border-radius: var(--l-radius-md);
 }
 
 .theme-toggle button {
@@ -19,7 +19,7 @@
   height: 28px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--l-radius-sm);
   background: transparent;
   color: var(--text-tertiary);
 }
@@ -49,7 +49,7 @@
   width: min(28rem, calc(100vw - 32px));
   padding: 0;
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-xl);
+  border-radius: var(--l-radius-xl);
   background: var(--surface-float);
   color: var(--text-primary);
   box-shadow: var(--shadow-overlay);
@@ -72,12 +72,12 @@
 }
 
 .dialog-title {
-  font-size: var(--text-lg);
+  font-size: var(--l-text-lg);
   font-weight: 600;
 }
 
 .dialog-body .input-with-action input {
-  font-family: var(--font-mono);
+  font-family: var(--l-font-mono);
   font-size: 0.9375rem;
   letter-spacing: 0.04em;
   user-select: all;
@@ -104,26 +104,26 @@
   padding: var(--space-4);
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--l-radius-lg);
   box-shadow: var(--shadow-1);
 }
 
 .stat-tile .stat-label {
-  font-size: var(--text-sm);
+  font-size: var(--l-text-sm);
   font-weight: 500;
   color: var(--text-secondary);
 }
 
 .stat-tile .stat-value {
-  font-size: var(--text-2xl);
+  font-size: var(--l-text-2xl);
   font-weight: 600;
-  letter-spacing: var(--tracking-title);
+  letter-spacing: var(--l-tracking-title);
   font-variant-numeric: tabular-nums;
-  line-height: var(--leading-tight);
+  line-height: var(--l-leading-tight);
 }
 
 .stat-tile .stat-hint {
-  font-size: var(--text-sm);
+  font-size: var(--l-text-sm);
   color: var(--text-tertiary);
 }
 
@@ -136,7 +136,7 @@
 
 .report-filters input[type="date"] {
   padding: 0.35rem 0.5rem;
-  font-size: var(--text-sm);
+  font-size: var(--l-text-sm);
 }
 
 .report-grid {
@@ -156,7 +156,7 @@
 }
 
 .card-title {
-  font-size: var(--text-base);
+  font-size: var(--l-text-base);
   font-weight: 600;
   margin: 0 0 var(--space-3);
 }
@@ -166,13 +166,13 @@
 }
 
 .report-table {
-  font-size: var(--text-sm);
+  font-size: var(--l-text-sm);
 }
 
 .report-table th[scope="row"] {
   text-transform: none;
   letter-spacing: 0;
-  font-size: var(--text-sm);
+  font-size: var(--l-text-sm);
   font-weight: 500;
   color: var(--text-primary);
   background: none;
@@ -190,7 +190,7 @@
 .bar-track {
   display: block;
   height: 6px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--l-radius-pill);
   background: var(--surface-overlay);
   overflow: hidden;
 }
@@ -198,7 +198,7 @@
 .bar-fill {
   display: block;
   height: 100%;
-  background: var(--chart-1);
+  background: var(--l-chart-1);
 }
 
 /* ---------------------------------------------------------------- chart */
@@ -208,7 +208,7 @@
 }
 
 .chart-title {
-  font-size: var(--text-base);
+  font-size: var(--l-text-base);
   font-weight: 600;
   margin: 0 0 var(--space-2);
 }
@@ -217,7 +217,7 @@
   display: flex;
   gap: var(--space-4);
   margin: 0 0 var(--space-2);
-  font-size: var(--text-sm);
+  font-size: var(--l-text-sm);
   color: var(--text-secondary);
 }
 
@@ -239,15 +239,15 @@
 }
 
 .chart-grid {
-  stroke: var(--chart-grid);
+  stroke: var(--l-chart-grid);
   stroke-width: 1;
   shape-rendering: crispEdges;
   vector-effect: non-scaling-stroke;
 }
 
 .chart-axis {
-  fill: var(--chart-label);
-  font-family: var(--font-sans);
+  fill: var(--l-chart-label);
+  font-family: var(--l-font-sans);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
@@ -310,6 +310,6 @@ tbody tr.is-muted td {
 }
 
 .sla-chip-detail {
-  font-size: var(--text-sm);
+  font-size: var(--l-text-sm);
   font-variant-numeric: tabular-nums;
 }

@@ -6,16 +6,18 @@ import CustomerPortal from "./pages/CustomerPortal";
 import TechnicianPortal from "./pages/TechnicianPortal";
 import ManagerPortal from "./pages/ManagerPortal";
 import AdminPortal from "./pages/AdminPortal";
-import DebugPanel from "./pages/DebugPanel";
+import Docs from "./pages/Docs";
 import IncidentHistory from "./pages/IncidentHistory";
+import RoutingPolicyDoc from "./pages/RoutingPolicyDoc";
+import TryATicket from "./pages/TryATicket";
 import UiGallery from "./pages/UiGallery";
 
 // Client-side gate only, for navigation. Every endpoint enforces the
-// same role (and the forced password change) on the backend.
-function RequireRole({ role, children }) {
+// same roles (and the forced password change) on the backend.
+function RequireRole({ role, roles = [role], children }) {
   if (!getToken()) return <Navigate to="/login" replace />;
   if (getMustChangePassword()) return <Navigate to="/change-password" replace />;
-  if (getRole() !== role) return <Navigate to={HOME_FOR_ROLE[getRole()] || "/login"} replace />;
+  if (!roles.includes(getRole())) return <Navigate to={HOME_FOR_ROLE[getRole()] || "/login"} replace />;
   return children;
 }
 
@@ -49,7 +51,7 @@ export default function App() {
         {PORTALS.map(([role, Portal]) => (
           <Route
             key={role}
-            path={HOME_FOR_ROLE[role]}
+            path={`${HOME_FOR_ROLE[role]}/:section?`}
             element={
               <RequireRole role={role}>
                 <Portal />
@@ -62,9 +64,20 @@ export default function App() {
         <Route path="/agent/login" element={<Navigate to="/login" replace />} />
         <Route path="/admin/login" element={<Navigate to="/login" replace />} />
         <Route path="/agent" element={<Navigate to="/technician" replace />} />
-        {/* Public, no login: visibility=public incidents only. */}
+        {/* Technicians and managers: the pipeline trace, nothing saved. */}
+        <Route
+          path="/try-a-ticket"
+          element={
+            <RequireRole roles={["technician", "manager"]}>
+              <TryATicket />
+            </RequireRole>
+          }
+        />
+        {/* Public, no login: visibility=public incidents only, and the docs. */}
         <Route path="/incidents" element={<IncidentHistory />} />
-        <Route path="/debug" element={<DebugPanel />} />
+        <Route path="/docs" element={<Docs />} />
+        <Route path="/docs/routing-policy" element={<RoutingPolicyDoc />} />
+        <Route path="/debug" element={<Navigate to="/docs/routing-policy" replace />} />
         <Route path="/ui" element={<UiGallery />} />
       </Routes>
     </BrowserRouter>

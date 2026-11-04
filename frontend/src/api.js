@@ -205,7 +205,8 @@ export const api = {
     }),
   managerOverview: () => request("/manager/overview", { auth: true }),
 
-  // AI incident correlation (backend/incidents.py): managers + admin.
+  // AI incident correlation (backend/incidents.py): managers, and
+  // technicians for incidents assigned to them.
   incidents: (includeDismissed = false) =>
     request(`/incidents${includeDismissed ? "?include_dismissed=true" : ""}`, { auth: true }),
   incident: (incidentId) => request(`/incidents/${incidentId}`, { auth: true }),
@@ -305,12 +306,14 @@ export const api = {
   adminDeleteDepartment: (departmentId) =>
     request(`/admin/departments/${departmentId}`, { method: "DELETE", auth: true }),
 
-  adminSimulateTicket: (ticket_text, channel, customer_id) =>
-    request("/admin/simulate-ticket", {
+  // Try a Ticket (backend/try_ticket.py): technicians and managers.
+  tryATicket: (ticket_text, channel, customer_id) =>
+    request("/try-a-ticket", {
       method: "POST",
       body: { ticket_text, channel, customer_id: customer_id || undefined },
       auth: true,
     }),
 
-  debugRoutingPolicy: () => request("/debug/routing-policy"),
+  // Public, read-only (the /docs page).
+  routingPolicy: () => request("/public/routing-policy"),
 };

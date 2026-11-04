@@ -1,32 +1,36 @@
-/* Manager dashboard: incidents first (AI-detected clusters of related
- * reports, for review), then oversight of the tickets in the manager's
- * departments and each technician's workload on them. Read-only for
- * tickets: technicians claim their own work. */
+/* Manager: incidents first (AI-detected clusters of related reports, for
+ * review), oversight of the tickets in the manager's department and each
+ * technician's workload on them, and chat reviews. Read-only for tickets:
+ * technicians claim their own work. */
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import IncidentsPanel from "../components/IncidentsPanel";
-import PortalHeader from "../components/PortalHeader";
+import { Navigate, useParams } from "react-router-dom";
+import AppShell from "../layout/AppShell";
+import ChatReviews from "../components/ChatReviews";
 import StaffTicketView from "../components/StaffTicketView";
 import { categoryLabel } from "../utils/categories";
 import StaffTicketRow from "../components/StaffTicketRow";
 
+const SECTIONS = {
+  incidents: "Incidents",
+  tickets: "Department tickets",
+  "chat-reviews": "Chat reviews",
+};
+
 export default function ManagerPortal() {
-  const [tab, setTab] = useState("incidents");
+  const { section = "incidents" } = useParams();
+  if (!SECTIONS[section]) return <Navigate to="/manager" replace />;
 
   return (
-    <div className="page page-portal">
-      <PortalHeader title="Manager Dashboard" role="manager" />
-      <nav className="tabs">
-        <button className={tab === "incidents" ? "active" : ""} onClick={() => setTab("incidents")}>
-          Incidents
-        </button>
-        <button className={tab === "tickets" ? "active" : ""} onClick={() => setTab("tickets")}>
-          Department tickets
-        </button>
-      </nav>
-      {tab === "incidents" ? <IncidentsPanel /> : <DepartmentOverview />}
-    </div>
+    <AppShell role="manager" title={SECTIONS[section]}>
+      <div className="p-4 md:p-6">
+        {section === "incidents" && <IncidentsPanel />}
+        {section === "tickets" && <DepartmentOverview />}
+        {section === "chat-reviews" && <ChatReviews />}
+      </div>
+    </AppShell>
   );
 }
 

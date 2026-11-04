@@ -14,24 +14,24 @@
 
 /* --- theme-independent: type, space, radius, motion, semantic aliases ---- */
 :root {
-  --font-sans: "Fira Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Fira Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --l-font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --l-font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  --text-xs: 0.6875rem;  /* 11px — chips, table headers */
-  --text-sm: 0.8125rem;  /* 13px — meta, labels, dense data */
-  --text-base: 0.875rem; /* 14px — UI body */
-  --text-md: 1rem;       /* 16px — prose, chat */
-  --text-lg: 1.125rem;   /* 18px — section heading */
-  --text-xl: 1.375rem;   /* 22px — page title */
-  --text-2xl: 1.75rem;   /* 28px — KPI value, landing (was 30px) */
+  --l-text-xs: 0.6875rem;  /* 11px — chips, table headers */
+  --l-text-sm: 0.8125rem;  /* 13px — meta, labels, dense data */
+  --l-text-base: 0.875rem; /* 14px — UI body */
+  --l-text-md: 1rem;       /* 16px — prose, chat */
+  --l-text-lg: 1.125rem;   /* 18px — section heading */
+  --l-text-xl: 1.375rem;   /* 22px — page title */
+  --l-text-2xl: 1.75rem;   /* 28px — KPI value, landing (was 30px) */
 
-  --leading-tight: 1.25;
-  --leading-snug: 1.45;
-  --leading-relaxed: 1.6;
+  --l-leading-tight: 1.25;
+  --l-leading-snug: 1.45;
+  --l-leading-relaxed: 1.6;
 
-  --tracking-label: 0.04em;
-  --tracking-tight: -0.011em;
-  --tracking-title: -0.018em;
+  --l-tracking-label: 0.04em;
+  --l-tracking-tight: -0.011em;
+  --l-tracking-title: -0.018em;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -46,18 +46,18 @@
 
   /* Tighter than before: controls 6, cards 8, dialogs 10. Pills only for
      counters and the theme segmented control's track. */
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 10px;
-  --radius-pill: 999px;
+  --l-radius-xs: 3px;
+  --l-radius-sm: 4px;
+  --l-radius-md: 6px;
+  --l-radius-lg: 8px;
+  --l-radius-xl: 10px;
+  --l-radius-pill: 999px;
 
   --control-h-sm: 1.75rem;   /* new — 28px */
   --control-h-md: 2.125rem;  /* new — 34px */
   --control-h-lg: 2.5rem;    /* new — 40px (login, dialog primary) */
 
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --l-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 120ms;
   --dur: 180ms;
 
@@ -156,15 +156,15 @@
   --table-row-selected: #e3ecfb;   /* new */
 
   /* charts — CVD-checked categorical set (see §3.3) */
-  --chart-1: #3163c9;  /* blue   */
-  --chart-2: #8a3208;  /* rust   */
-  --chart-3: #08896a;  /* teal   */
-  --chart-4: #b33188;  /* magenta*/
-  --chart-5: #b97a0c;  /* ochre  */
-  --chart-6: #43474f;  /* slate  */
-  --chart-grid: #e3e6eb;
-  --chart-axis: #868f9d;
-  --chart-label: var(--text-tertiary);
+  --l-chart-1: #3163c9;  /* blue   */
+  --l-chart-2: #8a3208;  /* rust   */
+  --l-chart-3: #08896a;  /* teal   */
+  --l-chart-4: #b33188;  /* magenta*/
+  --l-chart-5: #b97a0c;  /* ochre  */
+  --l-chart-6: #43474f;  /* slate  */
+  --l-chart-grid: #e3e6eb;
+  --l-chart-axis: #868f9d;
+  --l-chart-label: var(--text-tertiary);
 
   /* elevation — light mode gets a real (subtle) shadow scale */
   --shadow-1: 0 1px 2px rgba(23, 27, 36, 0.06);                                   /* new — cards, rows */
@@ -238,15 +238,15 @@
     --table-row-hover: #1d2330;
     --table-row-selected: #1f2c45;
 
-    --chart-1: #5b8def;
-    --chart-2: #e0702e;
-    --chart-3: #4fd1a8;
-    --chart-4: #d68bc8;
-    --chart-5: #d9c046;
-    --chart-6: #7a828f;
-    --chart-grid: #252930;
-    --chart-axis: #666e7b;
-    --chart-label: var(--text-tertiary);
+    --l-chart-1: #5b8def;
+    --l-chart-2: #e0702e;
+    --l-chart-3: #4fd1a8;
+    --l-chart-4: #d68bc8;
+    --l-chart-5: #d9c046;
+    --l-chart-6: #7a828f;
+    --l-chart-grid: #252930;
+    --l-chart-axis: #666e7b;
+    --l-chart-label: var(--text-tertiary);
 
     --shadow-1: none;
     --shadow-2: none;
@@ -319,15 +319,15 @@
   --table-row-hover: #1d2330;
   --table-row-selected: #1f2c45;
 
-  --chart-1: #5b8def;
-  --chart-2: #e0702e;
-  --chart-3: #4fd1a8;
-  --chart-4: #d68bc8;
-  --chart-5: #d9c046;
-  --chart-6: #7a828f;
-  --chart-grid: #252930;
-  --chart-axis: #666e7b;
-  --chart-label: var(--text-tertiary);
+  --l-chart-1: #5b8def;
+  --l-chart-2: #e0702e;
+  --l-chart-3: #4fd1a8;
+  --l-chart-4: #d68bc8;
+  --l-chart-5: #d9c046;
+  --l-chart-6: #7a828f;
+  --l-chart-grid: #252930;
+  --l-chart-axis: #666e7b;
+  --l-chart-label: var(--text-tertiary);
 
   --shadow-1: none;
   --shadow-2: none;
@@ -357,9 +357,9 @@ body {
   margin: 0;
   background: var(--surface-page);
   color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--text-base);
-  line-height: var(--leading-snug);
+  font-family: var(--l-font-sans);
+  font-size: var(--l-text-base);
+  line-height: var(--l-leading-snug);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -389,7 +389,7 @@ body {
   background: var(--border-default);
   border: 2px solid transparent;
   background-clip: content-box;
-  border-radius: var(--radius-pill);
+  border-radius: var(--l-radius-pill);
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -400,15 +400,15 @@ body {
 :focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
-  border-radius: var(--radius-xs);
+  border-radius: var(--l-radius-xs);
 }
 
 h1,
 h2,
 h3,
 h4 {
-  letter-spacing: var(--tracking-tight);
-  line-height: var(--leading-tight);
+  letter-spacing: var(--l-tracking-tight);
+  line-height: var(--l-leading-tight);
   margin: 0;
 }
 
@@ -433,7 +433,7 @@ th {
 code,
 kbd,
 .mono {
-  font-family: var(--font-mono);
+  font-family: var(--l-font-mono);
   font-variant-ligatures: none;
 }
 
