@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend import admin, admin_reports, admin_users, ai_failures, app_settings, auth, chats, db, email_utils, graph
 from backend import handoff_signals
-from backend import incidents
+from backend import incidents, kb_retrieval
 from backend import db_postgres, incident_memory, incident_resolution, rate_limit, runtime, staff_tickets, storage
 from backend import try_ticket
 from backend.ai_service import backends as ai_backends
@@ -139,9 +139,21 @@ def on_shutdown() -> None:
         db_postgres.close_pool()
 
 
+def check_kb() -> None:
+    """Print how many KB entries loaded (one plain line, so it reaches the
+    container log whatever the logging setup). Without a KB every chat
+    gets the no-KB hand-off, so production refuses to start on 0."""
+    count = kb_retrieval.entry_count()
+    print(f"KB: {count} entries loaded from {kb_retrieval.KB_PATH.parent}", flush=True)
+    if count == 0 and auth.is_production():
+        raise auth.config_error(str(kb_retrieval.KB_PATH),
+                                "has no KB entries (missing from the image, or unreadable)")
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     auth.check_production_config()
+    check_kb()
     try:
         storage.check_config()
     except storage.StorageConfigError as exc:
@@ -1108,11 +1120,12 @@ def manager_departments(manager_id: str = Depends(auth.get_current_manager)):
 
 @app.get("/api/meta")
 def meta():
-    """Public display configuration: admin-configured status labels and
-    the KB categories."""
+    """Public display configuration: admin-configured status labels, the
+    KB categories, and how many KB entries loaded (a count, no content)."""
     return {
         "status_labels": app_settings.get("statuses").model_dump(),
         "categories": graph.CATEGORIES,
+        "kb_entries": kb_retrieval.entry_count(),
     }
 
 

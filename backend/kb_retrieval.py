@@ -238,6 +238,17 @@ def _load_index() -> "_KBIndex | None":
     return build_index(entries + new.entries)
 
 
+def entry_count() -> int:
+    """KB entries the search uses (canonical + approved new); 0 when
+    data/kb/kb_entries.json is missing or unreadable. Checked at startup
+    (production refuses to start on 0) and shown on /api/meta."""
+    try:
+        index = _load_index()
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0
+    return len(index.entries) if index else 0
+
+
 def retrieve_candidates(ticket_text: str, top_k: int = 3, min_score: float | None = None,
                         category: str | None = None, skip_faults: bool = False) -> list[KBCandidate]:
     """Top-k distinct KB topics (by TF-IDF cosine similarity) for

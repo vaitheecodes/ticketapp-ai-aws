@@ -250,7 +250,9 @@ ADMIN_EMAIL=you@example.com scripts/aws_up.sh   # ADMIN_EMAIL only on the very f
      returns 200;
    - ALB idle timeout set to 120 s, log retention to 14 days.
 9. Frontend: rebuilt and deployed only if the API URL changed.
-10. Smoke test without sign-in (`scripts/aws_smoke.py`).
+10. Smoke test without sign-in (`scripts/aws_smoke.py`). It fails if
+    `/api/meta` reports 0 KB entries (or none: an image older than that
+    field).
 
 **Down** (10-20 min). Stop using the app first, then:
 
@@ -865,6 +867,9 @@ deployment is a canary.
 ## 10. Smoke test, then full teardown
 
 **Smoke test:** `scripts/aws_smoke.py` (section 0, demo-day checklist).
+The container log starts with `KB: <n> entries loaded from /app/data/kb`;
+in production the API refuses to start with 0 (`STARTUP CONFIG ERROR:
+... has no KB entries`), and `/api/meta` shows `kb_entries`.
 By hand:
 1. Sign in as the admin and change the password.
 2. Create a technician.

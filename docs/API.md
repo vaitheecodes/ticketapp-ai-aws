@@ -37,7 +37,7 @@ There is no signup for staff or the admin: the admin is created from
 
 | Method & path | Role | Response |
 |---|---|---|
-| `GET /meta` | public | `{status_labels:{open, in_progress, pending_customer, resolved, closed}, categories:[...]}` |
+| `GET /meta` | public | `{status_labels:{open, in_progress, pending_customer, resolved, closed}, categories:[...], kb_entries}` (`kb_entries`: how many KB entries loaded, a count only) |
 | `GET /categories` | public | `["ACCOUNT", "AGENT", ...]` (the 17 KB categories) |
 | `GET /public/routing-policy` | public, read-only | live routing policy: thresholds, high-risk categories, escalation tags, max clarifying rounds, decision order (the `/docs/routing-policy` page). `GET /debug/routing-policy` is the older path, same response. |
 

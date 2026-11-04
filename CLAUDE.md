@@ -206,7 +206,11 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   and `generate_response`'s prompt (the top candidate's canonical
   response as grounding, same pattern as order grounding below). No
   embedding model is wired in (see the eval-track roadmap below) — this
-  is deliberately simple and dependency-free. Covered by
+  is deliberately simple and dependency-free. Startup prints
+  `KB: <n> entries loaded`; production refuses to start with 0;
+  `/api/meta` has `kb_entries` (count only) and `scripts/aws_smoke.py`
+  fails on 0; `tests/test_kb_shipped.py` loads the KB from the image's
+  file set built from `git archive HEAD`. Covered by
   `tests/test_kb_retrieval.py` and `tests/test_ask_clarifying_question.py`
   (pure-function/stubbed-client tests, no live LLM calls).
 

@@ -68,8 +68,11 @@ def public_checks(c: Checks, frontend: str, api: str) -> None:
     c.check("API /health", status == 200 and _json(body) == {"ok": True}, f"HTTP {status}")
 
     status, _, body = _request("GET", api + "/api/meta")
-    categories = (_json(body) or {}).get("categories") or []
+    meta = _json(body) or {}
+    categories = meta.get("categories") or []
     c.check("API /api/meta", status == 200 and len(categories) > 0, f"HTTP {status}, {len(categories)} categories")
+    kb = meta.get("kb_entries")
+    c.check("KB loaded", isinstance(kb, int) and kb > 0, f"{kb if kb is not None else 'no'} KB entries")
 
     status, headers, _ = _request("OPTIONS", api + "/api/auth/login", headers={
         "Origin": frontend, "Access-Control-Request-Method": "POST",
