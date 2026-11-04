@@ -9,6 +9,13 @@ lists "service operation" pairs that should fail. An option the real
 subcommand doesn't accept (tests/fake_aws_options.json, from the CLI's
 own help) exits 252 with the real CLI's "Unknown options" error, and
 state["no_profile"] makes every call fail like a missing --profile.
+
+RDS: a restored instance has no managed password secret, and restoring
+with --manage-master-user-password fails like the real API does for
+postgres. A modify with that flag adds the secret over a few describe
+calls (db["next"]: the states still to come, oldest first), first still
+"available" without it, as the real instance can read before it starts
+modifying.
 """
 
 from __future__ import annotations
@@ -58,6 +65,18 @@ def _file(value: str) -> str:
 
 class NotFound(Exception):
     pass
+
+
+class ApiError(Exception):
+    """A service error: the real CLI prints it and exits 254."""
+
+    def __init__(self, code: str, op: str, message: str):
+        super().__init__(f"An error occurred ({code}) when calling the {op} operation: {message}")
+
+
+def _new_db_secret(state: dict) -> str:
+    n = state["db_generation"] = state.get("db_generation", 0) + 1
+    return f"arn:aws:secretsmanager:{REGION}:{ACCOUNT}:secret:rds!db-{n}"
 
 
 def handle(state: dict, service: str, op: str, o: dict) -> object:
@@ -190,14 +209,23 @@ def handle(state: dict, service: str, op: str, o: dict) -> object:
         if op == "describe-db-instances":
             if not db:
                 raise NotFound
-            return {"DBInstances": [{
-                "DBInstanceStatus": db["status"],
-                "Endpoint": {"Address": "ticketapp-db.abc.ap-south-1.rds.amazonaws.com"},
-                "MasterUserSecret": {"SecretArn": db["secret"]}}]}
-        if op in ("create-db-instance", "restore-db-instance-from-db-snapshot"):
-            n = s["db_generation"] = s.get("db_generation", 0) + 1
-            s["db"] = {"status": "available", "secret": f"arn:aws:secretsmanager:{REGION}:{ACCOUNT}:secret:rds!db-{n}",
-                       "from": _one(o, "db-snapshot-identifier")}
+            if db.get("next"):
+                db.update(db["next"].pop(0))
+            instance = {"DBInstanceStatus": db["status"],
+                        "Endpoint": {"Address": "ticketapp-db.abc.ap-south-1.rds.amazonaws.com"}}
+            if db.get("secret"):  # the real API leaves the key out
+                instance["MasterUserSecret"] = {"SecretArn": db["secret"]}
+            return {"DBInstances": [instance]}
+        if op == "restore-db-instance-from-db-snapshot":
+            if "manage-master-user-password" in o:
+                raise ApiError("InvalidParameterValue", "RestoreDBInstanceFromDBSnapshot",
+                               "The parameter ManageMasterUserPassword is not valid for engine: postgres")
+            s["db"] = {"status": "creating", "secret": None, "from": _one(o, "db-snapshot-identifier"),
+                       "next": [{"status": "available"}]}
+            return {}
+        if op == "create-db-instance":
+            s["db"] = {"status": "creating", "secret": _new_db_secret(s), "from": None,
+                       "next": [{"status": "available"}]}
             return {}
         if op == "describe-orderable-db-instance-options":
             return {"OrderableDBInstanceOptions": [{"EngineVersion": v} for v in ("17.6", "18.1", "18.3")]}
@@ -219,6 +247,14 @@ def handle(state: dict, service: str, op: str, o: dict) -> object:
             s["snapshots"] = [x for x in snaps if x["DBSnapshotIdentifier"] != _one(o, "db-snapshot-identifier")]
             return {}
         if op == "modify-db-instance":
+            if "manage-master-user-password" in o:
+                if db["status"] != "available":
+                    raise ApiError("InvalidDBInstanceState", "ModifyDBInstance",
+                                   f"Database instance is not in available state ({db['status']}).")
+                s["modifications"] = s.get("modifications", 0) + 1
+                done = {"status": "available"} if s.get("secret_never") else {"status": "available",
+                                                                               "secret": _new_db_secret(s)}
+                db["next"] = [{"status": "available"}, {"status": "modifying"}, {"status": "modifying"}, done]
             return {}
         if op == "delete-db-instance":
             s["db"] = None
@@ -355,6 +391,9 @@ def main(argv: list[str]) -> int:
         result = handle(state, service, op, opts)
     except NotFound:
         print(f"An error occurred (NotFound) when calling {op}", file=sys.stderr)
+        return 254
+    except ApiError as err:
+        print(f"\n{err}", file=sys.stderr)
         return 254
     json.dump(state, open(path, "w"))
     if _one(opts, "query"):

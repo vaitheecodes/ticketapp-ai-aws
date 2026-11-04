@@ -84,6 +84,19 @@ db_status() {
     --query 'DBInstances[0].DBInstanceStatus' 2>/dev/null || true
 }
 
+# "ready" once the instance is available with an RDS-managed password
+# secret, else its status ("" if it doesn't exist).
+db_ready() {
+  local status arn
+  read -r status arn < <(awst rds describe-db-instances --db-instance-identifier "$DB_ID" \
+    --query 'DBInstances[0].[DBInstanceStatus, MasterUserSecret.SecretArn]' 2>/dev/null) || true
+  if [ "${status:-}" = available ] && [ -n "${arn:-}" ] && [ "$arn" != None ]; then
+    echo ready
+  else
+    echo "${status:-}"
+  fi
+}
+
 # Manual snapshots of this app, oldest first, one per line.
 db_snapshots() {
   awst rds describe-db-snapshots --snapshot-type manual \

@@ -223,9 +223,22 @@ ADMIN_EMAIL=you@example.com scripts/aws_up.sh   # ADMIN_EMAIL only on the very f
 5. Database:
    - restored from the newest `ticketapp-db-*` snapshot;
    - or, on the first run, created empty (newest PostgreSQL 18.x,
-     encrypted, private, deletion protection).
+     encrypted, private, deletion protection), with
+     `--manage-master-user-password`.
 
-   Either way RDS generates a new managed password secret.
+   Either way RDS generates a new managed password secret. A restore
+   can't ask for one: `restore-db-instance-from-db-snapshot` accepts
+   `--manage-master-user-password` for Oracle only, and for postgres
+   fails with `InvalidParameterValue`. So after a restore, once the
+   instance is available, the script runs
+   `aws rds modify-db-instance --manage-master-user-password --apply-immediately`
+   and waits (up to 20 min, `DB_SECRET_WAIT` seconds) until the
+   instance is available again **and** has `MasterUserSecret.SecretArn`;
+   it can read "available" for a moment before the modify starts, so
+   the status alone isn't enough. RDS sets a new password then; the old
+   one from the snapshot stops working. A re-run is safe: an instance
+   that already has the secret is never modified, and one that is
+   still modifying is waited for, not modified again.
 6. IAM roles: created if missing. The execution role's policy is
    rewritten each run for the two current secret ARNs.
 7. Amplify app and branch: created if missing.

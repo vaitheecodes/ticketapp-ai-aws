@@ -3,6 +3,9 @@
 
 - up creates what's missing, restores the newest snapshot, and a second
   run changes nothing;
+- a restore runs without --manage-master-user-password (the real API
+  rejects it for postgres) and a modify then adds the managed secret; a
+  re-run skips the modify, and one during the modify waits for it;
 - the generated secrets are never printed and never put in the service
   definition (only secret ARNs are);
 - down needs a typed "yes", snapshots before deleting anything, deletes
@@ -113,6 +116,9 @@ def test_up_from_nothing_creates_everything_without_printing_secrets(fake):
 
     ops = fake.ops()
     assert "rds create-db-instance" in ops and "rds restore-db-instance-from-db-snapshot" not in ops
+    assert "rds modify-db-instance" not in ops  # created with the managed secret already
+    create = next(c for c in fake.calls() if c[1] == "create-db-instance")
+    assert "--manage-master-user-password" in create
     create = next(c for c in fake.calls() if c[1] == "create-db-instance")
     assert create[create.index("--engine-version") + 1] == "18.3"
     for flag in ("--no-publicly-accessible", "--manage-master-user-password", "--storage-encrypted"):
@@ -144,13 +150,79 @@ def test_up_needs_admin_email_before_creating_the_secret(fake):
     assert not any(op.startswith(("rds create-db-instance", "ecs create")) for op in fake.ops())
 
 
+def _rds_calls(fake, op):
+    return [c for c in fake.calls() if c[:2] == ["rds", op]]
+
+
 def test_up_restores_the_newest_snapshot(fake):
     fake.set_state(_existing())
     res = fake.run("aws_up.sh")
     assert res.returncode == 0, res.stderr
-    assert fake.state()["db"]["from"] == "ticketapp-db-20261102-120000"
+    state = fake.state()
+    assert state["db"]["from"] == "ticketapp-db-20261102-120000"
     assert "rds create-db-instance" not in fake.ops()
     assert "secretsmanager create-secret" not in fake.ops()
+    # Restored without the flag, then one modify turns the managed secret on.
+    [restore] = _rds_calls(fake, "restore-db-instance-from-db-snapshot")
+    assert "--manage-master-user-password" not in restore
+    [modify] = _rds_calls(fake, "modify-db-instance")
+    assert {"--manage-master-user-password", "--apply-immediately"} <= set(modify)
+    assert fake.ops().index("rds restore-db-instance-from-db-snapshot") < fake.ops().index("rds modify-db-instance")
+    assert state["modifications"] == 1 and state["db"]["secret"]
+    refs = {x["name"]: x["valueFrom"] for x in state["service"]["container"]["secrets"]}
+    assert refs["DB_PASSWORD"] == state["db"]["secret"] + ":password::"
+
+
+def test_fake_rds_rejects_restore_with_the_managed_password_flag(tmp_path):
+    state, log = tmp_path / "state.json", tmp_path / "calls.log"
+    state.write_text("{}")
+    argv = ["rds", "restore-db-instance-from-db-snapshot", "--db-instance-identifier", "ticketapp-db",
+            "--db-snapshot-identifier", "s", "--manage-master-user-password"]
+    res = subprocess.run([sys.executable, str(ROOT / "tests" / "fake_aws_cli.py"), *argv], capture_output=True,
+                         text=True, env={**os.environ, "FAKE_AWS_STATE": str(state), "FAKE_AWS_LOG": str(log)})
+    assert res.returncode == 254
+    assert "InvalidParameterValue" in res.stderr and "not valid for engine: postgres" in res.stderr
+    assert json.loads(state.read_text()) == {}
+
+
+def test_up_re_run_after_a_restore_without_secret_modifies_once(fake):
+    # As after the old failure, or a run stopped right after the restore.
+    fake.set_state(_existing(db={"status": "available", "secret": None, "from": "ticketapp-db-20261102-120000"}))
+    res = fake.run("aws_up.sh")
+    assert res.returncode == 0, res.stderr
+    assert "rds restore-db-instance-from-db-snapshot" not in fake.ops()
+    assert len(_rds_calls(fake, "modify-db-instance")) == 1
+    first = len(fake.calls())
+    assert fake.run("aws_up.sh").returncode == 0
+    assert "rds modify-db-instance" not in [f"{c[0]} {c[1]}" for c in fake.calls()[first:]]
+
+
+def test_up_during_a_modify_waits_for_it_without_another(fake):
+    secret = "arn:aws:secretsmanager:ap-south-1:123456789012:secret:rds!db-9"
+    fake.set_state(_existing(db={"status": "modifying", "secret": None, "from": None, "next": [
+        {"status": "modifying"}, {"status": "modifying"}, {"status": "available", "secret": secret}]}))
+    res = fake.run("aws_up.sh")
+    assert res.returncode == 0, res.stderr
+    assert "rds modify-db-instance" not in fake.ops()
+    refs = {x["name"]: x["valueFrom"] for x in fake.state()["service"]["container"]["secrets"]}
+    assert refs["DB_PASSWORD"] == secret + ":password::"
+
+
+def test_up_stops_when_the_secret_never_appears(fake):
+    fake.set_state(_existing(db={"status": "available", "secret": None, "from": None}, secret_never=True))
+    res = fake.run("aws_up.sh", DB_SECRET_WAIT="1")
+    assert res.returncode != 0 and "database secret: still" in res.stderr
+    assert not any(op.startswith("ecs create") for op in fake.ops())
+
+
+def test_down_after_a_restored_up(fake):
+    fake.set_state(_existing())
+    assert fake.run("aws_up.sh").returncode == 0
+    res = fake.run("aws_down.sh", stdin="yes\n")
+    assert res.returncode == 0, res.stderr
+    state = fake.state()
+    assert state["db"] is None and state["service"]["status"] == "INACTIVE"
+    assert len(state["snapshots"]) == 2
 
 
 def test_up_twice_changes_nothing_the_second_time(fake):

@@ -143,7 +143,7 @@ case "$STATUS" in
         --db-instance-class db.t4g.micro --storage-type gp3 \
         --db-subnet-group-name "$DB_ID" --vpc-security-group-ids "$DB_SG" \
         --no-publicly-accessible --no-multi-az \
-        --manage-master-user-password --deletion-protection --copy-tags-to-snapshot \
+        --deletion-protection --copy-tags-to-snapshot \
         --tags Key=project,Value="$NAME" >/dev/null
     else
       PG_VERSION=${PG_VERSION:-$(awst rds describe-orderable-db-instance-options --engine postgres \
@@ -170,8 +170,19 @@ case "$STATUS" in
   deleting) die "the database is being deleted (aws_down still running?); wait, then re-run" ;;
   *) info "status: $STATUS" ;;
 esac
-WANT=available FAIL="failed incompatible-restore incompatible-parameters incompatible-network storage-full" \
-  wait_for 2700 "database" db_status
+DB_FAIL="failed incompatible-restore incompatible-parameters incompatible-network storage-full"
+WANT=available FAIL=$DB_FAIL wait_for 2700 "database" db_status
+# A restored instance has no managed password secret: restore accepts
+# --manage-master-user-password for Oracle only. A modify turns it on (RDS
+# sets a new password and stores it in a new secret). The instance can read
+# "available" before the modify starts, so wait for the secret ARN too. A
+# re-run during the modify waits above, then finds the secret and skips this.
+if [ "$(db_ready)" != ready ]; then
+  info "turning on the RDS-managed password secret (a restore doesn't)"
+  aws rds modify-db-instance --db-instance-identifier "$DB_ID" \
+    --manage-master-user-password --apply-immediately >/dev/null
+  WANT=ready FAIL=$DB_FAIL wait_for "${DB_SECRET_WAIT:-1200}" "database secret" db_ready
+fi
 read -r DB_HOST DB_SECRET_ARN < <(awst rds describe-db-instances --db-instance-identifier "$DB_ID" \
   --query 'DBInstances[0].[Endpoint.Address, MasterUserSecret.SecretArn]') || true
 [ -n "${DB_SECRET_ARN:-}" ] && [ "$DB_SECRET_ARN" != "None" ] \
