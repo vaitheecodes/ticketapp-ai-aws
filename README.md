@@ -285,8 +285,19 @@ incident summary, post-incident summary draft, incident-question parsing):
 - **Routing policy** (`graph.decide_route`, editable in Admin →
   Settings): escalation language (abuse, negation, long compound
   messages) → human; high-risk categories (ACCOUNT, DATA) below 90%
-  confidence → human; other categories below 75% → up to 3 clarifying
-  questions, then human; otherwise the AI answers.
+  confidence → an `escalate_with_info` KB entry's steps and collect
+  list, then a ticket; a vague first report gets one clarifying
+  question, then a human; otherwise human; a clear how-to ("how do I add
+  X?") is answered from the KB, or told there's no KB article and handed
+  to a human, never asked "are you referring to...?"; other categories
+  below 75% → up to 3 clarifying questions, then human; otherwise the AI
+  answers.
+- **Answers stay grounded** (`backend/request_kind.py`,
+  `ai_service/grounding.py`): steps the matched KB entry doesn't support
+  (menu paths, hostnames, ports, numbers) are dropped from answers and
+  from the technician's suggested steps ("No KB match - needs triage"
+  when nothing matches); the exact error message is asked for only after
+  the customer reported an error.
 
 ## Roles and workflows
 

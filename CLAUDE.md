@@ -224,13 +224,28 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `decide_route` forces `human` and the chat escalates through the same
   `summarize_case()` path as an abusive-customer mid-chat escalation.
   **High-risk categories (ACCOUNT/DATA) below their stricter 90% bar
-  skip clarify entirely and escalate to human immediately** —
-  licensing/billing or data-retention ambiguity is exactly the case
-  where a human should be involved right away, not probed by the AI
-  first — checked *before* the clarify branch and unconditional on
-  `clarification_attempts` (even mid-clarification, discovering a
-  ticket is actually high-risk and still uncertain forces an immediate
-  human handoff). The escalation-language-tag hard override is checked
+  never get KB-topic clarification or an AI answer**: an
+  `escalate_with_info` KB entry gives its steps + collect list + safety
+  note and raises the ticket; a vague first report (`clarification_attempts`
+  0, not a how-to, no error reported) gets ONE question
+  (`chat_response.clarify` with `high_risk`: which login, what is on the
+  screen, what a vague phrase meant; no KB topics, no causes), and the
+  next turn still below the bar goes to a human; anything else goes to a
+  human immediately — checked *before* the clarify branch (even
+  mid-clarification, discovering a ticket is actually high-risk and still
+  uncertain forces an immediate human handoff). **A clear how-to**
+  (`backend/request_kind.py`: add / set up / configure, no fault words)
+  below the base bar is never clarified: `generate_response` answers it
+  from a how-to KB entry on the customer's subject (troubleshooting
+  entries and one-shared-word matches never ground it, and filled-in
+  monitor names like "App-Server-04" aren't indexed), or, with none,
+  replies honestly that there's no KB article (`NO_KB_REPLY_*`, no model
+  call) and hands off (`needs_info.reason = "kb_no_match"`,
+  `graph.handoff_reason`). Steps in an answer that the top KB entry
+  doesn't support are dropped (`ai_service/grounding.py`), the exact
+  error message is asked for only after the customer reported an error,
+  and how-to answers lose the "if you encounter issues..." line.
+  Sample conversations: `tests/test_live_chat_review.py`. The escalation-language-tag hard override is checked
   before even that, and always wins. A ticket sitting in a clarify
   round has status `pending_customer` (distinct from `open`, which means
   waiting on the support team). Covered by `tests/test_decide_route.py` (pure-function
@@ -462,8 +477,13 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   exception type only and are re-raised without the chained cause.
   `graph.py` keeps routing policy + KB grounding and calls the service;
   callers treat `AIError` as "AI unavailable" without changing state.
-  Hand-off briefs (`conversation.handoff_brief`) = summary + KB-grounded
-  `suggest_steps`, each with its own fallback. `.env` is loaded once in
+  Hand-off briefs (`conversation.handoff_brief`) = summary (tidied by
+  `summarize_conversation.tidy_handoff`: no "N/A" items, "Already tried:
+  Nothing stated yet", no findings that restate the issue) + next steps
+  only from KB entries matching the customer's own words
+  (`graph.handoff_kb_candidates`; model steps the entry doesn't support
+  dropped, else the entry's sentences; "No KB match - needs triage"
+  without a match), each with its own fallback. `.env` is loaded once in
   `backend/__init__.py` (before it was loaded after `auth` read
   `JWT_SECRET`, so local dev silently used the default secret). Tests
   can't reach the provider (`tests/conftest.py`); covered by
