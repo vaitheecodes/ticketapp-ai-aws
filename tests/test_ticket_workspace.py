@@ -381,3 +381,39 @@ def test_customers_cannot_use_staff_endpoints(client):
     assert _post(client, customer, ticket_id, "x", visibility="internal_note").status_code == 403
     assert json.loads(client.get(f"/api/tickets/{ticket_id}", headers=_customer(client)).text)[
         "detail"] == "Not your ticket"
+
+
+# ---------------------------------------------------------------------------
+# Attachment downloads follow the workspace rules
+# ---------------------------------------------------------------------------
+def _attach(client, customer, ticket_id):
+    (message,) = _query("SELECT message_id FROM ticket_messages WHERE ticket_id = ? AND sender = 'customer'",
+                        (ticket_id,))
+    res = client.post(f"/api/tickets/{ticket_id}/attachments", data={"message_id": message["message_id"]},
+                      files=[("files", ("agent.log", b"agent stopped at 10:02\n", "text/plain"))],
+                      headers=customer)
+    assert res.status_code == 200, res.text
+    return f"/api/tickets/{ticket_id}/attachments/{res.json()[0]['attachment_id']}"
+
+
+def test_attachment_downloads_follow_the_staff_ticket_rules(client):
+    customer = _customer(client)
+    in_scope = _attach(client, customer, _raise(client, customer, category="SERVER_MONITORING"))
+    runtime.set_graph(type("G", (), {"invoke": lambda self, s: {**_HUMAN, "category": "NETFLOW"}})())
+    out_of_scope = _attach(client, customer, _raise(client, customer, category="NETFLOW"))
+    runtime.set_graph(type("G", (), {"invoke": lambda self, s: {
+        **_HUMAN, "route": "ai", "confidence": 0.95, "ai_response": "Here is how.", "needs_info": None}})())
+    ai_handled = _attach(client, customer, _raise(client, customer, expected_status="resolved"))
+    manager, tech, admin = _demo(client, "manager"), _demo(client, "technician"), _admin(client)
+
+    # Demo manager's department is Infrastructure; NETFLOW is Network.
+    assert client.get(out_of_scope, headers=manager).status_code == 403
+    assert client.get(in_scope, headers=manager).status_code == 200
+    # AI-handled tickets aren't in the workspace.
+    assert client.get(ai_handled, headers=tech).status_code == 403
+    assert client.get(ai_handled, headers=manager).status_code == 403
+    assert client.get(out_of_scope, headers=tech).status_code == 200
+    # The admin keeps full access; the customer still gets their own.
+    for url in (in_scope, out_of_scope, ai_handled):
+        assert client.get(url, headers=admin).status_code == 200
+        assert client.get(url, headers=customer).status_code == 200

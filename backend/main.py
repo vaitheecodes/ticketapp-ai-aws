@@ -1092,14 +1092,18 @@ def upload_attachments(
 def download_attachment(
     ticket_id: str, attachment_id: str, user: dict = Depends(auth.get_current_user)
 ):
-    """The ticket's customer (only from messages they can see), or any
-    staff/admin, may download."""
+    """The ticket's customer (only from messages they can see), a
+    technician or manager who may open the ticket in the workspace
+    (staff_tickets._ticket_for_staff: with the support team, and for a
+    manager in their departments), or the admin."""
     if user["must_change_password"]:
         raise HTTPException(status_code=403, detail="Password change required")
     conn = db.get_connection()
     try:
         if user["role"] == "customer":
             _customer_ticket_or_error(conn, ticket_id, user["id"])
+        elif user["role"] in auth.STAFF_ROLES:
+            staff_tickets._ticket_for_staff(conn, ticket_id, user)
         visible = f"AND {db.CUSTOMER_VISIBLE_SQL}" if user["role"] == "customer" else ""
         row = conn.execute(
             "SELECT a.filename, a.stored_name, a.content_type FROM attachments a "

@@ -74,7 +74,7 @@ message is kept and nothing else changed.
 | `POST /tickets/{id}/reply` | C (own) | `{message}` | `{route, status, message_id, ai_error?}`. Pending Customer / Resolved → Open. 400 if closed. |
 | `POST /tickets/{id}/reopen` | C (own) | — | `{ticket_id, status}`; resolved tickets only |
 | `POST /tickets/{id}/attachments` | C (own) | multipart: `message_id`, `files` (≤5 per message, ≤10 MB, png/jpg/pdf/txt/log, contents must match) | `[{attachment_id, filename, content_type, size_bytes}]`. A request declaring more than 55 MB gets `413`, one with no `Content-Length` `411`, before the body is read. |
-| `GET /tickets/{id}/attachments/{attachment_id}` | C (own, visible messages) / T / M / A | — | file download (`Content-Disposition: attachment`) |
+| `GET /tickets/{id}/attachments/{attachment_id}` | C (own, visible messages) / T, M (tickets they may open in the workspace: with the support team; a manager's departments only) / A | — | file download (`Content-Disposition: attachment`) |
 
 ## Technician workspace
 
