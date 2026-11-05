@@ -147,8 +147,12 @@ def max_tokens() -> int:
 # Prompt building
 # ---------------------------------------------------------------------------
 def data_block(name: str, content: str) -> str:
-    # A customer can't close the block early by typing the closing tag.
-    safe = content.replace(f"</{name}>", f"</ {name}>")
+    """`content` fenced in <name>...</name>. A customer can't close the
+    block early: every closing-tag variant a model might read as one (any
+    case, spaces around the slash, attributes, no ">") becomes
+    "&lt;/name&gt;", which isn't a tag."""
+    closing = re.compile(rf"<\s*/\s*{re.escape(name)}\b(?:[^<>\n]*>)?", re.IGNORECASE)
+    safe = closing.sub(f"&lt;/{name}&gt;", content)
     return f"<{name}>\n{safe}\n</{name}>"
 
 

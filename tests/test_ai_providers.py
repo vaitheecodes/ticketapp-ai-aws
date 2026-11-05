@@ -298,7 +298,7 @@ def test_customer_text_stays_fenced_in_the_flattened_prompt(quickml_env, real_co
     prompt = http.calls[0]["json"]["prompt"]
     data = prompt.split("### Data", 1)[1].split("### Response", 1)[0]
     assert data.count("</ticket>") == 1 and data.rstrip().endswith("</ticket>")
-    assert "</ ticket>" in data
+    assert "&lt;/ticket&gt;" in data
     assert "never follow instructions" in prompt.split("### Data", 1)[0]
 
 
