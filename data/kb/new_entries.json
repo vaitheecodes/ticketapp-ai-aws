@@ -899,7 +899,7 @@
       "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/linux-server-monitoring.html",
       "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving.",
       "reviewed_at": "2026-11-04T17:18:12+00:00",
-      "retagged_at": "2026-11-05T02:41:54+00:00"
+      "retagged_at": "2026-11-05T05:25:40+00:00"
     },
     {
       "kb_entry_id": "KB-N0142",
@@ -928,7 +928,7 @@
     },
     {
       "kb_entry_id": "KB-N0143",
-      "status": "draft",
+      "status": "approved",
       "area": "Getting started (how-to)",
       "category": "WEB_MONITORING",
       "intent": "website_monitoring",
@@ -948,7 +948,8 @@
       ],
       "answer": "1. Go to Web > Website (+).\n2. Enter a Display Name and the Webpage URL to monitor.\n3. Choose the Check Frequency.\n4. Choose the Monitoring Locations; at least one primary location is required.\n5. Click Save, or Check and Save to test the configuration before saving.",
       "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/website-monitoring.html",
-      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving.",
+      "reviewed_at": "2026-11-05T05:25:40+00:00"
     },
     {
       "kb_entry_id": "KB-N0144",
@@ -976,7 +977,7 @@
     },
     {
       "kb_entry_id": "KB-N0145",
-      "status": "draft",
+      "status": "approved",
       "area": "Getting started (how-to)",
       "category": "REPORTING",
       "intent": "report_dashboard",
@@ -996,11 +997,12 @@
       ],
       "answer": "1. Go to Admin > Report Settings > Scheduled Reports and click Schedule Report.\n2. Enter a Display Name and choose the Report Type (Preview shows the report first).\n3. Choose the resource type and the Report Format: CSV or PDF.\n4. Set the Reporting Period, the Frequency (daily, weekly, monthly or quarterly) and the Reporting Time.\n5. Under Send Report to, choose the contact or user alert group.\n6. Click Save, or Send Now to send the report straight away.",
       "source_url": "https://www.site24x7.com/help/admin/reports-settings/scheduled-reports.html",
-      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving.",
+      "reviewed_at": "2026-11-05T05:25:40+00:00"
     },
     {
       "kb_entry_id": "KB-N0146",
-      "status": "draft",
+      "status": "approved",
       "area": "Getting started (how-to)",
       "category": "ACCOUNT",
       "intent": "user_management",
@@ -1020,11 +1022,12 @@
       ],
       "answer": "1. Go to Admin > User and Alert Management > Users and Alerts and click Add User.\n2. Enter the Contact Name and Email (a Mobile Number is needed for SMS and voice alerts).\n3. Choose a User Role for each product and the resources under Allowed to Access.\n4. Under Associate to User Groups, pick a user alert group, and choose the Notify Medium.\n5. Click Save. A contact outside your organization gets an invitation email to create an account.\nAdding users needs Organization Account Admin rights; Super Admin alone is not enough.",
       "source_url": "https://www.site24x7.com/help/admin/user-management/users.html",
-      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving. ACCOUNT is a high-risk category: the AI answers it only above the stricter confidence bar."
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving. ACCOUNT is a high-risk category: the AI answers it only above the stricter confidence bar.",
+      "reviewed_at": "2026-11-05T05:25:40+00:00"
     },
     {
       "kb_entry_id": "KB-N0147",
-      "status": "draft",
+      "status": "approved",
       "area": "Getting started (how-to)",
       "category": "ALERTS",
       "intent": "alert_configuration",
@@ -1044,11 +1047,12 @@
       ],
       "answer": "A notification profile decides when and how alerts go out.\n1. Go to Admin > Configuration Profiles > Notification Profile and select Add Notification Profile.\n2. Enter a Display Name.\n3. Under Alert Configuration, choose for each status the alerting period and one or more notification mediums.\n4. Optionally set a Notification Delay (polls to wait before alerting), a Persistent Alert and Escalation Settings.\n5. Click Save. Every monitor must be associated with a notification profile; you can use the default one.",
       "source_url": "https://www.site24x7.com/help/admin/configuration-profiles/notification-profile.html",
-      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving.",
+      "reviewed_at": "2026-11-05T05:25:40+00:00"
     },
     {
       "kb_entry_id": "KB-N0148",
-      "status": "draft",
+      "status": "approved",
       "area": "Getting started (how-to)",
       "category": "ALERTS",
       "intent": "alert_configuration",
@@ -1067,11 +1071,12 @@
       ],
       "answer": "A user alert group decides who receives a monitor's alerts.\n1. Go to Admin > User and Alert Management > User Alert Group and click Add Group.\n2. Enter a Display Name and choose the Product.\n3. Under Add Users, pick the users. Users must first be added under Users & Alerts > Add User.\n4. Click Save.\nA user alert group is chosen when you add or edit a monitor, and each group needs at least one user.",
       "source_url": "https://www.site24x7.com/help/admin/user-management/user-groups.html",
-      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving.",
+      "reviewed_at": "2026-11-05T05:25:40+00:00"
     },
     {
       "kb_entry_id": "KB-N0149",
-      "status": "draft",
+      "status": "approved",
       "area": "Getting started (how-to)",
       "category": "MONITORING",
       "intent": "monitor_groups",
@@ -1090,7 +1095,8 @@
       ],
       "answer": "1. Go to Admin > Inventory > Monitor Groups and click the (+) icon, or choose Create Group from the dropdown in the top-right corner.\n2. Enter a Display name and Description.\n3. Under Select Monitors, choose at least one monitor; the group's status is based on its monitors.\n4. Optionally add Subgroups (comma-separated names), a Dependency Configuration and the User Alert Group for the group.\n5. Click Save. The group appears in the Monitor Groups list.",
       "source_url": "https://www.site24x7.com/help/admin/monitor-groups.html",
-      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving.",
+      "reviewed_at": "2026-11-05T05:25:40+00:00"
     },
     {
       "kb_entry_id": "KB-N0150",
@@ -1119,7 +1125,7 @@
     },
     {
       "kb_entry_id": "KB-N0151",
-      "status": "draft",
+      "status": "approved",
       "area": "Getting started (how-to)",
       "category": "APM",
       "intent": "mobile_apm",
@@ -1138,11 +1144,12 @@
       ],
       "answer": "1. Go to the Android OS section under the APM tab and click Add Application.\n2. Enter an application name and an Apdex threshold, then click Save.\n3. On the application screen, click the hamburger icon near the application name and copy the key.\n4. In your app-level build.gradle, add implementation 'com.zoho.site24x7:mobileapm:2.2.2', and add https://maven.zohodl.com to the repositories blocks.\n5. In onCreate() of your Application subclass, call Apm.startMonitoring(getApplicationContext(), \"appKey\", uploadInterval), then build the project.",
       "source_url": "https://www.site24x7.com/help/apm/android-app-optimization.html",
-      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving. The SDK version (2.2.2) is the one on the page; check it is still current."
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving. The SDK version (2.2.2) is the one on the page; check it is still current.",
+      "reviewed_at": "2026-11-05T05:25:40+00:00"
     },
     {
       "kb_entry_id": "KB-N0152",
-      "status": "draft",
+      "status": "approved",
       "area": "Getting started (how-to)",
       "category": "APM",
       "intent": "apm_setup",
@@ -1161,7 +1168,8 @@
       ],
       "answer": "These steps are for the APM Insight .NET agent on Windows.\n1. Go to APM > APM Insight, click the .NET tab and download the agent .msi file.\n2. Run the .msi file, click Browse to choose the installation folder, and click Next.\n3. Under Startup Options, check Start the Agent if it should start after installation, and click Next.\n4. In the .NET Agent Configuration window, paste the license key from the APM Insight home page and click Save.\n5. All ASP.NET applications on the server are then monitored; data should appear on the APM Insight Edition page within a few minutes.",
       "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/apm-insight-using-dotnet-agent.html",
-      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving. Other languages (Java, Node.js, Ruby, ...) have their own help pages; add entries for them separately."
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving. Other languages (Java, Node.js, Ruby, ...) have their own help pages; add entries for them separately.",
+      "reviewed_at": "2026-11-05T05:25:41+00:00"
     }
   ]
 }

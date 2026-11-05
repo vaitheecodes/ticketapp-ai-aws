@@ -1,7 +1,8 @@
 {
   "categories": [],
   "terms": {
-    "iOS": "\\bios\\b"
+    "iOS": "\\bios\\b",
+    "Android": "\\bandroid\\b"
   },
   "intent_terms": {
     "add_api_monitor_error_har": [
@@ -14,10 +15,23 @@
     "ping_monitoring": [
       "ping"
     ],
-    "agent_installation": [],
+    "agent_installation": [
+      "Linux",
+      "Windows"
+    ],
     "report_dashboard": [],
     "mobile_apm": [
+      "Android",
       "iOS"
+    ],
+    "website_monitoring": [
+      "website"
+    ],
+    "user_management": [],
+    "alert_configuration": [],
+    "monitor_groups": [],
+    "apm_setup": [
+      "APM"
     ]
   }
 }
