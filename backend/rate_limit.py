@@ -1,4 +1,6 @@
-"""Login rate limiting: per client IP and per account.
+"""Rate limiting: sign-in, sign-up and the AI endpoints.
+
+Sign-in (check_login), per client IP and per account:
 
 - Per IP: every login attempt counts (LOGIN_IP_MAX_ATTEMPTS within
   LOGIN_IP_WINDOW_SECONDS), so one address can't spray many accounts.
@@ -10,6 +12,16 @@
 Both are checked before the password is verified. A limited attempt gets
 429 with Retry-After and is logged without the email or password.
 LOGIN_RATE_LIMIT_ENABLED=false turns it off.
+
+Sign-up (check_signup): SIGNUP_IP_MAX per SIGNUP_IP_WINDOW_SECONDS per IP.
+
+AI turns (check_ai_turn): starting a chat, a chat message, a new ticket
+and a ticket reply each run the paid model, so each counts as one turn,
+per customer (AI_USER_MAX_PER_WINDOW in AI_USER_WINDOW_SECONDS, and
+AI_USER_MAX_PER_DAY) and per IP (AI_IP_MAX_PER_WINDOW, AI_IP_MAX_PER_DAY;
+higher, as several customers can share one address). A public sign-up
+otherwise allowed unlimited model calls on our quota.
+SIGNUP_RATE_LIMIT_ENABLED / AI_RATE_LIMIT_ENABLED=false turn them off.
 
 Counters live in this process's memory: each instance (ECS task) keeps
 its own, and a restart clears them. That is enough for one or two tasks;
@@ -41,7 +53,15 @@ DEFAULTS = {
     "LOGIN_ACCOUNT_MAX_FAILURES": 5,
     "LOGIN_ACCOUNT_WINDOW_SECONDS": 900,
     "TRUSTED_PROXY_HOPS": 0,
+    "SIGNUP_IP_MAX": 5,
+    "SIGNUP_IP_WINDOW_SECONDS": 3600,
+    "AI_USER_MAX_PER_WINDOW": 20,
+    "AI_USER_WINDOW_SECONDS": 600,
+    "AI_USER_MAX_PER_DAY": 200,
+    "AI_IP_MAX_PER_WINDOW": 60,
+    "AI_IP_MAX_PER_DAY": 600,
 }
+DAY_SECONDS = 86_400
 # Bound on tracked keys; idle ones are pruned first.
 MAX_KEYS = 10_000
 
@@ -49,6 +69,9 @@ _clock = time.monotonic
 _lock = threading.Lock()
 _ip_attempts: dict[str, deque] = {}
 _account_failures: dict[str, deque] = {}
+_signups: dict[str, deque] = {}
+_ai_users: dict[str, deque] = {}
+_ai_ips: dict[str, deque] = {}
 
 
 def setting(name: str) -> int:
@@ -61,14 +84,18 @@ def setting(name: str) -> int:
     return max(value, 0)
 
 
+def _switch(name: str) -> bool:
+    return (os.environ.get(name) or "true").strip().lower() not in ("false", "0", "no")
+
+
 def enabled() -> bool:
-    return (os.environ.get("LOGIN_RATE_LIMIT_ENABLED") or "true").strip().lower() not in ("false", "0", "no")
+    return _switch("LOGIN_RATE_LIMIT_ENABLED")
 
 
 def reset() -> None:
     with _lock:
-        _ip_attempts.clear()
-        _account_failures.clear()
+        for store in (_ip_attempts, _account_failures, _signups, _ai_users, _ai_ips):
+            store.clear()
 
 
 def client_ip(request: Request) -> str:
@@ -144,3 +171,63 @@ def record_failure(email: str) -> None:
 def record_success(email: str) -> None:
     with _lock:
         _account_failures.pop(_account_key(email), None)
+
+
+def _over(store: dict[str, deque], key: str, limits: list[tuple[int, int]], now: float) -> float | None:
+    """Seconds until `key` is back under every (max, window) limit, or
+    None when it is under all of them now. A max of 0 means no limit."""
+    longest = max(window for _, window in limits)
+    times = _recent(store, key, longest, now)
+    wait = None
+    for most, window in limits:
+        inside = [t for t in times if t > now - window]
+        if most and len(inside) >= most:
+            until = inside[-most] + window - now
+            wait = until if wait is None else max(wait, until)
+    return wait
+
+
+def _count(store: dict[str, deque], key: str, window: int, now: float) -> None:
+    _prune(store, window, now)
+    times = _recent(store, key, window, now)
+    times.append(now)
+    store[key] = times
+
+
+def _limited(kind: str, detail: str, retry_after: float) -> HTTPException:
+    logger.warning("Rate limited (%s)", kind)
+    return HTTPException(status_code=429, detail=detail,
+                         headers={"Retry-After": str(max(1, math.ceil(retry_after)))})
+
+
+def check_signup(ip: str) -> None:
+    """Raise 429 if this IP has signed up too often; otherwise count it."""
+    if not _switch("SIGNUP_RATE_LIMIT_ENABLED"):
+        return
+    now = _clock()
+    window = setting("SIGNUP_IP_WINDOW_SECONDS")
+    with _lock:
+        wait = _over(_signups, ip, [(setting("SIGNUP_IP_MAX"), window)], now)
+        if wait is not None:
+            raise _limited("signup ip", "Too many sign-ups from this network. Please try again later.", wait)
+        _count(_signups, ip, window, now)
+
+
+def check_ai_turn(user_id: str, ip: str) -> None:
+    """Raise 429 if this customer or IP is over an AI-turn limit;
+    otherwise count the turn against both."""
+    if not _switch("AI_RATE_LIMIT_ENABLED"):
+        return
+    now = _clock()
+    window = setting("AI_USER_WINDOW_SECONDS")
+    user_limits = [(setting("AI_USER_MAX_PER_WINDOW"), window), (setting("AI_USER_MAX_PER_DAY"), DAY_SECONDS)]
+    ip_limits = [(setting("AI_IP_MAX_PER_WINDOW"), window), (setting("AI_IP_MAX_PER_DAY"), DAY_SECONDS)]
+    detail = "You're sending messages faster than we can answer. Please wait and try again."
+    with _lock:
+        for kind, store, key, limits in (("ai user", _ai_users, user_id, user_limits),
+                                         ("ai ip", _ai_ips, ip, ip_limits)):
+            wait = _over(store, key, limits, now)
+            if wait is not None:
+                raise _limited(kind, detail, wait)
+        _count(_ai_users, user_id, DAY_SECONDS, now)
+        _count(_ai_ips, ip, DAY_SECONDS, now)

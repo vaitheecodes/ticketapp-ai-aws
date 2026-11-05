@@ -32,7 +32,7 @@ from backend.repositories import messages as messages_repo
 from backend.conversation import ESCALATION_MARKER as _ESCALATION_MARKER
 from backend.conversation import Outbox as _Outbox
 from backend.conversation import customer_row as _customer_row
-from backend.conversation import followup_gate, handoff_brief
+from backend.conversation import followup_gate, handoff_brief, latest_transcript
 from backend.conversation import insert_ticket_message as _insert_message
 from backend.conversation import now as _now
 from backend.conversation import subject_for as _subject_for
@@ -172,9 +172,9 @@ def on_startup() -> None:
 # Schemas
 # ---------------------------------------------------------------------------
 class SignupRequest(BaseModel):
-    name: str
-    email: str
-    password: str
+    name: str = Field(max_length=120)
+    email: str = Field(max_length=254)
+    password: str  # at most 72 bytes: auth.validate_new_password (400)
 
 
 class LoginRequest(BaseModel):
@@ -194,7 +194,7 @@ class CreateTicketRequest(BaseModel):
     """Raise a ticket (email-style, no chat)."""
 
     subject: str = Field(min_length=1, max_length=200)
-    description: str = Field(min_length=1)
+    description: str = Field(min_length=1, max_length=8000)
     priority: Literal["low", "medium", "high", "urgent"] = "medium"
     category: str | None = None
 
@@ -202,7 +202,7 @@ class CreateTicketRequest(BaseModel):
 
 
 class ChatMessageRequest(BaseModel):
-    message: str
+    message: str = Field(max_length=4000)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -261,7 +261,8 @@ def _last_ai_message(conn, ticket_id: str) -> str | None:
 def _transcript_for(conn, ticket_id: str) -> str:
     """The public conversation, for AI prompts: internal notes and system
     events never reach the model."""
-    return _build_transcript([dict(row) for row in messages_repo.public_replies(conn, ticket_id)])
+    return latest_transcript(
+        _build_transcript([dict(row) for row in messages_repo.public_replies(conn, ticket_id)]))
 
 
 def _load_ticket(conn, ticket_id: str):
@@ -492,9 +493,11 @@ def _apply_followup(conn, ticket_id: str, o: _FollowupOutcome, outbox: _Outbox) 
 # Auth
 # ---------------------------------------------------------------------------
 @app.post("/api/auth/customer/signup")
-def customer_signup(body: SignupRequest):
+def customer_signup(body: SignupRequest, request: Request):
     """The only public signup. Technicians and managers are created by
-    the admin (/api/admin/staff); the admin is bootstrapped from env."""
+    the admin (/api/admin/staff); the admin is bootstrapped from env.
+    Limited per IP (backend/rate_limit.py)."""
+    rate_limit.check_signup(rate_limit.client_ip(request))
     return auth.signup_customer(body.name.strip(), body.email.strip(), body.password)
 
 
@@ -677,7 +680,7 @@ def ticket_detail(ticket_id: str, customer_id: str = Depends(auth.get_current_cu
 def tickets_create(
     body: CreateTicketRequest,
     background_tasks: BackgroundTasks,
-    customer_id: str = Depends(auth.get_current_customer),
+    customer_id: str = Depends(auth.get_ai_customer),
 ):
     """Raise a ticket (ticket_type 'ticket'): created immediately, no
     chat. The AI answers in the thread as an email (greeting, KB-grounded
@@ -811,7 +814,7 @@ def ticket_reply(
     ticket_id: str,
     body: ChatMessageRequest,
     background_tasks: BackgroundTasks,
-    customer_id: str = Depends(auth.get_current_customer),
+    customer_id: str = Depends(auth.get_ai_customer),
 ):
     """Email-style reply from the ticket thread. While the AI is handling
     the ticket it goes through the same follow-up gates as a chat

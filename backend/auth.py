@@ -28,10 +28,10 @@ from typing import Literal
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from backend import audit, db
+from backend import audit, db, rate_limit
 from backend.repositories import accounts
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,7 @@ JWT_EXPIRY_HOURS = 24
 Role = Literal["customer", "technician", "manager", "admin"]
 STAFF_ROLES = ("technician", "manager")
 MIN_PASSWORD_LENGTH = 8
+MAX_PASSWORD_BYTES = 72  # bcrypt's limit
 
 # Used only outside production when ADMIN_EMAIL/ADMIN_PASSWORD are unset,
 # so a fresh checkout still has a usable admin. ensure_admin() refuses to
@@ -63,7 +64,9 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    return bcrypt.checkpw(password.encode(), password_hash.encode())
+    # bcrypt reads at most 72 bytes (bcrypt 5 raises on more; earlier
+    # versions cut silently, so a legacy hash still matches the cut form).
+    return bcrypt.checkpw(password.encode()[:MAX_PASSWORD_BYTES], password_hash.encode())
 
 
 def validate_new_password(password: str) -> None:
@@ -71,6 +74,11 @@ def validate_new_password(password: str) -> None:
         raise HTTPException(
             status_code=400,
             detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
+        )
+    if len(password.encode()) > MAX_PASSWORD_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must be at most {MAX_PASSWORD_BYTES} bytes",
         )
 
 
@@ -409,3 +417,11 @@ get_current_customer = require_role("customer")
 get_current_technician = require_role("technician")
 get_current_manager = require_role("manager")
 get_current_admin = require_role("admin")
+
+
+def get_ai_customer(request: Request, customer_id: str = Depends(get_current_customer)) -> str:
+    """get_current_customer for an endpoint that runs the AI: the call
+    also counts as one AI turn for this customer and their IP, and is
+    refused with 429 over the limit (rate_limit.check_ai_turn)."""
+    rate_limit.check_ai_turn(customer_id, rate_limit.client_ip(request))
+    return customer_id

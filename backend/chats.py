@@ -41,6 +41,7 @@ from backend.conversation import (
     followup_gate,
     handoff_brief,
     insert_ticket_message,
+    latest_transcript,
     now,
 )
 
@@ -133,9 +134,9 @@ def transcript_rows(conn, session_id: str) -> list[dict]:
 
 def _transcript_text(conn, session_id: str) -> str:
     speaker = {"customer": "Customer", "ai": "Agent (AI)"}
-    return "\n".join(
+    return latest_transcript("\n".join(
         f"{speaker[m['role']]}: {m['content']}" for m in transcript_rows(conn, session_id)
-    )
+    ))
 
 
 def _last_ai(conn, session_id: str) -> str | None:
@@ -452,7 +453,7 @@ def _store_classification(conn, session_id: str, result: dict, last_route) -> No
 def start_chat(
     body: StartChatRequest,
     background_tasks: BackgroundTasks,
-    customer_id: str = Depends(auth.get_current_customer),
+    customer_id: str = Depends(auth.get_ai_customer),
 ):
     issue = body.issue.strip()
     if not issue:
@@ -507,7 +508,7 @@ def send_chat_message(
     session_id: str,
     body: ChatMessageRequest,
     background_tasks: BackgroundTasks,
-    customer_id: str = Depends(auth.get_current_customer),
+    customer_id: str = Depends(auth.get_ai_customer),
 ):
     message = body.message.strip()
     if not message:

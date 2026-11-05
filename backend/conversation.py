@@ -20,6 +20,22 @@ from backend.closing_ack import is_closing_acknowledgment
 # frontend/src/utils/parseTicketText.js splits on this marker.
 ESCALATION_MARKER = "--- Escalated after chat ---"
 
+# The most of a conversation sent to the model: the latest characters,
+# starting at a message. Caps the cost of a long chat or ticket thread
+# (each message is capped too: 4000 characters).
+MAX_TRANSCRIPT_CHARS = 12_000
+_MESSAGE_START = re.compile(r"^(Customer|Agent \(AI\)|staff|system|technician|manager|admin):", re.MULTILINE)
+
+
+def latest_transcript(transcript: str, limit: int = MAX_TRANSCRIPT_CHARS) -> str:
+    """The transcript's last `limit` characters, from the first message
+    that starts inside them (the whole tail when none does)."""
+    if len(transcript) <= limit:
+        return transcript
+    tail = transcript[-limit:]
+    start = _MESSAGE_START.search(tail, 1)
+    return tail[start.start():] if start else tail
+
 
 ESCALATION_REASONS = {
     "customer_request": "The customer asked for a human agent.",

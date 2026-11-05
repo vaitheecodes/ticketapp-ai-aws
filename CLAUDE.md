@@ -678,13 +678,22 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   replies. Customer reply on Pending Customer / Resolved -> Open (owner
   kept). AI-handled tickets (route ai/clarify) stay out of the workspace.
   Covered by `tests/test_ticket_workspace.py`.
-- **Login rate limiting + production secrets** (`backend/rate_limit.py`,
+- **Rate limiting + production secrets** (`backend/rate_limit.py`,
   `auth.check_production_config`, `db_postgres.production_problems`):
   `/api/auth/login` is limited per client IP (every attempt) and per
   account (failures only; success clears them), 429 + Retry-After, checked
-  before the password; env-configurable, in-memory per process; client IP
-  from X-Forwarded-For only with `TRUSTED_PROXY_HOPS` (1 behind an ALB).
-  Off in tests by default (`tests/conftest.py`). In production startup
+  before the password; sign-up per IP (`check_signup`, 5/hour); every AI
+  endpoint (start chat, chat message, new ticket, ticket reply) through
+  `auth.get_ai_customer` -> `check_ai_turn`: 20 turns / 10 min and 200 /
+  day per customer, 60 / 600 per IP, refused before the model runs. Caps:
+  ticket description 8000, reply 4000, sign-up name 120 / email 254,
+  passwords at most 72 bytes (bcrypt's limit; 400 on sign-up/change,
+  `verify_password` compares the first 72 bytes so a long login never
+  500s), and `conversation.latest_transcript` sends the model at most the
+  latest 12,000 characters of a conversation. Env-configurable, in-memory
+  per process; client IP from X-Forwarded-For only with
+  `TRUSTED_PROXY_HOPS` (1 behind an ALB). Off in tests by default
+  (`tests/conftest.py`; `tests/test_ai_limits.py` turns them on). In production startup
   refuses a placeholder/short JWT_SECRET, a weak ADMIN_PASSWORD, and on
   Postgres a weak/local-only DB password or no required SSL. Covered by
   `tests/test_rate_limit.py`, `tests/test_roles_auth.py`.

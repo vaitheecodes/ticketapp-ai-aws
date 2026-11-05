@@ -142,9 +142,11 @@ def _isolated_app_env(monkeypatch):
     provider.set_backend(None)
     monkeypatch.delenv("ADMIN_EMAIL", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
-    # Login rate limiting off (the suite logs in far more often than a
-    # person would); tests/test_rate_limit.py turns it on.
+    # Rate limiting off (the suite signs up, logs in and chats far more
+    # often than a person would); tests/test_rate_limit.py turns it on.
     monkeypatch.setenv("LOGIN_RATE_LIMIT_ENABLED", "false")
+    monkeypatch.setenv("SIGNUP_RATE_LIMIT_ENABLED", "false")
+    monkeypatch.setenv("AI_RATE_LIMIT_ENABLED", "false")
     for name in rate_limit.DEFAULTS:
         monkeypatch.delenv(name, raising=False)
     rate_limit.reset()

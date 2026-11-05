@@ -11,7 +11,13 @@ and forced password changes apply immediately. Errors use FastAPI's
 `{"detail": "..."}` shape with these statuses: `401` not signed in,
 `403` wrong role / not yours / password change required / deactivated,
 `404` not found, `409` conflict (e.g. a ticket already claimed), `422`
-invalid input, `503` AI provider unavailable (simulator only), or, on any
+invalid input (also over a size cap: ticket description 8000, reply 4000,
+sign-up name 120 / email 254 characters), `429` rate limited with
+`Retry-After` (sign-in; sign-up, 5 per hour per IP; and the AI endpoints,
+`POST /api/chats`, `/api/chats/{id}/messages`, `POST /api/tickets` and
+`/api/tickets/{id}/reply`, which together allow 20 turns per 10 minutes
+and 200 per day per customer, more per IP), `503` AI provider unavailable
+(simulator only), or, on any
 endpoint, the database is busy or unreachable (`Retry-After: 2`; with
 `DB_BACKEND=postgres`, when no pooled connection frees up within
 `DB_POOL_TIMEOUT`).
