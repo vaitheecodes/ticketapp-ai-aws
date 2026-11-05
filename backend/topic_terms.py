@@ -56,7 +56,14 @@ MONITOR_TYPES = {
     "application": r"\bapplication monitors?\b|\bapp monitors?\b",
     "log monitoring": r"\blog (monitor|monitoring|management|ingestion)\b|\bapplogs?\b",
 }
-TERMS = {**INTEGRATIONS, **MONITOR_TYPES}
+# Platforms a KB guide can be specific to (e.g. the Linux and Windows agent
+# entries, when the reviewer registers that in kb_registry.json). Not
+# monitor types: "server" already covers both.
+PLATFORMS = {
+    "Linux": r"\blinux\b|\bubuntu\b|\bcentos\b|\brhel\b|\bred ?hat\b|\bdebian\b",
+    "Windows": r"\bwindows\b",
+}
+TERMS = {**INTEGRATIONS, **MONITOR_TYPES, **PLATFORMS}
 _COMPILED = {label: re.compile(pattern, re.IGNORECASE) for label, pattern in TERMS.items()}
 
 # Names that make an entry specific wherever they appear in its answer.

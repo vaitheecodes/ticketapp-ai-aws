@@ -24,7 +24,10 @@ answer, and approve it.
    `source_url` and `collect` list. You can then:
 
    - **approve:** pick the category, say what the entry is specific to, and
-     type `yes` to confirm.
+     type `yes` to confirm. "Specific to" is recorded per intent: marking
+     `agent_installation` as specific to `Linux` and `Windows` makes the
+     chat ask "Linux or Windows?" when a how-to names neither (change it
+     later with `--retag ID`).
    - **edit:** change the answer text, and optionally the `source_url`.
    - **reject:** move the entry to `data/kb/rejected_entries.json`.
    - **skip:** leave it as a draft.

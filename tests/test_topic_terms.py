@@ -62,7 +62,7 @@ def _require_kb():
     ("my website shows down", {"website"}),
     ("the REST API monitor fails with 401", {"API"}),
     ("PagerDuty alerts are not created", {"PagerDuty"}),
-    ("our Linux server stopped reporting", {"server"}),
+    ("our Linux server stopped reporting", {"server", "Linux"}),
     ("SNMP traps from the router", {"network device (SNMP)"}),
     ("ssl certificate expiry alert", {"SSL certificate"}),
 ])

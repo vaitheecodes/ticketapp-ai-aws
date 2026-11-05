@@ -1147,13 +1147,17 @@ def routing_policy():
         "max_clarification_attempts": policy.max_clarification_attempts,
         "decision_order": [
             "escalation language tags (hard override -> human, always)",
+            "a how-to that names no kind of monitor, or whose only KB guides are for "
+            "something not named yet (e.g. Linux / Windows) -> ONE fixed question, no "
+            "ticket; never asked twice",
             f"high-risk category ({'/'.join(policy.high_risk_categories) or 'none'}) "
             "below its stricter confidence bar -> an escalate_with_info KB entry "
             "gives its steps and collect list, then a ticket; a vague first "
             "report (no error, not a how-to) gets ONE clarifying question, then "
             "a human; anything else -> human",
-            "a clear how-to request below the base bar -> ai: answered from the "
-            "KB, or 'no KB article' and a ticket (never a clarifying question)",
+            "a how-to request below the base bar (or the answer to its one "
+            "question) -> ai: answered from the KB, or 'no guide yet' and a ticket "
+            "(never a clarifying question)",
             "other categories below the base confidence threshold -> "
             "clarify, up to max_clarification_attempts rounds",
             "still below the bar after max attempts -> force human",

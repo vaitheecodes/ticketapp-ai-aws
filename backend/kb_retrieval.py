@@ -86,7 +86,9 @@ def kb_min_score() -> float:
 # high document-frequency-based IDF (e.g. "want" appears in only 4 of
 # 386 KB instructions), which lets filler-word overlap outweigh real
 # topic words. Stripped before scoring rather than left to IDF, since
-# IDF alone isn't reliable at this corpus size.
+# IDF alone isn't reliable at this corpus size. Task verbs ("add", "set"
+# up) likewise: one approved "set up ..." question made "set" outweigh
+# the topic of every "how do I set up X".
 _STOPWORDS = frozenset(
     """
     i me my myself we our ours ourselves you your yours yourself
@@ -99,7 +101,7 @@ _STOPWORDS = frozenset(
     both each few more most other some such no nor not only own same
     so than too very s t can will just should now please want wanted
     wants needing need needs needed help helping helped would could
-    like get got go going add adding yes ok okay thanks thank
+    like get got go going add adding set setup setting yes ok okay thanks thank
     """.split()
 )
 

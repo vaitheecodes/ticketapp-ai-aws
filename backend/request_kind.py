@@ -29,7 +29,7 @@ _ERROR = re.compile(
     r"|status code|http \d{3}|\d{3} (error|response))\b",
     re.IGNORECASE)
 _TASK = re.compile(
-    r"\b(add|adding|set ?up|setting up|configure|configuring|create|creating|install|installing"
+    r"\b(add|adding|set ?up|set (?:it|this|that|them) up|setting up|configure|configuring|create|creating|install|installing"
     r"|enable|enabling|integrate|integrating|connect|connecting|monitor|monitoring|track|tracking"
     r"|change|changing|update|updating|edit|modify|generate|schedule)\b",
     re.IGNORECASE)
@@ -44,6 +44,7 @@ _HOW = re.compile(
     r"\b(how|steps?|guide|way to|want to|wants to|need to|needs to|would like to|like to|trying to"
     r"|wanna|planning to|is it possible to|can i|can we|could i)\b",
     re.IGNORECASE)
+_UNSURE = re.compile(r"\b(not sure|unsure|no idea|don'?t know|dunno|idk|not certain)\b", re.IGNORECASE)
 _STARTS_WITH_TASK = re.compile(r"^\s*(please\s+)?(add|set ?up|configure|create|install|enable|integrate|connect)\b",
                                re.IGNORECASE)
 
@@ -54,6 +55,11 @@ def is_fault(text: str) -> bool:
 
 def error_reported(text: str) -> bool:
     return bool(_ERROR.search(text or ""))
+
+
+def is_unsure(text: str) -> bool:
+    """"Not sure", "no idea": an answer that gives nothing, not a fault."""
+    return bool(_UNSURE.search(text or ""))
 
 
 def mentions_task(text: str) -> bool:

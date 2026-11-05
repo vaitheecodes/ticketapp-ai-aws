@@ -319,8 +319,16 @@ def _kb_candidates_to_dicts(candidates: list[kb_retrieval.KBCandidate]) -> list[
 def is_how_to(ticket_text: str) -> bool:
     """The customer wants to add, set up or configure something, with no
     sign of a fault (backend/request_kind.py), judged on the same text the
-    KB search uses (the latest message, with earlier ones when it is short)."""
-    return request_kind.is_how_to(retrieval_query(ticket_text))
+    KB search uses (the latest message, with earlier ones when it is short).
+    An answer to the AI's one how-to question ("a website", "not sure")
+    is still that how-to, unless it now reports a fault."""
+    if request_kind.is_how_to(retrieval_query(ticket_text)):
+        return True
+    if asked_how_to_question(ticket_text):
+        messages = _customer_messages(ticket_text)
+        latest = messages[-1] if messages else ""
+        return request_kind.is_unsure(latest) or not request_kind.is_fault(latest)
+    return False
 
 
 def error_reported(ticket_text: str) -> bool:
@@ -336,7 +344,7 @@ def retrieve_kb_candidates(state: TicketState) -> dict:
     backend/kb_retrieval.py. A how-to request is never matched to a
     troubleshooting entry."""
     query = retrieval_query(state["ticket_text"])
-    candidates = kb_retrieval.retrieve_candidates(query, top_k=3, skip_faults=request_kind.is_how_to(query))
+    candidates = kb_retrieval.retrieve_candidates(query, top_k=3, skip_faults=is_how_to(state["ticket_text"]))
     return {"kb_candidates": _kb_candidates_to_dicts(candidates)}
 
 
@@ -375,6 +383,36 @@ def shares_customer_words(candidate: dict, customer_text: str) -> bool:
     return bool(needed) and len(customer & entry) >= needed
 
 
+def _main_subject(customer_text: str) -> str | None:
+    """What a how-to is about: the first word, task verbs and filler aside,
+    of the customer's latest line that has one ("generate a REPORT for
+    uptime of last month", "add a WEBSITE to monitor my company homepage").
+    "Not sure" lines are skipped."""
+    for line in reversed(customer_text.splitlines()):
+        if request_kind.is_unsure(line):
+            continue
+        words = [w for w in informative_words(line)
+                 if w not in request_kind.TASK_WORDS and w not in GENERIC_HOW_TO_WORDS]
+        if words:
+            return next(iter(_stems(words[:1])))
+    return None
+
+
+def on_customer_subject(candidate: dict, customer_text: str) -> bool:
+    """A how-to entry is on the customer's subject when it shares half of
+    their words (shares_customer_words), or when it is a strong match
+    (kb_retrieval.STRONG_MATCH_SCORE) whose question names the customer's
+    main subject (_main_subject). Natural extra words ("for uptime of last
+    month") then don't hide an entry about the same task, while "an SLA
+    report for my website" isn't answered by the website-check entry on
+    "website" alone."""
+    if shares_customer_words(candidate, customer_text):
+        return True
+    question = _object_words(kb_retrieval._MONITOR_NAME.sub(" ", candidate["instruction"]))
+    return (candidate.get("score", 0.0) >= kb_retrieval.STRONG_MATCH_SCORE
+            and _main_subject(customer_text) in question)
+
+
 def answers_how_to(candidate: dict, customer_text: str) -> bool:
     """A KB entry that can answer a how-to: about doing something (not a
     fault, not e.g. "how long are APM traces kept"), on the customer's
@@ -384,7 +422,79 @@ def answers_how_to(candidate: dict, customer_text: str) -> bool:
     kind = candidate.get("kind")
     about_a_task = (kind == "how-to" if kind else
                     not request_kind.is_fault(instruction) and request_kind.mentions_task(instruction))
-    return about_a_task and shares_customer_words(candidate, customer_text)
+    return about_a_task and on_customer_subject(candidate, customer_text)
+
+
+# The AI's own how-to questions (fixed text, no model call). Asked at most
+# once per conversation (asked_how_to_question); after the customer's
+# answer the how-to is answered from the KB or handed off.
+HOW_TO_TYPE_QUESTION = ("Which kind of monitor do you want to {verb}: a website, a server (with the "
+                        "monitoring agent), an application (APM), a mobile app, a database, a cloud "
+                        "service, or a network device?")
+HOW_TO_VARIANT_QUESTION = "I have a guide for each of these: {options}. Which one is it?"
+HOW_TO_ONE_VARIANT_QUESTION = "I have a guide for {option}. Is that the one you're using?"
+_HOW_TO_QUESTION_STARTS = ("Which kind of monitor do you want to ", "I have a guide for ")
+# Words that don't say what a how-to is about ("add a new monitor").
+GENERIC_HOW_TO_WORDS = frozenset("new another one first more extra thing things".split())
+_SET_UP = re.compile(r"\bset (?:\w+ )?up\b|\bsetup\b|\bsetting up\b|\bconfigur\w*|\binstall\w*", re.IGNORECASE)
+
+
+def _ai_messages(ticket_text: str) -> list[str]:
+    """The AI's replies in a transcript, every line of each."""
+    messages, current = [], None
+    for line in ticket_text.splitlines():
+        match = _SPEAKER_RE.match(line)
+        if match:
+            current = [match.group(2)] if match.group(1) in ("Agent (AI)", "ai") else None
+            if current is not None:
+                messages.append(current)
+        elif current is not None:
+            current.append(line)
+    return ["\n".join(m) for m in messages]
+
+
+def asked_how_to_question(ticket_text: str) -> bool:
+    """The AI already asked its one how-to question in this conversation
+    (also inside an email-style reply, after the greeting)."""
+    return any(line.strip().startswith(_HOW_TO_QUESTION_STARTS)
+               for message in _ai_messages(ticket_text) for line in message.splitlines())
+
+
+def how_to_subject(state: TicketState) -> set[str]:
+    """What the how-to is about: the customer's own words (task verbs and
+    "monitor" aside), or the monitor type of the category they picked."""
+    ticket_text = state["ticket_text"]
+    words = _object_words(retrieval_query(ticket_text)) - GENERIC_HOW_TO_WORDS
+    types = topic_terms.monitor_types(_customer_authored_text(ticket_text), state.get("requested_category"))
+    return words | set(types)
+
+
+def _options(labels: list[str]) -> str:
+    return labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} or {labels[-1]}"
+
+
+def how_to_question(state: TicketState) -> str | None:
+    """The one question a how-to needs before the KB can answer it, or
+    None. No subject at all ("how do I add the monitor"): which kind of
+    monitor. KB guides that apply only to something the customer hasn't
+    named (e.g. Linux / Windows agent entries): which one. Never asked
+    twice, never about a monitor name or an account."""
+    ticket_text = state.get("ticket_text", "")
+    if not ticket_text or not is_how_to(ticket_text) or asked_how_to_question(ticket_text):
+        return None
+    if not how_to_subject(state):
+        verb = "set up" if _SET_UP.search(retrieval_query(ticket_text)) else "add"
+        return HOW_TO_TYPE_QUESTION.format(verb=verb)
+    usable, unconfirmed = grounding_candidates(state)
+    if usable or not unconfirmed:
+        return None
+    labels: list[str] = []
+    for _, missing in unconfirmed:
+        labels += [label for label in sorted(missing) if label not in labels]
+    labels = labels[:4]
+    if len(labels) == 1:
+        return HOW_TO_ONE_VARIANT_QUESTION.format(option=labels[0])
+    return HOW_TO_VARIANT_QUESTION.format(options=_options(labels))
 
 
 def handoff_kb_candidates(customer_text: str) -> list[dict]:
@@ -515,6 +625,16 @@ def decide_route(state: TicketState) -> dict:
             f"escalation language tag(s) present: {sorted(triggered_tags)}"
         )
         clarification_attempts_out = clarification_attempts
+    elif how_to and how_to_question(state):
+        # "How do I add the monitor?" names no kind of monitor, or the KB's
+        # guides apply only to something not named yet (Linux / Windows):
+        # ONE fixed question, no ticket yet. The answer is then answered
+        # from the KB or handed off (never asked again).
+        route, reason = "clarify", (
+            "how-to that needs one detail before the KB can answer it "
+            "(which kind of monitor, or which of the KB's guides): one question, then the KB or a ticket"
+        )
+        clarification_attempts_out = clarification_attempts + 1
     elif high_risk_below_bar and _info_entry(state):
         # The KB says what support needs for this: its steps, collect list
         # and safety note are the reply, and the ticket is raised in the
@@ -548,9 +668,9 @@ def decide_route(state: TicketState) -> dict:
         )
         clarification_attempts_out = clarification_attempts
     elif below_base_bar and how_to:
-        # "How do I add X?" is clear: answer it from the KB, or say there's
-        # no KB entry and hand off (generate_response). Never "are you
-        # referring to...?".
+        # "How do I add X?" is clear (or its one question was answered):
+        # answer it from the KB, or say there's no guide and hand off
+        # (generate_response). Never "are you referring to...?".
         route, reason = "ai", (
             f"confidence {confidence:.2f} for category {category!r} is below the bar, "
             "but a how-to request is clear: answer from the KB or hand off, no clarifying question"
@@ -667,6 +787,9 @@ def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dic
             candidates = narrowed
     if how_to:  # a how-to is answered only by an entry about doing that task
         candidates = [c for c in candidates if answers_how_to(c, customer_text)]
+        # Reviewed guides (kind "how-to", numbered steps from a help page)
+        # before the generic canonical advice on the same subject.
+        candidates.sort(key=lambda c: c.get("kind") != "how-to")
     usable, unconfirmed = [], []
     for c in candidates:
         missing = topic_terms.missing_terms(c, customer_text)
@@ -687,7 +810,12 @@ def _reply_context(state: TicketState) -> dict:
     messages = _customer_messages(state["ticket_text"])
     requested = state.get("requested_category")
     types = topic_terms.monitor_types(customer_text, requested)
+    how_to = is_how_to(state["ticket_text"])
+    # A how-to matched to a KB guide on the customer's subject (graph.
+    # answers_how_to) needs no monitor type: the guide is the answer.
+    guided = how_to and bool(usable)
     details = [f"Monitor type: {', '.join(types)} (stated by the customer)" if types
+               else "Monitor type: covered by the kb_guidance guide for this request" if guided
                else "Monitor type: not stated yet"]
     if requested:
         details.append(f"Category the customer picked: {requested}")
@@ -699,20 +827,20 @@ def _reply_context(state: TicketState) -> dict:
             for c, missing in unconfirmed
         ],
         "customer_details": "\n".join(details),
-        "monitor_type_known": bool(types),
+        "monitor_type_known": bool(types) or guided,
         "monitor_type": types[0] if len(types) == 1 else None,
         "vague": vague,
         "recent_ai_replies": list(state.get("recent_ai_replies") or [])[-2:],
         "latest_message": messages[-1] if messages else "",
-        "how_to": is_how_to(state["ticket_text"]),
+        "how_to": how_to,
         "error_reported": error_reported(state["ticket_text"]),
     }
 
 
-NO_KB_REPLY_CHAT = ("There's no article in our knowledge base that covers this yet, so I won't "
-                    "guess at the steps.")
-NO_KB_REPLY_EMAIL = ("There's no article in our knowledge base that covers this yet, so rather than "
-                     "guess at the steps, our support team will look into it and reply here.")
+NO_KB_REPLY_CHAT = ("I don't have a guide for that yet, so I've raised a ticket and the support "
+                    "team will reply there.")
+NO_KB_REPLY_EMAIL = ("I don't have a guide for that yet, so I've passed your ticket to the support "
+                     "team and they'll reply here.")
 
 
 def handoff_reason(needs_info: dict | None) -> str:
@@ -756,6 +884,11 @@ def ask_clarifying_question(state: TicketState) -> dict:
     applies) rather than a free-floating meta-question about categories
     that don't exist in this taxonomy. Stored via `ai_response` so it
     flows through the same message path as generate_response's output."""
+    question = how_to_question(state)
+    if question:  # fixed text: no model call, no monitor name or account asked for
+        if state.get("reply_format") == "email":
+            question = email_utils.format_email_reply(state.get("customer_name"), question)
+        return {"ai_response": question}
     policy = app_settings.get("routing")
     high_risk = (state.get("category") in policy.high_risk_categories
                  and state.get("confidence", 0.0) < policy.high_risk_confidence_threshold)

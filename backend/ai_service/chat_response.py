@@ -399,6 +399,9 @@ def answer(data: AnswerInput) -> ChatReply:
         "something), not a fault: nothing is broken. Give the steps the kb_guidance block "
         "gives and nothing else: no troubleshooting, no request for an error message, and "
         "no closing line such as 'if you encounter issues...'."
+        + (" The kb_guidance guide was matched to what the customer asked for: answer with "
+           "its steps now, without first asking which type of monitor or anything else."
+           if data.kb_candidates else "")
         if data.how_to else "")
     no_match_note = ""
     if not data.kb_candidates:

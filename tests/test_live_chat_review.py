@@ -7,7 +7,7 @@ A. "I was unable to login after changing license" (ACCOUNT, below the
    no finding that restates the issue, and "No KB match - needs triage"
    instead of invented steps (license usage, plus.site24x7.com on 443).
 B. "I need to add a APM monitor, how to do?" is a how-to with no KB entry
-   (the only APM entries are troubleshooting): an honest "no article"
+   (the only approved APM entries are troubleshooting): an honest "no guide"
    reply and a ticket, no improvised steps. A how-to that the KB does
    cover keeps only the steps the KB entry supports, with no "if you
    encounter issues, provide the exact error message" line.
@@ -29,7 +29,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import conversation, db, graph, kb_retrieval, main, request_kind, runtime
+from backend import conversation, db, graph, kb_new_entries, kb_retrieval, main, request_kind, runtime
 from backend.ai_service import chat_response, grounding, provider
 from backend.ai_service.schemas import AnswerInput, ClarifyInput, HandoffSummary, KBCandidate
 from backend.ai_service.summarize_conversation import NOTHING_TRIED, tidy_handoff
@@ -93,9 +93,23 @@ class _Model:
 
 
 @pytest.fixture(autouse=True)
-def _require_kb():
+def _require_kb(tmp_path, monkeypatch):
+    """The KB as it was reviewed: the how-to guides drafted afterwards
+    (area "Getting started (how-to)", e.g. iOS and APM) kept as drafts,
+    whatever has been approved locally since (test_how_to_flow.py covers
+    them approved)."""
+    data = json.loads(kb_new_entries.NEW_ENTRIES_PATH.read_text(encoding="utf-8"))
+    for entry in data["entries"]:
+        if entry.get("area") == "Getting started (how-to)":
+            entry["status"] = "draft"
+    path = tmp_path / "new_entries.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    monkeypatch.setattr(kb_new_entries, "NEW_ENTRIES_PATH", path)
+    kb_retrieval._load_index.cache_clear()
     if kb_retrieval._load_index() is None:
         pytest.skip("data/kb/kb_entries.json not found")
+    yield
+    kb_retrieval._load_index.cache_clear()
 
 
 @pytest.fixture()
@@ -295,7 +309,7 @@ def test_c_the_ticket_path_gives_the_same_honest_reply(client):
     ticket = _ticket(res.json()["ticket_id"])
     assert ticket["route"] == "human" and ticket["status"] == "open"
     thread = client.get(f"/api/tickets/{ticket['ticket_id']}", headers=headers).json()["messages"]
-    assert any("no article in our knowledge base" in m["message"] for m in thread if m["sender"] == "ai")
+    assert any(graph.NO_KB_REPLY_EMAIL in m["message"] for m in thread if m["sender"] == "ai")
     assert json.loads(ticket["ai_suggestions"]) == [conversation.NO_KB_STEPS]
 
 

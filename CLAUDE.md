@@ -242,15 +242,27 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   next turn still below the bar goes to a human; anything else goes to a
   human immediately — checked *before* the clarify branch (even
   mid-clarification, discovering a ticket is actually high-risk and still
-  uncertain forces an immediate human handoff). **A clear how-to**
+  uncertain forces an immediate human handoff). **A how-to**
   (`backend/request_kind.py`: add / set up / configure, no fault words)
-  below the base bar is never clarified: `generate_response` answers it
-  from a how-to KB entry on the customer's subject (troubleshooting
-  entries and one-shared-word matches never ground it, and filled-in
-  monitor names like "App-Server-04" aren't indexed), or, with none,
-  replies honestly that there's no KB article (`NO_KB_REPLY_*`, no model
-  call) and hands off (`needs_info.reason = "kb_no_match"`,
-  `graph.handoff_reason`). Steps in an answer that the top KB entry
+  is never asked "are you referring to...?". It gets at most ONE fixed
+  question (`graph.how_to_question`, no model call, checked right after
+  the escalation-tag override): with no subject at all ("how to add the
+  monitor") which kind of monitor (`HOW_TO_TYPE_QUESTION`), or, when the
+  only guides on its subject are registered as specific to something not
+  named (e.g. `agent_installation` -> Linux / Windows in
+  `kb_registry.json`; `topic_terms.PLATFORMS`), which one. Once asked
+  (`asked_how_to_question`, found in the transcript) it is never asked
+  again, and the answer ("a website", "not sure") is still the how-to.
+  Otherwise `generate_response` answers from a how-to KB entry on the
+  customer's subject (`graph.on_customer_subject`: half the customer's
+  words, or a strong match whose question names their main subject, so
+  extra words don't hide a guide while "an SLA report for my website"
+  isn't the website-check entry; reviewed `kind: how-to` guides rank
+  first; troubleshooting entries never ground it, and filled-in monitor
+  names like "App-Server-04" aren't indexed), or, with none, says "I
+  don't have a guide for that yet" and raises the ticket
+  (`NO_KB_REPLY_*`, no model call, `needs_info.reason = "kb_no_match"`,
+  `graph.handoff_reason`). Flows: `tests/test_how_to_flow.py`. Steps in an answer that the top KB entry
   doesn't support are dropped (`ai_service/grounding.py`), the exact
   error message is asked for only after the customer reported an error,
   and how-to answers lose the "if you encounter issues..." line.

@@ -287,9 +287,11 @@ incident summary, post-incident summary draft, incident-question parsing):
   messages) → human; high-risk categories (ACCOUNT, DATA) below 90%
   confidence → an `escalate_with_info` KB entry's steps and collect
   list, then a ticket; a vague first report gets one clarifying
-  question, then a human; otherwise human; a clear how-to ("how do I add
-  X?") is answered from the KB, or told there's no KB article and handed
-  to a human, never asked "are you referring to...?"; other categories
+  question, then a human; otherwise human; a how-to ("how do I add X?")
+  is answered from the KB, or told there's no guide yet and handed to a
+  human, never asked "are you referring to...?" (one fixed question
+  first only when it names no kind of monitor, or when the guides are
+  for Linux / Windows and it names neither); other categories
   below 75% → up to 3 clarifying questions, then human; otherwise the AI
   answers.
 - **Answers stay grounded** (`backend/request_kind.py`,
