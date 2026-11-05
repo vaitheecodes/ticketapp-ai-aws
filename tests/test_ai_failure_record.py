@@ -196,7 +196,7 @@ def test_a_bad_continuation_verdict_falls_through_to_the_pipeline(app_client, st
 def test_a_ticket_follow_up_failure_is_recorded_on_the_ticket(app_client, strict):
     headers = _customer(app_client)
     created = app_client.post("/api/tickets", json={"subject": "Agent install",
-                                                    "description": "How do I install the Site24x7 agent?"},
+                                                    "description": "How do I install the Site24x7 agent on Linux?"},
                               headers=headers).json()
     assert created["route"] == "ai"
     strict.fail_next = [_error("AccessDeniedException")]

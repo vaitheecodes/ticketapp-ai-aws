@@ -775,7 +775,9 @@ def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dic
     the ones it may not: (usable, [(candidate, terms the customer hasn't
     mentioned)]). With a customer-picked category the search is narrowed
     to that category when it has a close match there, and an entry of the
-    picked category counts as confirmed (the customer chose that topic)."""
+    picked category counts as confirmed (the customer chose that topic).
+    An entry about another variant than the one named (the Android guide
+    for an iPad app) is neither."""
     customer_text = _customer_authored_text(state["ticket_text"])
     candidates = state.get("kb_candidates", [])
     requested = state.get("requested_category")
@@ -792,6 +794,8 @@ def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dic
         candidates.sort(key=lambda c: c.get("kind") != "how-to")
     usable, unconfirmed = [], []
     for c in candidates:
+        if topic_terms.names_another_variant(c, customer_text):
+            continue
         missing = topic_terms.missing_terms(c, customer_text)
         if missing and c["category"] != requested:
             unconfirmed.append((c, missing))

@@ -171,3 +171,17 @@ def missing_terms(candidate: dict, customer_text: str) -> set[str]:
     if not terms or terms & mentioned(customer_text):
         return set()
     return terms
+
+
+def names_another_variant(candidate: dict, customer_text: str) -> bool:
+    """The entry is about a different variant of its intent than the one
+    the customer named: its own question/answer names only terms the
+    customer hasn't (the Android guide for "my iPad app", the Linux guide
+    for "on Windows"). Intents with several variants share one term set,
+    so missing_terms alone counts either guide as confirmed."""
+    terms = entry_terms(candidate.get("intent", ""), candidate.get("response", ""))
+    named = terms & mentioned(customer_text)
+    if not named:
+        return False
+    own = terms & mentioned(f"{candidate.get('instruction', '')}\n{candidate.get('response', '')}")
+    return bool(own) and not own & named

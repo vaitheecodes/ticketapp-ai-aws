@@ -87,8 +87,10 @@ def test_only_specific_intents_have_terms_in_the_real_kb():
     assert by_intent["pagerduty_integration"] == {"PagerDuty"}
     assert by_intent["api_monitoring"] == {"API"}
     for generic in ("contact_support", "monitor_down", "monitor_not_discovered", "alert_configuration",
-                    "integrations", "licensing", "agent_installation"):
+                    "integrations", "licensing"):
         assert by_intent[generic] == set(), generic
+    # Registered with the approved Linux / Windows agent guides.
+    assert by_intent["agent_installation"] == {"Linux", "Windows"}
     # Nothing beyond the intent map (built-in plus data/kb/kb_registry.json):
     # monitor names in answers don't count.
     assert all(terms == (topic_terms.intent_terms(intent) or set()) for intent, terms in by_intent.items())
@@ -159,7 +161,7 @@ def test_picked_category_narrows_grounding(monkeypatch):
 
 
 def test_picked_category_with_no_close_match_keeps_the_normal_search():
-    state = {"ticket_text": "Customer: how do I install the Site24x7 agent", "requested_category": "NETFLOW"}
+    state = {"ticket_text": "Customer: how do I install the Site24x7 agent on Linux", "requested_category": "NETFLOW"}
     state.update(graph.retrieve_kb_candidates(state))
     usable, _ = graph.grounding_candidates(state)
     assert usable[0]["intent"] == "agent_installation"
@@ -186,3 +188,13 @@ def test_an_unconfirmed_strong_match_does_not_override_classification(monkeypatc
     state.update(graph.retrieve_kb_candidates(state))
     assert state["kb_candidates"][0]["score"] >= kb_retrieval.STRONG_MATCH_SCORE
     assert graph.classify_ticket(state)["category"] == "MONITORING"
+
+
+def test_a_guide_for_another_variant_of_its_intent():
+    linux = {"intent": "agent_installation", "instruction": "How do I install the agent on a Linux server?",
+             "response": "1. Download the Linux installer."}
+    generic = {"intent": "agent_installation", "instruction": "How do I install the agent?", "response": "Install it."}
+    assert topic_terms.names_another_variant(linux, "install the agent on Windows")
+    assert not topic_terms.names_another_variant(linux, "install the agent on Linux")
+    assert not topic_terms.names_another_variant(linux, "install the agent")  # nothing named: missing_terms asks
+    assert not topic_terms.names_another_variant(generic, "install the agent on Windows")

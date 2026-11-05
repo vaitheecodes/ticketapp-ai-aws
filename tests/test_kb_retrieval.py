@@ -131,10 +131,13 @@ def test_full_transcript_retrieval_beats_ai_noise():
         "Customer: yes adding to my account"
     )
     candidates = kb_retrieval.retrieve_candidates(
-        _customer_authored_text(transcript), top_k=1
+        _customer_authored_text(transcript), top_k=3
     )
-    assert candidates
-    assert candidates[0].entry.category == "WEB_MONITORING"
+    # The approved "add a user to my account" guide (KB-N0146) matches the
+    # customer's own last words; nothing comes from the AI's questions
+    # (contacting support, a subscription).
+    assert "WEB_MONITORING" in [c.entry.category for c in candidates]
+    assert not {c.entry.intent for c in candidates} & {"contact_support", "licensing"}
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +247,9 @@ def test_min_score_is_configurable(monkeypatch):
     assert kb_retrieval.retrieve_candidates(query)
     monkeypatch.setenv("KB_MIN_SCORE", "0.99")
     assert kb_retrieval.retrieve_candidates("how do I install the Site24x7 agent") != []  # exact: 1.0
-    assert kb_retrieval.retrieve_candidates("I want you to help on the website monitor") == []
+    # A good match that isn't exact (0.8; "website monitor" alone is now
+    # an exact match for the approved KB-N0143).
+    assert kb_retrieval.retrieve_candidates("my website monitor alerts too often") == []
 
 
 @pytest.mark.parametrize("raw, expected", [("", 0.35), ("abc", 0.35), ("0.5", 0.5), ("-1", 0.0), ("7", 1.0)])

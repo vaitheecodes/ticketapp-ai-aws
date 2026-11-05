@@ -1,7 +1,7 @@
 {
   "categories": [],
   "terms": {
-    "iOS": "\\bios\\b",
+    "iOS": "\\bios\\b|\\biphones?\\b|\\bipads?\\b",
     "Android": "\\bandroid\\b"
   },
   "intent_terms": {

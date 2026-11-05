@@ -197,7 +197,10 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   an entry specific to an integration or monitor type the customer
   hasn't mentioned (`backend/topic_terms.py`, by intent plus integration
   names in the answer) never grounds a reply and is passed as an
-  "unconfirmed topic" to ask about (`graph.grounding_candidates`); the
+  "unconfirmed topic" to ask about (`graph.grounding_candidates`), and
+  one naming another variant of its intent than the customer did (the
+  Android guide for an iPad app, `topic_terms.names_another_variant`)
+  is skipped; the
   category picked at chat/ticket start narrows grounding only, never
   classification or routing; prompts never ask for identifiers (the AI
   has no account access) but for monitor type, exact error, screen/step,

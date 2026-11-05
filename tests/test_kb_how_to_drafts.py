@@ -68,10 +68,22 @@ def test_drafts_are_shaped_for_review():
         assert len(e["questions"]) >= 3
 
 
-def test_drafts_are_not_used_until_approved():
-    ids = {e["kb_entry_id"] for e in _drafts() if e["status"] == "draft"}
+def test_drafts_are_not_used_until_approved(tmp_path, monkeypatch):
+    # Every how-to draft is approved in the real file now: put them back
+    # to draft in a temporary copy.
+    data = _file()
+    for entry in data["entries"]:
+        if entry.get("area") == AREA:
+            entry["status"] = "draft"
+    path = tmp_path / "new_entries.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    monkeypatch.setattr(kb_new_entries, "NEW_ENTRIES_PATH", path)
     kb_retrieval._load_index.cache_clear()
-    loaded = {e.kb_entry_id for e in kb_retrieval._load_index().entries}
+    try:
+        loaded = {e.kb_entry_id for e in kb_retrieval._load_index().entries}
+    finally:
+        kb_retrieval._load_index.cache_clear()
+    ids = {e["kb_entry_id"] for e in _drafts()}
     assert ids and not ids & loaded
 
 
@@ -83,13 +95,34 @@ def test_each_approved_draft_answers_its_own_how_to_phrasings(approved):
 
 
 @pytest.mark.parametrize("question, entry", [
-    ("how to add a monitor in the monitoring agent", "KB-N0141"),  # no KB match on the live deployment
+    ("how to add a monitor in the Linux monitoring agent", "KB-N0141"),  # no KB match on the live deployment
+    ("how to add a monitor in the monitoring agent on Windows", "KB-N0142"),
     ("how to generate a report", "KB-N0144"),  # matched report_dashboard (no steps), not answered
     ("I need to add IOS app", "KB-N0150"),
     ("how do I set up alerts", "KB-N0147"),
+    ("how to monitor an iPhone app", "KB-N0150"),
+    ("how to monitor an iPad app", "KB-N0150"),
 ])
 def test_live_how_to_questions_are_grounded_once_approved(approved, question, entry):
     assert _usable(question)[:1] == [entry]
+
+
+def test_the_agent_guides_ask_linux_or_windows_first(approved):
+    # The agent guides are registered as Linux / Windows specific.
+    text = "Customer: how to add a monitor in the monitoring agent"
+    candidates = graph.kb_candidates_for(graph.retrieval_query(text), skip_faults=True)
+    assert _usable("how to add a monitor in the monitoring agent") == []
+    assert graph.how_to_question({"ticket_text": text, "kb_candidates": candidates}) == \
+        graph.HOW_TO_VARIANT_QUESTION.format(options="Linux or Windows")
+
+
+@pytest.mark.parametrize("question, other", [
+    ("how to monitor an iPad app", "KB-N0151"),        # the Android guide
+    ("how to monitor an android app", "KB-N0150"),     # the iOS guide
+    ("How do I install the Site24x7 agent on Windows?", "KB-N0141"),  # the Linux guide
+])
+def test_a_guide_for_another_variant_never_grounds_the_answer(approved, question, other):
+    assert other not in _usable(question)
 
 
 def _entry(question: str, kind: str | None) -> dict:
