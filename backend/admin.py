@@ -25,12 +25,11 @@ import json
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from backend import ai_failures, app_settings, audit, auth, db, graph, runtime, sla
 from backend import ticket_lifecycle as lifecycle
-from backend.ai_service import backends as ai_backends
 from backend.conversation import insert_ticket_message
 
 router = APIRouter()
@@ -737,50 +736,3 @@ def admin_audit_log(
         }
     finally:
         conn.close()
-
-
-# ---------------------------------------------------------------------------
-# Temporary (Phase 4 stage 2): does AppSail strip or override client-sent
-# X-ZC-* headers? Remove once answered.
-# ---------------------------------------------------------------------------
-@router.get("/api/admin/diag/appsail-headers")
-def appsail_header_probe(
-    request: Request,
-    probe: str = Query(min_length=12, max_length=64, pattern=r"^[A-Za-z0-9-]+$"),
-    admin_id: str = Depends(_admin),
-):
-    """The client sends X-ZC-* headers whose value is `probe`. Reports, per
-    X-ZC-* header name that reached the app, how many values arrived and
-    whether the probe value is among them. Never returns header values."""
-    names = sorted({k.lower() for k in request.headers.keys() if k.lower().startswith("x-zc-")})
-    creds = ai_backends.appsail_credentials.get()
-    return {
-        "headers": {
-            name: {"count": len(request.headers.getlist(name)),
-                   "probe_value_seen": probe in request.headers.getlist(name)}
-            for name in names
-        },
-        "captured_credentials": creds is not None,
-        "captured_project_id_is_probe": bool(creds and creds.project_id == probe),
-        "captured_token_is_probe": bool(creds and creds.admin_token == probe),
-    }
-
-
-_REQUIRED_ENV = ("APP_ENV", "JWT_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD", "AI_PROVIDER",
-                 "QUICKML_ENDPOINT_KEY", "QUICKML_ENDPOINT_NAME", "QUICKML_ORG_ID", "EMAIL_ENABLED")
-
-
-@router.get("/api/admin/diag/config")
-def config_presence(admin_id: str = Depends(_admin)):
-    """Temporary (Phase 4): which required environment variables are set
-    after a deploy. Booleans only — never values; AI_PROVIDER/APP_ENV are
-    compared against their expected values, not returned."""
-    import os
-
-    present = {name: bool((os.environ.get(name) or "").strip()) for name in _REQUIRED_ENV}
-    return {
-        "set": present,
-        "app_env_is_production": os.environ.get("APP_ENV", "").strip().lower() == "production",
-        "ai_provider_is_quickml_appsail": os.environ.get("AI_PROVIDER", "").strip() == "quickml_appsail",
-        "jwt_secret_ok": auth.JWT_SECRET != auth._DEV_JWT_SECRET and len(auth.JWT_SECRET) >= 32,
-    }

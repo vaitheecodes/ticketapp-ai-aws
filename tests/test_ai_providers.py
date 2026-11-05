@@ -441,23 +441,6 @@ def test_quickml_base_url_never_comes_from_a_header(quickml_env, monkeypatch):
     assert QuickMLAppSailBackend.url(creds).startswith("https://api.catalyst.zoho.in/")
 
 
-def test_header_probe_is_admin_only_and_returns_no_values(quickml_env, tmp_path, monkeypatch):
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "t.db")
-    probe = "999000111222333"
-    forged = {"X-Zc-Projectid": probe, "X-Zc-Admin-Cred-Token": probe}
-    with TestClient(main.app) as c:
-        customer = _signup(c)
-        assert c.get(f"/api/admin/diag/appsail-headers?probe={probe}", headers=customer).status_code == 403
-        admin = c.post("/api/auth/login", json={"email": "admin@example.com",
-                                                "password": "admin-dev-password"}).json()["token"]
-        res = c.get(f"/api/admin/diag/appsail-headers?probe={probe}",
-                    headers={"Authorization": f"Bearer {admin}", **forged}).json()
-    assert res["headers"]["x-zc-projectid"] == {"count": 1, "probe_value_seen": True}
-    # Locally only the client sends these, so nothing is duplicated.
-    assert res["captured_project_id_is_probe"] and res["captured_token_is_probe"]
-    assert probe not in json.dumps(res["headers"]).replace('"probe_value_seen"', "")
-
-
 def test_appsail_headers_never_authorize(quickml_env, tmp_path, monkeypatch):
     """Our JWT is the only authority: injected/forged X-ZC-* headers alone
     get 401/403 everywhere."""

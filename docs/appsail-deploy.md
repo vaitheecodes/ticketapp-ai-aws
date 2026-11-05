@@ -52,8 +52,8 @@ Optional: `ALLOWED_ORIGINS` (the frontend origin, once there is one),
    startup command or port" means startup failed: the AppSail log has one
    line `STARTUP CONFIG ERROR: <VARIABLE> <problem>; refusing to start.`
    naming the variable (never its value).
-2. Log in as admin and call `GET /api/admin/diag/config` (temporary): which
-   required variables are set, as booleans only.
+2. Sign in as the admin: a missing or weak required variable stops
+   startup with the log line above, so a working sign-in means they're set.
 3. Re-check the console list — it is not known whether a deploy keeps it.
 
 ## Known facts (verified on AppSail, Oct 2026)

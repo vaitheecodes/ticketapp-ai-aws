@@ -365,9 +365,7 @@ def test_attachments_only_through_the_authorised_endpoint(client, tmp_path):
     assert client.get(f"/uploads/{stored[0].name}").status_code == 404
 
 
-def test_config_presence_reports_booleans_only(client, monkeypatch):
-    monkeypatch.setenv("QUICKML_ENDPOINT_KEY", "secret-value-123")
+def test_the_temporary_diagnostics_endpoints_are_gone(client):
     admin = _admin(client)
-    res = client.get("/api/admin/diag/config", headers=admin).json()
-    assert res["set"]["QUICKML_ENDPOINT_KEY"] is True and res["set"]["QUICKML_ORG_ID"] is False
-    assert "secret-value-123" not in str(res)
+    for path in ("/api/admin/diag/config", "/api/admin/diag/appsail-headers?probe=999000111222333"):
+        assert client.get(path, headers=admin).status_code == 404
