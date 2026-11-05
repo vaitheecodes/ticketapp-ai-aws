@@ -73,7 +73,7 @@ message is kept and nothing else changed.
 | `GET /tickets/{id}` | C (own) | — | `{ticket:{ticket_id, ticket_type, subject, status, route, priority, category, created_at}, messages:[{message_id, sender, sender_name, sender_role, to, subject, message, created_at, attachments}], chat:{session_id, transcript}\|null, incident_notice:string\|null}`. Marks replies read. Only public replies and customer-visible events — internal notes, AI summaries and suggestions are filtered out in the query. |
 | `POST /tickets/{id}/reply` | C (own) | `{message}` | `{route, status, message_id, ai_error?}`. Pending Customer / Resolved → Open. 400 if closed. |
 | `POST /tickets/{id}/reopen` | C (own) | — | `{ticket_id, status}`; resolved tickets only |
-| `POST /tickets/{id}/attachments` | C (own) | multipart: `message_id`, `files` (≤5 per message, ≤10 MB, png/jpg/pdf/txt/log, contents must match) | `[{attachment_id, filename, content_type, size_bytes}]` |
+| `POST /tickets/{id}/attachments` | C (own) | multipart: `message_id`, `files` (≤5 per message, ≤10 MB, png/jpg/pdf/txt/log, contents must match) | `[{attachment_id, filename, content_type, size_bytes}]`. A request declaring more than 55 MB gets `413`, one with no `Content-Length` `411`, before the body is read. |
 | `GET /tickets/{id}/attachments/{attachment_id}` | C (own, visible messages) / T / M / A | — | file download (`Content-Disposition: attachment`) |
 
 ## Technician workspace

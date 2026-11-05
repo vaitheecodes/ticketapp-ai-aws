@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -55,6 +56,38 @@ ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
+# The attachment upload (POST /api/tickets/{id}/attachments) takes at most
+# MAX_ATTACHMENTS_PER_MESSAGE files of MAX_ATTACHMENT_BYTES, but FastAPI
+# reads the whole multipart body into temporary files before the handler
+# can count them. A request declaring more than this is refused before
+# its body is read, and one declaring no length (chunked) too.
+MAX_UPLOAD_REQUEST_BYTES = 55 * 1024 * 1024
+_ATTACHMENT_UPLOAD_PATH = re.compile(r"^/api/tickets/[^/]+/attachments/?$")
+
+
+class _UploadSizeLimit:
+    def __init__(self, asgi_app):
+        self.app = asgi_app
+
+    async def __call__(self, scope, receive, send):
+        if (scope["type"] == "http" and scope["method"] == "POST"
+                and _ATTACHMENT_UPLOAD_PATH.match(scope["path"])):
+            length = dict(scope.get("headers", [])).get(b"content-length")
+            if length is None:
+                refusal = (411, "Content-Length required for uploads")
+            elif not length.isdigit() or int(length) > MAX_UPLOAD_REQUEST_BYTES:
+                refusal = (413, "Upload too large (at most 5 files of 10 MB)")
+            else:
+                refusal = None
+            if refusal:
+                response = JSONResponse({"detail": refusal[1]}, status_code=refusal[0])
+                return await response(scope, receive, send)
+        return await self.app(scope, receive, send)
+
+
+# Added before CORS so CORS wraps it (the last added runs first) and a
+# refused upload still carries the CORS headers the browser needs.
+app.add_middleware(_UploadSizeLimit)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
