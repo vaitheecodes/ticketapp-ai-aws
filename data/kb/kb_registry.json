@@ -1,6 +1,8 @@
 {
   "categories": [],
-  "terms": {},
+  "terms": {
+    "iOS": "\\bios\\b"
+  },
   "intent_terms": {
     "add_api_monitor_error_har": [
       "API"
@@ -12,6 +14,10 @@
     "ping_monitoring": [
       "ping"
     ],
-    "agent_installation": []
+    "agent_installation": [],
+    "report_dashboard": [],
+    "mobile_apm": [
+      "iOS"
+    ]
   }
 }

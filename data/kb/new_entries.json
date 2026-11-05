@@ -898,11 +898,12 @@
       "answer": "1. Go to Server > Server Monitor > Servers (+) > Linux (or Admin > Inventory > Add Monitor > Linux Server Monitoring).\n2. Use the toggle to choose whether the agent is installed and run as root or non-root.\n3. Click Copy to Clipboard, then paste and run the commands on your server to download and install the agent. The same commands work on 32-bit and 64-bit systems.\n4. Once the agent is installed, the server appears under Server > Server Monitor > Servers.",
       "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/linux-server-monitoring.html",
       "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving.",
-      "reviewed_at": "2026-11-04T17:18:12+00:00"
+      "reviewed_at": "2026-11-04T17:18:12+00:00",
+      "retagged_at": "2026-11-05T02:41:54+00:00"
     },
     {
       "kb_entry_id": "KB-N0142",
-      "status": "draft",
+      "status": "approved",
       "area": "Getting started (how-to)",
       "category": "AGENT",
       "intent": "agent_installation",
@@ -922,7 +923,8 @@
       ],
       "answer": "1. Go to Server > Server Monitor > Servers (+) > Windows.\n2. Click Download Site24x7 Windows Server Agent, review the license agreement and click I Accept.\n3. Open the downloaded installer and, when prompted, enter the device key shown on the Add a Windows Server page.\n4. If your organization policy requires it, enter the proxy configuration, then choose the installation folder.\n5. Once the agent is installed, the server appears under Server > Server Monitor > Servers.",
       "source_url": "https://www.site24x7.com/help/admin/adding-a-monitor/windows-server-monitoring.html",
-      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving.",
+      "reviewed_at": "2026-11-05T02:42:39+00:00"
     },
     {
       "kb_entry_id": "KB-N0143",
@@ -950,7 +952,7 @@
     },
     {
       "kb_entry_id": "KB-N0144",
-      "status": "draft",
+      "status": "approved",
       "area": "Getting started (how-to)",
       "category": "REPORTING",
       "intent": "report_dashboard",
@@ -969,7 +971,8 @@
       ],
       "answer": "1. Go to Reports > Custom Report (Beta) and click +Create Custom Report.\n2. Choose a Category; all monitors in that category are included.\n3. Click the pencil icon to enter the Report name and Description.\n4. Under Columns, add the Attributes and Resources and set the Time period; under Filter, add any Inventory Filter or Data Filter.\n5. Click Save to open the report in Sheet View.\n6. To export it, click Share This and choose Export CSV, or Email to send it now.",
       "source_url": "https://www.site24x7.com/help/reports/custom-report.html",
-      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving.",
+      "reviewed_at": "2026-11-05T02:44:55+00:00"
     },
     {
       "kb_entry_id": "KB-N0145",
@@ -1091,7 +1094,7 @@
     },
     {
       "kb_entry_id": "KB-N0150",
-      "status": "draft",
+      "status": "approved",
       "area": "Getting started (how-to)",
       "category": "APM",
       "intent": "mobile_apm",
@@ -1111,7 +1114,8 @@
       ],
       "answer": "1. Go to the iOS section under the APM tab and click Add Application.\n2. Enter an application name and an Apdex threshold, then save.\n3. On the application screen, click the hamburger icon next to the app name to copy the application key.\n4. Add pod 'Site24x7APM' to your Podfile inside your target block, then run pod install.\n5. In your AppDelegate's didFinishLaunchingWithOptions, start the SDK with your application key: S24APM.start(withAppKey:\"App_Key\", interval: 15)",
       "source_url": "https://www.site24x7.com/help/apm/ios-app-optimization.html",
-      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving."
+      "notes": "Draft from the official page in source_url, fetched 2026-11-04. Only steps the page states; check the page before approving.",
+      "reviewed_at": "2026-11-05T02:46:10+00:00"
     },
     {
       "kb_entry_id": "KB-N0151",
